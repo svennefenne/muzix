@@ -12,6 +12,28 @@ from . import __version__, db, env, jobs, settings
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
+class NoProxyBuffering:
+    """Ask nginx-style reverse proxies to pass audio straight through instead of
+    spooling every track to a temporary file first."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers", []))
+                ctype = next((v for k, v in headers if k.lower() == b"content-type"), b"")
+                if ctype.startswith((b"audio/", b"application/ogg")):
+                    message = {**message, "headers": [*headers, (b"x-accel-buffering", b"no")]}
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
+
+
 def create_app() -> FastAPI:
     db.init()
     jobs.recover()
@@ -23,6 +45,7 @@ def create_app() -> FastAPI:
     from .api import radio, spotify, stream, themes, upload
 
     app = FastAPI(title="Muzix", version=__version__, docs_url="/api/docs", openapi_url="/api/openapi.json")
+    app.add_middleware(NoProxyBuffering)
     for mod in (auth, library, stream, me, admin, books_api, podcasts_api, radio, spotify, themes, upload):
         app.include_router(mod.router)
         if hasattr(mod, "art_router"):

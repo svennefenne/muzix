@@ -54,6 +54,36 @@ async def upload_files(batch: str, files: list[UploadFile], paths: list[str] = F
     return {"saved": saved}
 
 
+@router.post("/batch/{batch}/part")
+async def upload_part(batch: str, data: UploadFile, path: str = Form(...), offset: int = Form(..., ge=0),
+                      total: int = Form(..., ge=0)):
+    """One piece of a big file. Proxies such as Cloudflare refuse request bodies
+    over 100 MiB, so the browser sends large files in pieces, in order."""
+    d = batch_dir(batch)
+    if not d.is_dir():
+        raise HTTPException(404, "No such upload batch")
+    rel = safe_rel(path, data.filename or "file")
+    dest = d / rel
+    part = dest.with_name(dest.name + ".part")
+    have = part.stat().st_size if part.exists() else 0
+    if offset and offset != have:
+        raise HTTPException(409, f"Expected the piece at {have}")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with open(part, "r+b" if offset else "wb") as out:
+        out.seek(offset)
+        out.truncate()
+        while chunk := await data.read(1024 * 1024):
+            out.write(chunk)
+        size = out.tell()
+    if size > total:
+        part.unlink()
+        raise HTTPException(400, "More data than announced")
+    if size < total:
+        return {"received": size}
+    os.replace(part, dest)
+    return {"saved": [{"path": rel, "size": size, "kind": formats.family(rel) or "other"}]}
+
+
 def batch_json(d, db: Session):
     files = []
     for r, _, fs in os.walk(d):

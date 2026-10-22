@@ -234,20 +234,40 @@ async function entriesToFiles(items: DataTransferItemList): Promise<Pending[]> {
   return out;
 }
 
-function sendChunk(batch: string, chunk: Pending[], onProgress: (loaded: number) => void): Promise<void> {
+// Cloudflare (and some other proxies) refuse request bodies over 100 MiB, so
+// requests stay well below that and bigger files go up in pieces.
+const MAX_REQUEST = 64e6;
+const PART = 48 * 1024 * 1024;
+
+function post(url: string, fd: FormData, onProgress: (loaded: number) => void): Promise<void> {
   return new Promise((resolve, reject) => {
-    const fd = new FormData();
-    for (const p of chunk) {
-      fd.append("files", p.file, p.file.name);
-      fd.append("paths", p.path);
-    }
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", `/api/upload/batch/${batch}/files`);
+    xhr.open("POST", url);
     xhr.upload.onprogress = (e) => onProgress(e.loaded);
     xhr.onload = () => (xhr.status < 300 ? resolve() : reject(new Error(xhr.responseText || xhr.statusText)));
     xhr.onerror = () => reject(new Error("Upload failed"));
     xhr.send(fd);
   });
+}
+
+function sendChunk(batch: string, chunk: Pending[], onProgress: (loaded: number) => void): Promise<void> {
+  const fd = new FormData();
+  for (const p of chunk) {
+    fd.append("files", p.file, p.file.name);
+    fd.append("paths", p.path);
+  }
+  return post(`/api/upload/batch/${batch}/files`, fd, onProgress);
+}
+
+async function sendParts(batch: string, p: Pending, onProgress: (loaded: number) => void): Promise<void> {
+  for (let offset = 0; offset < p.file.size; offset += PART) {
+    const fd = new FormData();
+    fd.append("path", p.path);
+    fd.append("offset", String(offset));
+    fd.append("total", String(p.file.size));
+    fd.append("data", p.file.slice(offset, offset + PART), p.file.name);
+    await post(`/api/upload/batch/${batch}/part`, fd, (loaded) => onProgress(offset + loaded));
+  }
 }
 
 function UploadArea() {
@@ -267,14 +287,21 @@ function UploadArea() {
     setProgress({ done: 0, total, files: audioish.length });
     try {
       for (let i = 0; i < audioish.length;) {
+        const base = done;
+        const report = (loaded: number) => setProgress({ done: base + loaded, total, files: audioish.length });
+        if (audioish[i].file.size > MAX_REQUEST) {
+          const big = audioish[i++];
+          await sendParts(batch, big, report);
+          done = base + big.file.size;
+          continue;
+        }
         const chunk: Pending[] = [];
         let size = 0;
-        while (i < audioish.length && chunk.length < 25 && (size < 200e6 || !chunk.length)) {
+        while (i < audioish.length && chunk.length < 25 && size + audioish[i].file.size <= MAX_REQUEST) {
           size += audioish[i].file.size;
           chunk.push(audioish[i++]);
         }
-        const base = done;
-        await sendChunk(batch, chunk, (loaded) => setProgress({ done: base + loaded, total, files: audioish.length }));
+        await sendChunk(batch, chunk, report);
         done = base + size;
       }
       notify(`Uploaded ${audioish.length} files. Press Import to tag and file them.`);
