@@ -86,6 +86,19 @@ set **Admin → Settings → General → Public URL** to its HTTPS address. Then
 
 Playing Spotify inside Muzix needs Spotify Premium; without it you can still browse.
 
+New Spotify apps run in *Development mode*: the app owner needs Premium, and
+at most five Spotify accounts can use the app. Add other people's accounts
+under *User Management* in the app's dashboard.
+
+**"Authentication failed" when playing Spotify:** Spotify's player runs in a
+frame from `sdk.scdn.co` and has to reach `apresolve.spotify.com`,
+`spclient.wg.spotify.com` and `dealer.spotify.com`. Ad and tracker blockers
+such as AdGuard and Privacy Badger block those, so allow your Muzix address in
+them (AdGuard: turn off protection for the site; Privacy Badger: disable it for
+the site). The browser also needs DRM: in Firefox, *Settings → General → Play
+DRM-controlled content*. The browser console (F12) shows blocked Spotify
+requests as "CORS request did not succeed".
+
 ## Keyboard
 
 | Key | Action |
