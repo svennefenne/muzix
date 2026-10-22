@@ -1,6 +1,7 @@
 /** Spotify playback inside Muzix through the Web Playback SDK (Premium), plus a
  * small Web API client. Muzix appears as a Spotify Connect device called "Muzix". */
 
+import { api } from "../api";
 import { usePlayer, type PlayItem } from "../store/player";
 
 interface SpotifyPlayer {
@@ -45,6 +46,8 @@ export async function sp<T = any>(path: string, init: RequestInit = {}): Promise
   return res.json();
 }
 
+const genreCache = new Map<string, string[]>();
+
 class SpotifyDriver {
   player: SpotifyPlayer | null = null;
   deviceId = "";
@@ -56,7 +59,7 @@ class SpotifyDriver {
 
   init(): Promise<void> {
     if (this.ready) return this.ready;
-    this.ready = new Promise((resolve, reject) => {
+    const ready = new Promise<void>((resolve, reject) => {
       const start = () => {
         const player = new window.Spotify!.Player({
           name: "Muzix",
@@ -68,7 +71,9 @@ class SpotifyDriver {
           resolve();
         });
         player.addListener("initialization_error", ({ message }) => reject(new Error(message)));
-        player.addListener("authentication_error", ({ message }) => reject(new Error(message)));
+        player.addListener("authentication_error", ({ message }) => reject(new Error(
+          `${message}: Spotify's player couldn't sign in. Strict tracking protection or a content blocker ` +
+          `can cause this; allow ${location.host} and try again.`)));
         player.addListener("account_error", () => reject(new Error("Spotify Premium is needed to play in Muzix")));
         player.addListener("player_state_changed", (st) => this.onState(st));
         player.connect();
@@ -80,8 +85,15 @@ class SpotifyDriver {
       s.src = "https://sdk.scdn.co/spotify-player.js";
       s.onerror = () => reject(new Error("Couldn't load the Spotify player"));
       document.head.appendChild(s);
+    }).catch((e) => {
+      // start over on the next try instead of repeating this error until a reload
+      this.player?.disconnect();
+      this.player = null;
+      this.ready = null;
+      throw e;
     });
-    return this.ready;
+    this.ready = ready;
+    return ready;
   }
 
   async playItem(item: PlayItem) {
@@ -94,9 +106,27 @@ class SpotifyDriver {
         method: "PUT", body: JSON.stringify({ uris: [item.spotifyUri], position_ms: Math.round((item.resume || 0) * 1000) }),
       });
       this.startPolling();
+      this.loadGenres(item.spotifyArtist);
     } catch (e) {
       usePlayer.getState().set({ error: String((e as Error).message), playing: false, buffering: false });
     }
+  }
+
+  /** Spotify no longer shares artist genres with small apps; Muzix looks them up. */
+  private async loadGenres(artist?: string) {
+    if (!artist) return;
+    let tags = genreCache.get(artist);
+    if (!tags) {
+      try {
+        tags = await api.get<string[]>("/api/spotify/genres", { artist });
+      } catch {
+        return;     // genres are a nicety
+      }
+      genreCache.set(artist, tags);
+    }
+    if (!tags.length) return;
+    const s = usePlayer.getState();
+    s.set({ queue: s.queue.map((q) => (q.spotifyArtist === artist && !q.tags?.length ? { ...q, tags } : q)) });
   }
 
   private onState(st: any) {

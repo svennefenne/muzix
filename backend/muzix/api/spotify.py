@@ -7,17 +7,19 @@ with the access token from /api/spotify/token.
 import base64
 import hashlib
 import secrets
+import threading
 import time
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import settings
+from .. import enrich, settings
 from ..db import get_db
-from ..models import SpotifyLink, User
+from ..models import Artist, SpotifyLink, User
 from ..security import current_user
 
 router = APIRouter(prefix="/api/spotify", tags=["spotify"])
@@ -110,3 +112,38 @@ def unlink(db: Session = Depends(get_db), user: User = Depends(current_user)):
         db.delete(link)
         db.commit()
     return {"ok": True}
+
+
+# Spotify stopped sending artist genres to Development Mode apps in 2026, so the
+# genre skins get them from the library's own artist tags, MusicBrainz or Last.fm.
+_genres: dict[str, list[str]] = {}
+_lookup_lock = threading.Lock()
+_limiter = enrich.RateLimited(1.0)
+
+
+@router.get("/genres")
+def genres(artist: str = Query(..., min_length=1, max_length=200), db: Session = Depends(get_db),
+           user: User = Depends(current_user)) -> list[str]:
+    key = artist.strip().casefold()
+    if key in _genres:
+        return _genres[key]
+    a = db.scalar(select(Artist).where(func.lower(Artist.name) == key, func.json_array_length(Artist.tags) > 0))
+    if a is not None:
+        _genres[key] = [t[0] for t in a.tags[:8]]
+        return _genres[key]
+    source, lastfm_key = settings.get("artist_tags"), settings.get("lastfm_api_key")
+    if source == "off":
+        return []
+    with _lookup_lock:
+        if key in _genres:
+            return _genres[key]
+        try:
+            with httpx.Client(headers={"User-Agent": enrich.UA}, timeout=20) as client:
+                if source == "lastfm" and lastfm_key:
+                    tags = enrich.lastfm_tags(client, _limiter, artist.strip(), lastfm_key)
+                else:
+                    tags, _ = enrich.mb_tags(client, _limiter, artist.strip(), "")
+        except httpx.HTTPError:
+            return []
+        _genres[key] = [t[0] for t in tags[:8]]
+        return _genres[key]

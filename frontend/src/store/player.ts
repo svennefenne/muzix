@@ -25,6 +25,7 @@ export interface PlayItem {
   bookId?: number;
   partOffset?: number;        // a book part's start within the whole book
   spotifyUri?: string;
+  spotifyArtist?: string;     // first artist, for the genre lookup
 }
 
 export function fromTrack(t: Track): PlayItem {

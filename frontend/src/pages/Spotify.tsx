@@ -11,31 +11,21 @@ import { useUi } from "../store/ui";
 
 interface SpStatus { configured: boolean; linked: boolean; display_name: string; product: string; redirect_uri: string }
 interface SpImage { url: string }
-interface SpArtist { id: string; name: string; genres?: string[] }
+interface SpArtist { id: string; name: string }
 interface SpAlbum { id: string; name: string; images: SpImage[]; artists: SpArtist[]; release_date?: string; uri: string; tracks?: { items: SpTrack[] } }
 interface SpTrack { id: string; name: string; uri: string; duration_ms: number; artists: SpArtist[]; album?: SpAlbum; is_playable?: boolean }
 interface SpPlaylist { id: string; name: string; images: SpImage[] | null; owner: { display_name: string }; tracks?: { total: number }; items?: { total: number }; description: string }
 
 const img = (imgs?: SpImage[] | null) => imgs?.[0]?.url || null;
 
-/** Spotify tracks → queue items, with artist genres for the genre skins. */
-async function toItems(tracks: SpTrack[], album?: SpAlbum): Promise<PlayItem[]> {
-  const ids = [...new Set(tracks.map((t) => t.artists[0]?.id).filter(Boolean))];
-  const genres = new Map<string, string[]>();
-  for (let i = 0; i < ids.length; i += 50) {
-    try {
-      const r = await sp<{ artists: SpArtist[] }>(`artists?ids=${ids.slice(i, i + 50).join(",")}`);
-      r.artists.forEach((a) => a && genres.set(a.id, a.genres || []));
-    } catch {
-      /* genres are a nicety */
-    }
-  }
+/** Spotify tracks → queue items. Genres for the skins are looked up when a track plays. */
+function toItems(tracks: SpTrack[], album?: SpAlbum): PlayItem[] {
   return tracks.map((t) => {
     const al = t.album || album;
     return {
       key: `spotify:${t.id}`, kind: "spotify", id: t.uri, title: t.name, artist: t.artists.map((a) => a.name).join(", "),
       album: al?.name, art: img(al?.images), duration: t.duration_ms / 1000, src: "", spotifyUri: t.uri,
-      tags: genres.get(t.artists[0]?.id) || [],
+      spotifyArtist: t.artists[0]?.name, tags: [],
     } as PlayItem;
   });
 }
@@ -43,7 +33,7 @@ async function toItems(tracks: SpTrack[], album?: SpAlbum): Promise<PlayItem[]> 
 async function playSp(tracks: SpTrack[], index = 0, album?: SpAlbum, shuffle = false) {
   let list = tracks.filter((t) => t && t.uri && t.is_playable !== false);
   if (shuffle) list = [...list].sort(() => Math.random() - 0.5);
-  engine.play(await toItems(list, album), shuffle ? 0 : Math.max(0, list.indexOf(tracks[index])));
+  engine.play(toItems(list, album), shuffle ? 0 : Math.max(0, list.indexOf(tracks[index])));
 }
 
 function SpTrackList({ tracks, album }: { tracks: SpTrack[]; album?: SpAlbum }) {
@@ -120,7 +110,7 @@ function Search() {
   const term = params.get("q") || "";
   const [text, setText] = useState(term);
   const q = useQuery({ queryKey: ["sp-search", term], enabled: !!term,
-    queryFn: () => sp<{ tracks: { items: SpTrack[] }; albums: { items: SpAlbum[] }; playlists: { items: SpPlaylist[] } }>(`search?type=track,album,playlist&limit=20&q=${encodeURIComponent(term)}`) });
+    queryFn: () => sp<{ tracks: { items: SpTrack[] }; albums: { items: SpAlbum[] }; playlists: { items: SpPlaylist[] } }>(`search?type=track,album,playlist&limit=10&q=${encodeURIComponent(term)}`) });
   return (
     <>
       <input className="input" placeholder="Search Spotify" value={text} onChange={(e) => setText(e.target.value)}
