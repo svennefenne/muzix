@@ -1,0 +1,115 @@
+# Muzix
+
+A self-hosted, Spotify-style player for everything you own: your music library,
+chiptunes and tracker modules, audiobooks, podcasts and internet radio, with
+your Spotify account built in. Runs as one Docker container (made for Unraid).
+
+**The app dresses up for what's playing.** Put on death metal and the whole
+interface turns into a death metal record: bone-on-blood blackletter, a thorned
+frame, gritty covers and embers rising with the bass. Psytrance gets UV neon and
+a fractal mandala, chiptunes get pixel fonts, CRT scanlines and a warp starfield,
+jazz gets Blue Note duotones. There are 25 genre skins, and when none applies
+you choose from 98 colour schemes, each with a light and a dark version.
+
+## Features
+
+- **Music library**: albums, artists, genres, playlists, likes, play history,
+  full-text search, album colours, gapless-feeling queue with prefetch.
+- **Every format**: MP3, FLAC, Ogg/Opus, M4A, M4B, WavPack (up to 384 kHz),
+  APE, WMA, plus chip music and trackers:
+  | Family | Formats | Played by |
+  |---|---|---|
+  | Trackers | MOD, XM, IT, S3M, MT2 (MadTracker 2), MTM, MED, 669… | libopenmpt |
+  | Consoles | NSF/NSFe (NES), GBS (Game Boy), SPC (SNES), VGM/VGZ, GYM, HES, KSS, AY, SAP | Game_Music_Emu |
+  | Commodore 64 | SID | sidplayfp |
+  | Atari ST | YM | StSound (`ymtool`) |
+  | FamiTracker | FTM, 0CC, DNM, FUR | Furnace |
+  | MIDI | MID, KAR, RMI | FluidSynth + General MIDI soundfont |
+
+  Multi-song files (NSF, GBS, SID, FamiTracker...) show every song as its own track.
+- **Looping chiptunes**: game music usually loops forever. On the admin page,
+  choose "play the loop N times" (intro + N × loop + fade, using the file's own
+  loop points) or "play for a fixed time", the fade length and a cap. Tracker
+  modules have their own repeat count.
+- **Audiobooks**: .m4b with chapters or folders of files, resume position,
+  speed control, finished/unfinished.
+- **Podcasts**: subscribe by URL or from the Apple Podcasts directory, top
+  charts, OPML import/export, resume, downloads (automatic if you like).
+- **Internet radio**: tens of thousands of stations from radio-browser.info,
+  saved stations, live "now playing" titles.
+- **Spotify**: your playlists, saved albums and liked songs in Muzix style,
+  played inside Muzix with the Web Playback SDK (Premium), genre skins included.
+- **Admin page**: library folders with a folder browser, scans and jobs with
+  logs, users, and every setting with an explanation.
+- **Upload area**: drop files or whole folders in the browser. Music is matched
+  with MusicBrainz (beets), gets cover art and a main genre, and is filed as
+  `Genre/Artist/Artist - Year - Album/1. Artist - Album - Title (Year).ext`.
+  Chiptunes go to your VGM folder.
+- Deck Force-style layout: tabs in the top bar (Q / E switch tabs), a framed
+  page, player and status line below. Works on phones too.
+
+## Install on Unraid
+
+1. Add the template: Docker → *Add Container* → *Template repositories*, add
+   `https://github.com/svennefenne/muzix`, or copy `unraid/muzix.xml` to
+   `/boot/config/plugins/dockerMan/templates-user/`.
+2. Check the paths: appdata → `/config`, your music share → `/music`,
+   audiobooks → `/audiobooks`. "Library folders on first start" says which
+   sub-folders become music / VGM / audiobook folders (changeable later).
+3. Start it and open `http://<server>:8080`. The first visit creates the admin
+   account and starts the first scan.
+
+Plain Docker:
+
+```sh
+docker run -d --name muzix -p 8080:8080 \
+  -v /mnt/user/appdata/muzix:/config \
+  -v /mnt/user/media/musik:/music \
+  -v /mnt/user/media/books:/audiobooks:ro \
+  -e PUID=99 -e PGID=100 \
+  ghcr.io/svennefenne/muzix:latest
+```
+
+### HTTPS and Spotify
+
+Put Muzix behind your reverse proxy (SWAG, Nginx Proxy Manager, Traefik...) and
+set **Admin → Settings → General → Public URL** to its HTTPS address. Then:
+
+1. Create an app at <https://developer.spotify.com/dashboard> (Web API and Web
+   Playback SDK).
+2. Add the redirect URI `https://<your muzix address>/api/spotify/callback`.
+3. Paste the app's Client ID into **Admin → Settings → Spotify** and press
+   *Connect Spotify* on the Spotify tab.
+
+Playing Spotify inside Muzix needs Spotify Premium; without it you can still browse.
+
+## Keyboard
+
+| Key | Action |
+|---|---|
+| Space | play / pause |
+| ← / → | seek 5 s (Shift: 30 s) |
+| N / P | next / previous |
+| M | mute |
+| Q / E | previous / next tab |
+| / | search |
+
+## Development
+
+```sh
+# backend (Python 3.12+), serves the API on :18080
+cd backend && python -m venv ../.venv && ../.venv/bin/pip install -e '.[dev,organize]'
+MUZIX_DATA=/tmp/muzix MUZIX_PORT=18080 ../.venv/bin/python -m muzix
+../.venv/bin/pytest
+
+# frontend (Node 22): dev server on :5173 proxies /api to :18080
+cd frontend && npm install && npm run dev
+```
+
+The colour schemes are generated with `scripts/import_palettes.py` from a checkout
+of claude-desktop-extra. The Docker image (`Dockerfile`) builds the web interface,
+compiles `ymtool` and installs the players.
+
+## Credits
+
+See [THIRD_PARTY.md](THIRD_PARTY.md). Muzix itself is MIT licensed.

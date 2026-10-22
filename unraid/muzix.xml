@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Muzix</Name>
+  <Repository>ghcr.io/svennefenne/muzix:latest</Repository>
+  <Registry>https://github.com/svennefenne/muzix/pkgs/container/muzix</Registry>
+  <Network>bridge</Network>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/svennefenne/muzix/issues</Support>
+  <Project>https://github.com/svennefenne/muzix</Project>
+  <Overview>Muzix: a self-hosted, Spotify-style player for your own music, chiptunes and tracker modules (NSF, GBS, SPC, VGM, SID, YM, FamiTracker, MOD/XM/IT/S3M/MT2, MIDI), audiobooks, podcasts and internet radio, with Spotify built in. The whole app restyles itself after the genre that's playing, and offers 98 colour schemes. Uploads are tagged, given cover art and filed into Genre/Artist/Album folders automatically.</Overview>
+  <Category>MediaServer:Music MediaApp:Music</Category>
+  <WebUI>http://[IP]:[PORT:8080]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/svennefenne/muzix/main/unraid/muzix.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/svennefenne/muzix/main/unraid/muzix.png</Icon>
+  <ExtraParams>--restart unless-stopped</ExtraParams>
+  <Config Name="Web UI port" Target="8080" Default="8080" Mode="tcp" Description="Port of the web interface. Put your reverse proxy (SWAG, Nginx Proxy Manager...) in front of it for HTTPS." Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+  <Config Name="Appdata" Target="/config" Default="/mnt/user/appdata/muzix" Mode="rw" Description="Database, caches, podcast downloads and the upload area." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/muzix</Config>
+  <Config Name="Music" Target="/music" Default="/mnt/user/media/musik" Mode="rw" Description="Your music share. Read-write lets the upload area file new albums into it; use ro if you don't want that." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/media/musik</Config>
+  <Config Name="Audiobooks" Target="/audiobooks" Default="/mnt/user/media/books" Mode="ro" Description="Audiobooks: one folder per book, or .m4b files." Type="Path" Display="always" Required="false" Mask="false">/mnt/user/media/books</Config>
+  <Config Name="VGM (optional)" Target="/vgm" Default="" Mode="ro" Description="An extra folder of chiptunes / tracker modules, if they don't live under Music." Type="Path" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Library folders on first start" Target="MUZIX_DEFAULT_ROOTS" Default="/music/mp3:music,/music/all-mods:vgm,/music/amiga-mods:vgm,/music/Game Soundtracks:vgm,/vgm:vgm,/audiobooks:audiobooks" Mode="" Description="path:kind pairs (music, vgm, audiobooks) registered when you create the admin account. Folders that don't exist are skipped; change them later on the admin page." Type="Variable" Display="advanced" Required="false" Mask="false">/music/mp3:music,/music/all-mods:vgm,/music/amiga-mods:vgm,/music/Game Soundtracks:vgm,/vgm:vgm,/audiobooks:audiobooks</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User id Muzix runs as (99 = nobody on Unraid)." Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group id (100 = users on Unraid)." Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+  <Config Name="UMASK" Target="UMASK" Default="002" Mode="" Description="File permission mask for files Muzix creates." Type="Variable" Display="advanced" Required="false" Mask="false">002</Config>
+</Container>

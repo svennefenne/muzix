@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.egg-info/
+node_modules/
+frontend/dist/
+backend/muzix/static/
+.env

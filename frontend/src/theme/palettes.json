@@ -1,0 +1,2621 @@
+[
+ {
+  "slug": "sweet",
+  "category": "builtin",
+  "name": "Sweet",
+  "dark": {
+   "bg": "#251529",
+   "surface": "#331839",
+   "text": "#fff5ff",
+   "primary": "#ff85ed",
+   "secondary": "#cb7ef1",
+   "error": "#ef6c6c",
+   "warning": "#faba4c",
+   "success": "#69d38c",
+   "border": "#e0b8e0"
+  },
+  "light": {
+   "bg": "#fdf7fb",
+   "surface": "#ffffff",
+   "text": "#431547",
+   "primary": "#d91297",
+   "secondary": "#8925d0",
+   "error": "#e23653",
+   "warning": "#f2930d",
+   "success": "#2bab60",
+   "border": "#5d325d"
+  }
+ },
+ {
+  "slug": "nord",
+  "category": "builtin",
+  "name": "Nord",
+  "dark": {
+   "bg": "#2e3440",
+   "surface": "#383f4d",
+   "text": "#eceff4",
+   "primary": "#88c1d0",
+   "secondary": "#a785a0",
+   "error": "#bf616b",
+   "warning": "#d08670",
+   "success": "#a3be8c",
+   "border": "#a6b3c9"
+  },
+  "light": {
+   "bg": "#eceff4",
+   "surface": "#ffffff",
+   "text": "#2e3440",
+   "primary": "#5477a2",
+   "secondary": "#8a5a82",
+   "error": "#bf616b",
+   "warning": "#d08670",
+   "success": "#a3be8c",
+   "border": "#3b4354"
+  }
+ },
+ {
+  "slug": "catppuccin-mocha",
+  "category": "builtin",
+  "name": "Catppuccin Mocha",
+  "dark": {
+   "bg": "#1e1e2e",
+   "surface": "#252537",
+   "text": "#cdd6f4",
+   "primary": "#cba6f7",
+   "secondary": "#89b4fa",
+   "error": "#f38ba8",
+   "warning": "#fab387",
+   "success": "#a7e3a1",
+   "border": "#a4a9cc"
+  },
+  "light": {
+   "bg": "#eff1f5",
+   "surface": "#ffffff",
+   "text": "#4c4f69",
+   "primary": "#8839ef",
+   "secondary": "#1e66f5",
+   "error": "#e64552",
+   "warning": "#fe640b",
+   "success": "#179299",
+   "border": "#2b2c3b"
+  }
+ },
+ {
+  "slug": "catppuccin-macchiato",
+  "category": "builtin",
+  "name": "Catppuccin Macchiato",
+  "dark": {
+   "bg": "#24273a",
+   "surface": "#2a2d42",
+   "text": "#cad3f5",
+   "primary": "#c7a0f6",
+   "secondary": "#8aadf4",
+   "error": "#ed8796",
+   "warning": "#f5a87f",
+   "success": "#a6da95",
+   "border": "#a0a6ca"
+  },
+  "light": {
+   "bg": "#eff1f5",
+   "surface": "#ffffff",
+   "text": "#4c4f69",
+   "primary": "#8839ef",
+   "secondary": "#1e66f5",
+   "error": "#e64552",
+   "warning": "#fe640b",
+   "success": "#179299",
+   "border": "#2b2c3b"
+  }
+ },
+ {
+  "slug": "catppuccin-frappe",
+  "category": "builtin",
+  "name": "Catppuccin Frappe",
+  "dark": {
+   "bg": "#303446",
+   "surface": "#363a4f",
+   "text": "#c6d0f5",
+   "primary": "#ca9ee6",
+   "secondary": "#8ca9ee",
+   "error": "#e78284",
+   "warning": "#ef9e76",
+   "success": "#a6d189",
+   "border": "#9da5c8"
+  },
+  "light": {
+   "bg": "#eff1f5",
+   "surface": "#ffffff",
+   "text": "#4c4f69",
+   "primary": "#8839ef",
+   "secondary": "#1e66f5",
+   "error": "#e64552",
+   "warning": "#fe640b",
+   "success": "#179299",
+   "border": "#2b2c3b"
+  }
+ },
+ {
+  "slug": "catppuccin-latte",
+  "category": "builtin",
+  "name": "Catppuccin Latte",
+  "dark": {
+   "bg": "#1e1e2e",
+   "surface": "#252537",
+   "text": "#cdd6f4",
+   "primary": "#cba6f7",
+   "secondary": "#89b4fa",
+   "error": "#f38ba8",
+   "warning": "#fab387",
+   "success": "#a7e3a1",
+   "border": "#a4a9cc"
+  },
+  "light": {
+   "bg": "#eff1f5",
+   "surface": "#ffffff",
+   "text": "#4c4f69",
+   "primary": "#8839ef",
+   "secondary": "#1e66f5",
+   "error": "#e64552",
+   "warning": "#fe640b",
+   "success": "#179299",
+   "border": "#2b2c3b"
+  }
+ },
+ {
+  "slug": "mario",
+  "category": "gaming",
+  "name": "Mario",
+  "dark": {
+   "bg": "#261912",
+   "surface": "#32221a",
+   "text": "#fbf7ef",
+   "primary": "#d51f0b",
+   "secondary": "#42adfa",
+   "error": "#f25f5f",
+   "warning": "#ffc20a",
+   "success": "#2bca45",
+   "border": "#d0b895"
+  },
+  "light": {
+   "bg": "#ceebfd",
+   "surface": "#ebf7ff",
+   "text": "#0b1837",
+   "primary": "#e01e1a",
+   "secondary": "#0a63c2",
+   "error": "#e61919",
+   "warning": "#e69900",
+   "success": "#148f2f",
+   "border": "#18508b"
+  }
+ },
+ {
+  "slug": "playstation",
+  "category": "gaming",
+  "name": "PlayStation",
+  "dark": {
+   "bg": "#1c1f26",
+   "surface": "#262b34",
+   "text": "#e9ecf3",
+   "primary": "#6f9dff",
+   "secondary": "#e07ac8",
+   "error": "#ff6075",
+   "warning": "#ffc65c",
+   "success": "#5fd47e",
+   "border": "#afb9ca"
+  },
+  "light": {
+   "bg": "#e5e7eb",
+   "surface": "#f5f6f7",
+   "text": "#1b1e25",
+   "primary": "#2a5cc8",
+   "secondary": "#a8348d",
+   "error": "#d94d62",
+   "warning": "#d18b00",
+   "success": "#2eaa5e",
+   "border": "#39404b"
+  }
+ },
+ {
+  "slug": "gameboy",
+  "category": "gaming",
+  "name": "Game Boy",
+  "dark": {
+   "bg": "#0a260a",
+   "surface": "#0e340e",
+   "text": "#9cbc0f",
+   "primary": "#9cbc0f",
+   "secondary": "#7c9c14",
+   "error": "#d8703c",
+   "warning": "#d7b22c",
+   "success": "#8aac0f",
+   "border": "#bfdb9f"
+  },
+  "light": {
+   "bg": "#dcd8ce",
+   "surface": "#e8e5df",
+   "text": "#26231c",
+   "primary": "#a3215b",
+   "secondary": "#34379a",
+   "error": "#e22642",
+   "warning": "#cc9200",
+   "success": "#5ca117",
+   "border": "#4a453a"
+  }
+ },
+ {
+  "slug": "final-fantasy",
+  "category": "gaming",
+  "name": "Final Fantasy",
+  "dark": {
+   "bg": "#101c46",
+   "surface": "#15245b",
+   "text": "#ffffff",
+   "primary": "#f0c560",
+   "secondary": "#9fb4e8",
+   "error": "#ff6b6b",
+   "warning": "#ffd166",
+   "success": "#7fdc9f",
+   "border": "#abb4cf"
+  },
+  "light": {
+   "bg": "#f3ecd9",
+   "surface": "#faf7ef",
+   "text": "#2a2416",
+   "primary": "#21398f",
+   "secondary": "#8a6310",
+   "error": "#d62b3a",
+   "warning": "#c78812",
+   "success": "#3c9b62",
+   "border": "#544731"
+  }
+ },
+ {
+  "slug": "zelda",
+  "category": "gaming",
+  "name": "Zelda",
+  "dark": {
+   "bg": "#17291c",
+   "surface": "#203827",
+   "text": "#eef6e6",
+   "primary": "#f0c519",
+   "secondary": "#7fc9e8",
+   "error": "#e8615f",
+   "warning": "#e8a838",
+   "success": "#6fd07a",
+   "border": "#add1a9"
+  },
+  "light": {
+   "bg": "#edf2e1",
+   "surface": "#f9fbf5",
+   "text": "#1a2a17",
+   "primary": "#1d6b3f",
+   "secondary": "#2a54a8",
+   "error": "#d32e39",
+   "warning": "#cf8f11",
+   "success": "#5da728",
+   "border": "#425134"
+  }
+ },
+ {
+  "slug": "warcraft",
+  "category": "gaming",
+  "name": "Warcraft",
+  "dark": {
+   "bg": "#241b13",
+   "surface": "#32251a",
+   "text": "#f2e6cf",
+   "primary": "#e8b83f",
+   "secondary": "#6f9ee8",
+   "error": "#e8524a",
+   "warning": "#f0a62e",
+   "success": "#7cc23f",
+   "border": "#d8c4a2"
+  },
+  "light": {
+   "bg": "#efe7d5",
+   "surface": "#f7f3ea",
+   "text": "#231b10",
+   "primary": "#1f4aa0",
+   "secondary": "#3f6f1c",
+   "error": "#d22a33",
+   "warning": "#ce970b",
+   "success": "#3da063",
+   "border": "#56472f"
+  }
+ },
+ {
+  "slug": "dragonball",
+  "category": "gaming",
+  "name": "Dragon Ball",
+  "dark": {
+   "bg": "#191d2a",
+   "surface": "#22283a",
+   "text": "#f6f1e6",
+   "primary": "#ff8d1a",
+   "secondary": "#5b8cff",
+   "error": "#ff4d6b",
+   "warning": "#ffcf3d",
+   "success": "#5fd18b",
+   "border": "#a9acd0"
+  },
+  "light": {
+   "bg": "#e9f2fb",
+   "surface": "#ffffff",
+   "text": "#131f38",
+   "primary": "#c25405",
+   "secondary": "#1f4fbf",
+   "error": "#e7183a",
+   "warning": "#cd910e",
+   "success": "#28a464",
+   "border": "#29405c"
+  }
+ },
+ {
+  "slug": "adw",
+  "category": "community",
+  "name": "ADW",
+  "dark": {
+   "bg": "#242424",
+   "surface": "#2c2c2c",
+   "text": "#ffffff",
+   "primary": "#3584e4",
+   "secondary": "#1b477c",
+   "error": "#c01c27",
+   "warning": "#f8e35c",
+   "success": "#57e388",
+   "border": "#bbb7c2"
+  },
+  "light": {
+   "bg": "#fafafa",
+   "surface": "#ffffff",
+   "text": "#2e3436",
+   "primary": "#3584e4",
+   "secondary": "#2e3436",
+   "error": "#ea4e56",
+   "warning": "#bc9270",
+   "success": "#35d088",
+   "border": "#3d4548"
+  }
+ },
+ {
+  "slug": "atuel",
+  "category": "community",
+  "name": "Atuel",
+  "dark": {
+   "bg": "#0a1126",
+   "surface": "#0f1a3a",
+   "text": "#e1e7f5",
+   "primary": "#99b7f2",
+   "secondary": "#5581d9",
+   "error": "#d98786",
+   "warning": "#f0e2c2",
+   "success": "#9ec4aa",
+   "border": "#9faedb"
+  },
+  "light": {
+   "bg": "#d9e2f7",
+   "surface": "#f1f4fc",
+   "text": "#0a1126",
+   "primary": "#1a3673",
+   "secondary": "#4e6ba6",
+   "error": "#c65a54",
+   "warning": "#957639",
+   "success": "#417751",
+   "border": "#25385f"
+  }
+ },
+ {
+  "slug": "ayu-blue",
+  "category": "community",
+  "name": "Ayu Blue",
+  "dark": {
+   "bg": "#0b0e14",
+   "surface": "#141924",
+   "text": "#d1d1c7",
+   "primary": "#39bbe6",
+   "secondary": "#aad94c",
+   "error": "#d95757",
+   "warning": "#73d0ff",
+   "success": "#d5ff80",
+   "border": "#b7bac3"
+  },
+  "light": {
+   "bg": "#f8f9fa",
+   "surface": "#ffffff",
+   "text": "#42474c",
+   "primary": "#55b4d4",
+   "secondary": "#86b300",
+   "error": "#e75555",
+   "warning": "#56aae6",
+   "success": "#8ece6e",
+   "border": "#3d4248"
+  }
+ },
+ {
+  "slug": "ayu-green",
+  "category": "community",
+  "name": "Ayu Green",
+  "dark": {
+   "bg": "#0b0e14",
+   "surface": "#141924",
+   "text": "#d1d1c7",
+   "primary": "#aad94c",
+   "secondary": "#e6b450",
+   "error": "#d95757",
+   "warning": "#d5ff80",
+   "success": "#ffd073",
+   "border": "#b7bac3"
+  },
+  "light": {
+   "bg": "#f8f9fa",
+   "surface": "#ffffff",
+   "text": "#42474c",
+   "primary": "#86b300",
+   "secondary": "#ff8f40",
+   "error": "#e75555",
+   "warning": "#8ece6e",
+   "success": "#edae4f",
+   "border": "#3d4248"
+  }
+ },
+ {
+  "slug": "ayu-red",
+  "category": "community",
+  "name": "Ayu Red",
+  "dark": {
+   "bg": "#0b0e14",
+   "surface": "#141924",
+   "text": "#d1d1c7",
+   "primary": "#d95757",
+   "secondary": "#e6b450",
+   "error": "#aad94c",
+   "warning": "#d5ff80",
+   "success": "#f28779",
+   "border": "#b7bac3"
+  },
+  "light": {
+   "bg": "#f8f9fa",
+   "surface": "#ffffff",
+   "text": "#42474c",
+   "primary": "#e65050",
+   "secondary": "#ff8f40",
+   "error": "#b4f000",
+   "warning": "#8ece6e",
+   "success": "#e75555",
+   "border": "#3d4248"
+  }
+ },
+ {
+  "slug": "breeze",
+  "category": "community",
+  "name": "Breeze",
+  "dark": {
+   "bg": "#202224",
+   "surface": "#2c2e31",
+   "text": "#fcfcfc",
+   "primary": "#3dade9",
+   "secondary": "#1d9af3",
+   "error": "#da4453",
+   "warning": "#fdbc4b",
+   "success": "#1cdc99",
+   "border": "#b7bdc2"
+  },
+  "light": {
+   "bg": "#ffffff",
+   "surface": "#ffffff",
+   "text": "#232629",
+   "primary": "#3dade9",
+   "secondary": "#297fb9",
+   "error": "#df5d6a",
+   "warning": "#cd9c64",
+   "success": "#4bb07e",
+   "border": "#3d4248"
+  }
+ },
+ {
+  "slug": "catppuccin-frappe-blue",
+  "category": "community",
+  "name": "Catppuccin Frappe Blue",
+  "dark": {
+   "bg": "#303446",
+   "surface": "#3a3f55",
+   "text": "#c6d0f5",
+   "primary": "#8ca9ee",
+   "secondary": "#babbf1",
+   "error": "#e78284",
+   "warning": "#e5c990",
+   "success": "#a6d189",
+   "border": "#a1abd8"
+  },
+  "light": {
+   "bg": "#eff1f5",
+   "surface": "#ffffff",
+   "text": "#4c4f69",
+   "primary": "#1e66f5",
+   "secondary": "#7287fd",
+   "error": "#f02e58",
+   "warning": "#e8a951",
+   "success": "#57cb3d",
+   "border": "#393d4b"
+  }
+ },
+ {
+  "slug": "catppuccin-frappe-lavender",
+  "category": "community",
+  "name": "Catppuccin Frappe Lavender",
+  "dark": {
+   "bg": "#303446",
+   "surface": "#3a3f55",
+   "text": "#c6d0f5",
+   "primary": "#babbf1",
+   "secondary": "#8ca9ee",
+   "error": "#e78284",
+   "warning": "#e5c990",
+   "success": "#a6d189",
+   "border": "#a1abd8"
+  },
+  "light": {
+   "bg": "#eff1f5",
+   "surface": "#ffffff",
+   "text": "#4c4f69",
+   "primary": "#7287fd",
+   "secondary": "#1e66f5",
+   "error": "#f02e58",
+   "warning": "#e8a951",
+   "success": "#57cb3d",
+   "border": "#393d4b"
+  }
+ },
+ {
+  "slug": "catppuccin-frappe-mauve",
+  "category": "community",
+  "name": "Catppuccin Frappe Mauve",
+  "dark": {
+   "bg": "#303446",
+   "surface": "#3a3f55",
+   "text": "#c6d0f5",
+   "primary": "#ca9ee6",
+   "secondary": "#babbf1",
+   "error": "#e78284",
+   "warning": "#e5c990",
+   "success": "#a6d189",
+   "border": "#a1abd8"
+  },
+  "light": {
+   "bg": "#eff1f5",
+   "surface": "#ffffff",
+   "text": "#4c4f69",
+   "primary": "#8839ef",
+   "secondary": "#7287fd",
+   "error": "#f02e58",
+   "warning": "#e8a951",
+   "success": "#57cb3d",
+   "border": "#393d4b"
+  }
+ },
+ {
+  "slug": "catppuccin-frappe-pink",
+  "category": "community",
+  "name": "Catppuccin Frappe Pink",
+  "dark": {
+   "bg": "#303446",
+   "surface": "#3a3f55",
+   "text": "#c6d0f5",
+   "primary": "#f4b8e4",
+   "secondary": "#ea999c",
+   "error": "#e78284",
+   "warning": "#e5c990",
+   "success": "#a6d189",
+   "border": "#a1abd8"
+  },
+  "light": {
+   "bg": "#eff1f5",
+   "surface": "#ffffff",
+   "text": "#4c4f69",
+   "primary": "#ea76cb",
+   "secondary": "#fe640b",
+   "error": "#f02e58",
+   "warning": "#e8a951",
+   "success": "#57cb3d",
+   "border": "#393d4b"
+  }
+ },
+ {
+  "slug": "catppuccin-frappe-rosewater",
+  "category": "community",
+  "name": "Catppuccin Frappe Rosewater",
+  "dark": {
+   "bg": "#303446",
+   "surface": "#3a3f55",
+   "text": "#c6d0f5",
+   "primary": "#f2d5cf",
+   "secondary": "#eebebe",
+   "error": "#e78284",
+   "warning": "#e5c990",
+   "success": "#a6d189",
+   "border": "#a1abd8"
+  },
+  "light": {
+   "bg": "#eff1f5",
+   "surface": "#ffffff",
+   "text": "#4c4f69",
+   "primary": "#dc8a78",
+   "secondary": "#dd7878",
+   "error": "#f02e58",
+   "warning": "#e8a951",
+   "success": "#57cb3d",
+   "border": "#393d4b"
+  }
+ },
+ {
+  "slug": "catppuccin-frappe-sapphire",
+  "category": "community",
+  "name": "Catppuccin Frappe Sapphire",
+  "dark": {
+   "bg": "#303446",
+   "surface": "#3a3f55",
+   "text": "#c6d0f5",
+   "primary": "#85c0dc",
+   "secondary": "#8ca9ee",
+   "error": "#e78284",
+   "warning": "#e5c990",
+   "success": "#a6d189",
+   "border": "#a1abd8"
+  },
+  "light": {
+   "bg": "#eff1f5",
+   "surface": "#ffffff",
+   "text": "#4c4f69",
+   "primary": "#209fb5",
+   "secondary": "#1e66f5",
+   "error": "#f02e58",
+   "warning": "#e8a951",
+   "success": "#57cb3d",
+   "border": "#393d4b"
+  }
+ },
+ {
+  "slug": "catppuccin-lavender",
+  "category": "community",
+  "name": "Catppuccin Lavender",
+  "dark": {
+   "bg": "#1e1e2e",
+   "surface": "#28283d",
+   "text": "#cdd6f4",
+   "primary": "#b4befe",
+   "secondary": "#f5bde6",
+   "error": "#f38ba8",
+   "warning": "#ebd391",
+   "success": "#89d88c",
+   "border": "#a2a7d7"
+  },
+  "light": {
+   "bg": "#eff1f5",
+   "surface": "#ffffff",
+   "text": "#4c4f69",
+   "primary": "#1e66f5",
+   "secondary": "#ea76cb",
+   "error": "#f02e58",
+   "warning": "#dab262",
+   "success": "#96c974",
+   "border": "#343a50"
+  }
+ },
+ {
+  "slug": "catppuccin-macchiato-lavender",
+  "category": "community",
+  "name": "Catppuccin Macchiato Lavender",
+  "dark": {
+   "bg": "#24273a",
+   "surface": "#2e3149",
+   "text": "#cad3f5",
+   "primary": "#b7bdf8",
+   "secondary": "#8aadf4",
+   "error": "#ed8796",
+   "warning": "#e1c682",
+   "success": "#8ccf7f",
+   "border": "#a1a9d8"
+  },
+  "light": {
+   "bg": "#eff1f5",
+   "surface": "#ffffff",
+   "text": "#4c4f69",
+   "primary": "#1e66f5",
+   "secondary": "#1e66f5",
+   "error": "#f02e58",
+   "warning": "#dab262",
+   "success": "#96c974",
+   "border": "#343a50"
+  }
+ },
+ {
+  "slug": "catppuccin-macchiato-mauve",
+  "category": "community",
+  "name": "Catppuccin Macchiato Mauve",
+  "dark": {
+   "bg": "#24273a",
+   "surface": "#2e3149",
+   "text": "#cad3f5",
+   "primary": "#c7a0f6",
+   "secondary": "#f5a87f",
+   "error": "#ed8796",
+   "warning": "#e1c682",
+   "success": "#8ccf7f",
+   "border": "#a1a9d8"
+  },
+  "light": {
+   "bg": "#eff1f5",
+   "surface": "#ffffff",
+   "text": "#4c4f69",
+   "primary": "#8839ef",
+   "secondary": "#fe640b",
+   "error": "#f02e58",
+   "warning": "#dab262",
+   "success": "#96c974",
+   "border": "#343a50"
+  }
+ },
+ {
+  "slug": "catppuccin-macchiato-pink",
+  "category": "community",
+  "name": "Catppuccin Macchiato Pink",
+  "dark": {
+   "bg": "#24273a",
+   "surface": "#2e3149",
+   "text": "#cad3f5",
+   "primary": "#f5bde6",
+   "secondary": "#f5a87f",
+   "error": "#ed8796",
+   "warning": "#e1c682",
+   "success": "#8ccf7f",
+   "border": "#a1a9d8"
+  },
+  "light": {
+   "bg": "#eff1f5",
+   "surface": "#ffffff",
+   "text": "#4c4f69",
+   "primary": "#ea76cb",
+   "secondary": "#fe640b",
+   "error": "#f02e58",
+   "warning": "#e8a951",
+   "success": "#57cb3d",
+   "border": "#393d4b"
+  }
+ },
+ {
+  "slug": "catppuccin-macchiato-rosewater",
+  "category": "community",
+  "name": "Catppuccin Macchiato Rosewater",
+  "dark": {
+   "bg": "#24273a",
+   "surface": "#2e3149",
+   "text": "#cad3f5",
+   "primary": "#f4dbd6",
+   "secondary": "#f0c6c6",
+   "error": "#ed8796",
+   "warning": "#e1c682",
+   "success": "#8ccf7f",
+   "border": "#a1a9d8"
+  },
+  "light": {
+   "bg": "#eff1f5",
+   "surface": "#ffffff",
+   "text": "#4c4f69",
+   "primary": "#dc8a78",
+   "secondary": "#dd7878",
+   "error": "#f02e58",
+   "warning": "#e8a951",
+   "success": "#57cb3d",
+   "border": "#393d4b"
+  }
+ },
+ {
+  "slug": "catppuccin-macchiato-sapphire",
+  "category": "community",
+  "name": "Catppuccin Macchiato Sapphire",
+  "dark": {
+   "bg": "#24273a",
+   "surface": "#2e3149",
+   "text": "#cad3f5",
+   "primary": "#7dc3e4",
+   "secondary": "#8aadf4",
+   "error": "#ed8796",
+   "warning": "#e1c682",
+   "success": "#8ccf7f",
+   "border": "#a1a9d8"
+  },
+  "light": {
+   "bg": "#eff1f5",
+   "surface": "#ffffff",
+   "text": "#4c4f69",
+   "primary": "#209fb5",
+   "secondary": "#1e66f5",
+   "error": "#f02e58",
+   "warning": "#dab262",
+   "success": "#96c974",
+   "border": "#343a50"
+  }
+ },
+ {
+  "slug": "catppuccin-mocha-pink",
+  "category": "community",
+  "name": "Catppuccin Mocha Pink",
+  "dark": {
+   "bg": "#1e1e2e",
+   "surface": "#28283d",
+   "text": "#cdd6f4",
+   "primary": "#f5c2e7",
+   "secondary": "#fab387",
+   "error": "#f38ba8",
+   "warning": "#ebd391",
+   "success": "#89d88c",
+   "border": "#a2a7d7"
+  },
+  "light": {
+   "bg": "#eff1f5",
+   "surface": "#ffffff",
+   "text": "#4c4f69",
+   "primary": "#ea76cb",
+   "secondary": "#fe640b",
+   "error": "#f02e58",
+   "warning": "#e8a951",
+   "success": "#57cb3d",
+   "border": "#393d4b"
+  }
+ },
+ {
+  "slug": "catppuccin-mocha-rosewater",
+  "category": "community",
+  "name": "Catppuccin Mocha Rosewater",
+  "dark": {
+   "bg": "#1e1e2e",
+   "surface": "#28283d",
+   "text": "#cdd6f4",
+   "primary": "#f5e0dc",
+   "secondary": "#f2cdcd",
+   "error": "#f38ba8",
+   "warning": "#ebd391",
+   "success": "#89d88c",
+   "border": "#a2a7d7"
+  },
+  "light": {
+   "bg": "#eff1f5",
+   "surface": "#ffffff",
+   "text": "#4c4f69",
+   "primary": "#dc8a78",
+   "secondary": "#dd7878",
+   "error": "#f02e58",
+   "warning": "#e8a951",
+   "success": "#57cb3d",
+   "border": "#393d4b"
+  }
+ },
+ {
+  "slug": "catppuccin-mocha-sapphire",
+  "category": "community",
+  "name": "Catppuccin Mocha Sapphire",
+  "dark": {
+   "bg": "#1e1e2e",
+   "surface": "#28283d",
+   "text": "#cdd6f4",
+   "primary": "#74c6ec",
+   "secondary": "#89b4fa",
+   "error": "#f38ba8",
+   "warning": "#ebd391",
+   "success": "#89d88c",
+   "border": "#a2a7d7"
+  },
+  "light": {
+   "bg": "#eff1f5",
+   "surface": "#ffffff",
+   "text": "#4c4f69",
+   "primary": "#209fb5",
+   "secondary": "#1e66f5",
+   "error": "#f02e58",
+   "warning": "#dab262",
+   "success": "#96c974",
+   "border": "#343a50"
+  }
+ },
+ {
+  "slug": "cherry-blossom",
+  "category": "community",
+  "name": "Cherry Blossom",
+  "dark": {
+   "bg": "#2a1922",
+   "surface": "#3a222f",
+   "text": "#f3c7d7",
+   "primary": "#f2c1d4",
+   "secondary": "#ffd6e2",
+   "error": "#ec8a92",
+   "warning": "#d7a33a",
+   "success": "#8ad36a",
+   "border": "#db9fac"
+  },
+  "light": {
+   "bg": "#f7e6ee",
+   "surface": "#ffffff",
+   "text": "#2a1b21",
+   "primary": "#6f4e63",
+   "secondary": "#f2c1d4",
+   "error": "#e35970",
+   "warning": "#b38c54",
+   "success": "#779e4d",
+   "border": "#51343f"
+  }
+ },
+ {
+  "slug": "cream",
+  "category": "community",
+  "name": "Cream",
+  "dark": {
+   "bg": "#161311",
+   "surface": "#241f1c",
+   "text": "#e6dfd3",
+   "primary": "#a1b574",
+   "secondary": "#dfb36c",
+   "error": "#e37874",
+   "warning": "#f7cca1",
+   "success": "#bcd492",
+   "border": "#cab8af"
+  },
+  "light": {
+   "bg": "#e5d8be",
+   "surface": "#ede4d3",
+   "text": "#2d2622",
+   "primary": "#4b5e37",
+   "secondary": "#8c6f39",
+   "error": "#c0696e",
+   "warning": "#b6914c",
+   "success": "#6a854e",
+   "border": "#4c4338"
+  }
+ },
+ {
+  "slug": "cream-autumn",
+  "category": "community",
+  "name": "Cream Autumn",
+  "dark": {
+   "bg": "#161311",
+   "surface": "#241f1c",
+   "text": "#dcd8cd",
+   "primary": "#e5c799",
+   "secondary": "#cbaba0",
+   "error": "#cf767c",
+   "warning": "#f0dbb7",
+   "success": "#b3c2a2",
+   "border": "#c9bcb1"
+  },
+  "light": {
+   "bg": "#e5d8be",
+   "surface": "#ede4d3",
+   "text": "#3a322d",
+   "primary": "#b56939",
+   "secondary": "#8f6830",
+   "error": "#c1646a",
+   "warning": "#bd893f",
+   "success": "#6d8157",
+   "border": "#4c4438"
+  }
+ },
+ {
+  "slug": "creamy-forest",
+  "category": "community",
+  "name": "Creamy Forest",
+  "dark": {
+   "bg": "#1c1e1a",
+   "surface": "#282b25",
+   "text": "#f4f6eb",
+   "primary": "#a2b08d",
+   "secondary": "#948e74",
+   "error": "#ce7a71",
+   "warning": "#d6be94",
+   "success": "#b3c29e",
+   "border": "#bfccae"
+  },
+  "light": {
+   "bg": "#f4f6eb",
+   "surface": "#ffffff",
+   "text": "#1c1e1a",
+   "primary": "#4c573c",
+   "secondary": "#6e674b",
+   "error": "#c56058",
+   "warning": "#9b8452",
+   "success": "#6c7b55",
+   "border": "#43483d"
+  }
+ },
+ {
+  "slug": "cyberpunk",
+  "category": "community",
+  "name": "Cyberpunk",
+  "dark": {
+   "bg": "#0c1017",
+   "surface": "#111721",
+   "text": "#5c8bc4",
+   "primary": "#c4a92e",
+   "secondary": "#d14358",
+   "error": "#b32d2d",
+   "warning": "#d7a33a",
+   "success": "#8ad36a",
+   "border": "#9fc5db"
+  },
+  "light": {
+   "bg": "#dae6e8",
+   "surface": "#ecf2f3",
+   "text": "#1a1914",
+   "primary": "#00b8b2",
+   "secondary": "#d957a1",
+   "error": "#e9536f",
+   "warning": "#b38c54",
+   "success": "#779e4d",
+   "border": "#413252"
+  }
+ },
+ {
+  "slug": "doomed",
+  "category": "community",
+  "name": "Doomed",
+  "dark": {
+   "bg": "#1c1e1e",
+   "surface": "#282b2b",
+   "text": "#fffcf8",
+   "primary": "#51b0ef",
+   "secondary": "#f2c581",
+   "error": "#ff6a5a",
+   "warning": "#f2c581",
+   "success": "#a8cf76",
+   "border": "#9fbadb"
+  },
+  "light": {
+   "bg": "#f0f0f0",
+   "surface": "#ffffff",
+   "text": "#383a42",
+   "primary": "#4078f2",
+   "secondary": "#ea9558",
+   "error": "#e66256",
+   "warning": "#d59201",
+   "success": "#74ba73",
+   "border": "#3d3f48"
+  }
+ },
+ {
+  "slug": "espresso-cream",
+  "category": "community",
+  "name": "Espresso Cream",
+  "dark": {
+   "bg": "#1a120b",
+   "surface": "#2c1e13",
+   "text": "#ede0d4",
+   "primary": "#e29478",
+   "secondary": "#ddb892",
+   "error": "#c97a7a",
+   "warning": "#ecd1b4",
+   "success": "#bcccb4",
+   "border": "#d2b9a7"
+  },
+  "light": {
+   "bg": "#dfd3c3",
+   "surface": "#e9e1d6",
+   "text": "#241d17",
+   "primary": "#8e5a44",
+   "secondary": "#9c704c",
+   "error": "#b86d6d",
+   "warning": "#b88f6d",
+   "success": "#77826f",
+   "border": "#4d4237"
+  }
+ },
+ {
+  "slug": "everdeer",
+  "category": "community",
+  "name": "Everdeer",
+  "dark": {
+   "bg": "#1c110e",
+   "surface": "#2d1b16",
+   "text": "#f4ded9",
+   "primary": "#ffb4a3",
+   "secondary": "#ffb4a3",
+   "error": "#ffb3ab",
+   "warning": "#dbc58c",
+   "success": "#ffb4a3",
+   "border": "#d5afa4"
+  },
+  "light": {
+   "bg": "#fff8f6",
+   "surface": "#ffffff",
+   "text": "#251916",
+   "primary": "#a03118",
+   "secondary": "#8a4e40",
+   "error": "#e22f2f",
+   "warning": "#d1b46b",
+   "success": "#ff613d",
+   "border": "#57362d"
+  }
+ },
+ {
+  "slug": "everforest",
+  "category": "community",
+  "name": "Everforest",
+  "dark": {
+   "bg": "#232a2e",
+   "surface": "#2e373c",
+   "text": "#859289",
+   "primary": "#a7c080",
+   "secondary": "#d3c6aa",
+   "error": "#e67e80",
+   "warning": "#dfa000",
+   "success": "#8ca101",
+   "border": "#b9c2b7"
+  },
+  "light": {
+   "bg": "#9da9a0",
+   "surface": "#acb6af",
+   "text": "#232a2e",
+   "primary": "#434f55",
+   "secondary": "#232a2e",
+   "error": "#e35959",
+   "warning": "#c7ac75",
+   "success": "#a5bb81",
+   "border": "#39454b"
+  }
+ },
+ {
+  "slug": "everforest-alt",
+  "category": "community",
+  "name": "Everforest Alt",
+  "dark": {
+   "bg": "#2d353b",
+   "surface": "#384249",
+   "text": "#d3c6aa",
+   "primary": "#a7c080",
+   "secondary": "#7fbbb3",
+   "error": "#e67e80",
+   "warning": "#dbbc7f",
+   "success": "#a7c080",
+   "border": "#b5c9b1"
+  },
+  "light": {
+   "bg": "#fffbef",
+   "surface": "#ffffff",
+   "text": "#5c6a72",
+   "primary": "#8ca101",
+   "secondary": "#3a94c5",
+   "error": "#f74845",
+   "warning": "#ffbf1d",
+   "success": "#c1de01",
+   "border": "#41493c"
+  }
+ },
+ {
+  "slug": "everforest-material",
+  "category": "community",
+  "name": "Everforest Material",
+  "dark": {
+   "bg": "#161616",
+   "surface": "#222222",
+   "text": "#d3c6aa",
+   "primary": "#a7c080",
+   "secondary": "#dbbc7f",
+   "error": "#e67e80",
+   "warning": "#dbbc7f",
+   "success": "#a7c080",
+   "border": "#afc1cb"
+  },
+  "light": {
+   "bg": "#fffbef",
+   "surface": "#ffffff",
+   "text": "#5c6a72",
+   "primary": "#8ca101",
+   "secondary": "#3a94c5",
+   "error": "#f74845",
+   "warning": "#ffbf1d",
+   "success": "#c1de01",
+   "border": "#41493c"
+  }
+ },
+ {
+  "slug": "flexoki",
+  "category": "community",
+  "name": "Flexoki",
+  "dark": {
+   "bg": "#100f0f",
+   "surface": "#1d1b1b",
+   "text": "#cecdc3",
+   "primary": "#879a39",
+   "secondary": "#4385be",
+   "error": "#d14d41",
+   "warning": "#eccb60",
+   "success": "#bec97e",
+   "border": "#c2c1b7"
+  },
+  "light": {
+   "bg": "#fffcf0",
+   "surface": "#ffffff",
+   "text": "#100f0f",
+   "primary": "#879a39",
+   "secondary": "#4385be",
+   "error": "#d96d63",
+   "warning": "#eab001",
+   "success": "#94b910",
+   "border": "#4a483a"
+  }
+ },
+ {
+  "slug": "garnet",
+  "category": "community",
+  "name": "Garnet",
+  "dark": {
+   "bg": "#121212",
+   "surface": "#191919",
+   "text": "#e8e0e0",
+   "primary": "#990000",
+   "secondary": "#c8962a",
+   "error": "#d64545",
+   "warning": "#e6c04d",
+   "success": "#7fc77f",
+   "border": "#c4b5b5"
+  },
+  "light": {
+   "bg": "#f7f2f2",
+   "surface": "#ffffff",
+   "text": "#1a1414",
+   "primary": "#990000",
+   "secondary": "#b08040",
+   "error": "#d85e50",
+   "warning": "#f1b10f",
+   "success": "#3eaa44",
+   "border": "#4a3b3b"
+  }
+ },
+ {
+  "slug": "github-dark",
+  "category": "community",
+  "name": "GitHub Dark",
+  "dark": {
+   "bg": "#010409",
+   "surface": "#040e20",
+   "text": "#c9d1d9",
+   "primary": "#58a6ff",
+   "secondary": "#bc8cff",
+   "error": "#f85249",
+   "warning": "#e3b241",
+   "success": "#56d364",
+   "border": "#b3bcc6"
+  },
+  "light": {
+   "bg": "#ffffff",
+   "surface": "#ffffff",
+   "text": "#1f2328",
+   "primary": "#096bda",
+   "secondary": "#1a7f37",
+   "error": "#e24d57",
+   "warning": "#d78f00",
+   "success": "#24b24c",
+   "border": "#38424c"
+  }
+ },
+ {
+  "slug": "gruber-darker",
+  "category": "community",
+  "name": "Gruber Darker",
+  "dark": {
+   "bg": "#181818",
+   "surface": "#242424",
+   "text": "#e4e4ef",
+   "primary": "#ffdd33",
+   "secondary": "#96a6c8",
+   "error": "#f43841",
+   "warning": "#ffdd33",
+   "success": "#72d936",
+   "border": "#b4b4c5"
+  },
+  "light": {
+   "bg": "#f5f5f5",
+   "surface": "#ffffff",
+   "text": "#181818",
+   "primary": "#5f627f",
+   "secondary": "#498a14",
+   "error": "#d4686a",
+   "warning": "#d79a00",
+   "success": "#65c01c",
+   "border": "#3d3d48"
+  }
+ },
+ {
+  "slug": "gruvbox-material",
+  "category": "community",
+  "name": "Gruvbox Material",
+  "dark": {
+   "bg": "#32302f",
+   "surface": "#3e3c3b",
+   "text": "#ddc7a1",
+   "primary": "#a9b665",
+   "secondary": "#e78b4e",
+   "error": "#ea6962",
+   "warning": "#d8a757",
+   "success": "#a9b665",
+   "border": "#cfb8ab"
+  },
+  "light": {
+   "bg": "#f2e5bc",
+   "surface": "#f6eed3",
+   "text": "#4f3829",
+   "primary": "#6c782e",
+   "secondary": "#c35d0a",
+   "error": "#ce6f6f",
+   "warning": "#ef940c",
+   "success": "#93a43f",
+   "border": "#5a4a2b"
+  }
+ },
+ {
+  "slug": "gruvboxalt",
+  "category": "community",
+  "name": "GruvboxAlt",
+  "dark": {
+   "bg": "#282828",
+   "surface": "#353535",
+   "text": "#fbf1c7",
+   "primary": "#ebdbb2",
+   "secondary": "#8ec07c",
+   "error": "#fb4834",
+   "warning": "#fabd2f",
+   "success": "#b8bb26",
+   "border": "#dbb39f"
+  },
+  "light": {
+   "bg": "#fbf1c7",
+   "surface": "#fdf7e1",
+   "text": "#3c3836",
+   "primary": "#3c3836",
+   "secondary": "#689d6a",
+   "error": "#e44842",
+   "warning": "#e4b351",
+   "success": "#cccc23",
+   "border": "#4c4539"
+  }
+ },
+ {
+  "slug": "hexa34c",
+  "category": "community",
+  "name": "Hexa34C",
+  "dark": {
+   "bg": "#101510",
+   "surface": "#151b15",
+   "text": "#dfe4dc",
+   "primary": "#9ad4a1",
+   "secondary": "#b7ccb6",
+   "error": "#ffb3ab",
+   "warning": "#a1ced8",
+   "success": "#9ad4a1",
+   "border": "#b9c2b7"
+  },
+  "light": {
+   "bg": "#d7dbd3",
+   "surface": "#e5e8e3",
+   "text": "#181d18",
+   "primary": "#346940",
+   "secondary": "#506351",
+   "error": "#e22f2f",
+   "warning": "#4e8a95",
+   "success": "#489259",
+   "border": "#3f483d"
+  }
+ },
+ {
+  "slug": "horizon",
+  "category": "community",
+  "name": "Horizon",
+  "dark": {
+   "bg": "#1a1c23",
+   "surface": "#252731",
+   "text": "#fdf0ed",
+   "primary": "#25b2bc",
+   "secondary": "#b877db",
+   "error": "#e95678",
+   "warning": "#fbc3a7",
+   "success": "#3fdaa4",
+   "border": "#9fa6db"
+  },
+  "light": {
+   "bg": "#fadad1",
+   "surface": "#fdefeb",
+   "text": "#16161c",
+   "primary": "#1d8991",
+   "secondary": "#8931b9",
+   "error": "#f03762",
+   "warning": "#f88f44",
+   "success": "#27bac4",
+   "border": "#603024"
+  }
+ },
+ {
+  "slug": "jiva",
+  "category": "community",
+  "name": "Jiva",
+  "dark": {
+   "bg": "#2d2b33",
+   "surface": "#393640",
+   "text": "#e5e5d8",
+   "primary": "#eddd8e",
+   "secondary": "#eddd8e",
+   "error": "#e56c6c",
+   "warning": "#f4bf75",
+   "success": "#a6e22e",
+   "border": "#c4c4b5"
+  },
+  "light": {
+   "bg": "#fff4e3",
+   "surface": "#ffffff",
+   "text": "#666666",
+   "primary": "#db8484",
+   "secondary": "#cc7676",
+   "error": "#dd5f5f",
+   "warning": "#f1ac4c",
+   "success": "#b7e755",
+   "border": "#48423c"
+  }
+ },
+ {
+  "slug": "jiva-lotus",
+  "category": "community",
+  "name": "Jiva Lotus",
+  "dark": {
+   "bg": "#212226",
+   "surface": "#2d2e33",
+   "text": "#e1e2e5",
+   "primary": "#debfbf",
+   "secondary": "#debfbf",
+   "error": "#bfc0de",
+   "warning": "#f4bf75",
+   "success": "#a6e22e",
+   "border": "#b7bac2"
+  },
+  "light": {
+   "bg": "#e6ebdd",
+   "surface": "#f3f6ef",
+   "text": "#666666",
+   "primary": "#d18080",
+   "secondary": "#cc7676",
+   "error": "#d46868",
+   "warning": "#f1ac4c",
+   "success": "#b7e755",
+   "border": "#44483d"
+  }
+ },
+ {
+  "slug": "jiva-paper",
+  "category": "community",
+  "name": "Jiva Paper",
+  "dark": {
+   "bg": "#212226",
+   "surface": "#2d2e33",
+   "text": "#e1e2e5",
+   "primary": "#bfc0de",
+   "secondary": "#bfc0de",
+   "error": "#debfbf",
+   "warning": "#f4bf75",
+   "success": "#a6e22e",
+   "border": "#b7bac2"
+  },
+  "light": {
+   "bg": "#ebe7dd",
+   "surface": "#f6f4ef",
+   "text": "#666666",
+   "primary": "#666666",
+   "secondary": "#666666",
+   "error": "#928181",
+   "warning": "#f1ac4c",
+   "success": "#b7e755",
+   "border": "#48483d"
+  }
+ },
+ {
+  "slug": "kanagawa-dragon",
+  "category": "community",
+  "name": "Kanagawa Dragon",
+  "dark": {
+   "bg": "#181616",
+   "surface": "#252222",
+   "text": "#c5c9c5",
+   "primary": "#8a9a7b",
+   "secondary": "#8ea4a2",
+   "error": "#c4746e",
+   "warning": "#b6927b",
+   "success": "#8a9a7b",
+   "border": "#c2bdb7"
+  },
+  "light": {
+   "bg": "#c5c9c5",
+   "surface": "#d4d7d4",
+   "text": "#181616",
+   "primary": "#8a9a7b",
+   "secondary": "#8ea4a2",
+   "error": "#c77b75",
+   "warning": "#beaa7e",
+   "success": "#9eab91",
+   "border": "#42483c"
+  }
+ },
+ {
+  "slug": "kanagawa-kasumi",
+  "category": "community",
+  "name": "Kanagawa Kasumi",
+  "dark": {
+   "bg": "#1a2026",
+   "surface": "#222a32",
+   "text": "#d9d1ba",
+   "primary": "#d9a88b",
+   "secondary": "#7794a6",
+   "error": "#d96c6c",
+   "warning": "#f2bea0",
+   "success": "#9fba8c",
+   "border": "#adbdcc"
+  },
+  "light": {
+   "bg": "#d9d1ba",
+   "surface": "#e3ddcc",
+   "text": "#1a2026",
+   "primary": "#a67a61",
+   "secondary": "#4f6878",
+   "error": "#bd7575",
+   "warning": "#b99783",
+   "success": "#849974",
+   "border": "#4d4738"
+  }
+ },
+ {
+  "slug": "kanagawa-paper",
+  "category": "community",
+  "name": "Kanagawa Paper",
+  "dark": {
+   "bg": "#1f1f28",
+   "surface": "#2a2a36",
+   "text": "#dcd7ba",
+   "primary": "#c4b28a",
+   "secondary": "#8ea49e",
+   "error": "#c4746e",
+   "warning": "#d4c196",
+   "success": "#72a072",
+   "border": "#abc2ce"
+  },
+  "light": {
+   "bg": "#f2f1ec",
+   "surface": "#ffffff",
+   "text": "#4f5357",
+   "primary": "#6b7f9f",
+   "secondary": "#6f8795",
+   "error": "#c47c78",
+   "warning": "#b7a885",
+   "success": "#94a9a3",
+   "border": "#48453d"
+  }
+ },
+ {
+  "slug": "kemuri",
+  "category": "community",
+  "name": "Kemuri",
+  "dark": {
+   "bg": "#242120",
+   "surface": "#312d2c",
+   "text": "#e5dec9",
+   "primary": "#cb9168",
+   "secondary": "#a69680",
+   "error": "#c6685d",
+   "warning": "#e2aa82",
+   "success": "#9cb793",
+   "border": "#cbb7af"
+  },
+  "light": {
+   "bg": "#ddd7ca",
+   "surface": "#e8e4db",
+   "text": "#242120",
+   "primary": "#864b2d",
+   "secondary": "#6b5f50",
+   "error": "#bc665d",
+   "warning": "#b4643c",
+   "success": "#768771",
+   "border": "#48423d"
+  }
+ },
+ {
+  "slug": "kemuri-koke",
+  "category": "community",
+  "name": "Kemuri Koke",
+  "dark": {
+   "bg": "#242120",
+   "surface": "#312d2c",
+   "text": "#e5dec9",
+   "primary": "#8ba37e",
+   "secondary": "#a69680",
+   "error": "#c6685d",
+   "warning": "#e2aa82",
+   "success": "#9cb793",
+   "border": "#cbb7af"
+  },
+  "light": {
+   "bg": "#ddd7ca",
+   "surface": "#e8e4db",
+   "text": "#242120",
+   "primary": "#4f5e49",
+   "secondary": "#6b5f50",
+   "error": "#bc665d",
+   "warning": "#b4643c",
+   "success": "#6c8064",
+   "border": "#48423d"
+  }
+ },
+ {
+  "slug": "kemuri-susu",
+  "category": "community",
+  "name": "Kemuri Susu",
+  "dark": {
+   "bg": "#1e1d1b",
+   "surface": "#2b2a27",
+   "text": "#f0ede6",
+   "primary": "#cabaaa",
+   "secondary": "#73685f",
+   "error": "#cf7670",
+   "warning": "#d1ba94",
+   "success": "#a3b8a1",
+   "border": "#c7beb2"
+  },
+  "light": {
+   "bg": "#d4c1a8",
+   "surface": "#ddcfbb",
+   "text": "#262524",
+   "primary": "#262524",
+   "secondary": "#736c5f",
+   "error": "#cb7171",
+   "warning": "#af9f8d",
+   "success": "#7b6d61",
+   "border": "#49433b"
+  }
+ },
+ {
+  "slug": "lilac-amoled",
+  "category": "community",
+  "name": "Lilac AMOLED",
+  "dark": {
+   "bg": "#000000",
+   "surface": "#0c0c0c",
+   "text": "#e8d8ff",
+   "primary": "#b48fff",
+   "secondary": "#c79aff",
+   "error": "#ff6f9a",
+   "warning": "#e6d1ff",
+   "success": "#b8f0d8",
+   "border": "#b39fdb"
+  },
+  "light": {
+   "bg": "#fbf8ff",
+   "surface": "#ffffff",
+   "text": "#1a1428",
+   "primary": "#8a56d4",
+   "secondary": "#a074ff",
+   "error": "#ff3d77",
+   "warning": "#943dff",
+   "success": "#7fbd9b",
+   "border": "#3c2c58"
+  }
+ },
+ {
+  "slug": "macaron",
+  "category": "community",
+  "name": "Macaron",
+  "dark": {
+   "bg": "#18181a",
+   "surface": "#242427",
+   "text": "#d4d4d4",
+   "primary": "#e5b4e2",
+   "secondary": "#b4e5e5",
+   "error": "#e59a9e",
+   "warning": "#f5e0c4",
+   "success": "#c4f5c4",
+   "border": "#bdbdbd"
+  },
+  "light": {
+   "bg": "#f2f2f2",
+   "surface": "#ffffff",
+   "text": "#2c2c2e",
+   "primary": "#b574b2",
+   "secondary": "#74b5b5",
+   "error": "#c07c80",
+   "warning": "#bca781",
+   "success": "#81bc81",
+   "border": "#3d3d48"
+  }
+ },
+ {
+  "slug": "matecito",
+  "category": "community",
+  "name": "Matecito",
+  "dark": {
+   "bg": "#1e2320",
+   "surface": "#29302c",
+   "text": "#d3cdc3",
+   "primary": "#8da383",
+   "secondary": "#cb9c7c",
+   "error": "#c27979",
+   "warning": "#dbb095",
+   "success": "#a1b598",
+   "border": "#b6c4ba"
+  },
+  "light": {
+   "bg": "#e3dccf",
+   "surface": "#eee9e1",
+   "text": "#1f2421",
+   "primary": "#4a5944",
+   "secondary": "#85583b",
+   "error": "#af5c5c",
+   "warning": "#af754e",
+   "success": "#677c5f",
+   "border": "#3d4840"
+  }
+ },
+ {
+  "slug": "miasma",
+  "category": "community",
+  "name": "Miasma",
+  "dark": {
+   "bg": "#222222",
+   "surface": "#2d2d2d",
+   "text": "#c2c2b0",
+   "primary": "#c9a654",
+   "secondary": "#b36e43",
+   "error": "#b36e43",
+   "warning": "#d08e5f",
+   "success": "#7aa37a",
+   "border": "#c2c2b7"
+  },
+  "light": {
+   "bg": "#fafaf5",
+   "surface": "#ffffff",
+   "text": "#222222",
+   "primary": "#c9a654",
+   "secondary": "#b36e43",
+   "error": "#c88f6b",
+   "warning": "#c59e77",
+   "success": "#8cb18c",
+   "border": "#48483d"
+  }
+ },
+ {
+  "slug": "mine",
+  "category": "community",
+  "name": "Mine",
+  "dark": {
+   "bg": "#1d1b1d",
+   "surface": "#2a272a",
+   "text": "#e1e2d5",
+   "primary": "#e1e2d5",
+   "secondary": "#2d2a2e",
+   "error": "#d94a58",
+   "warning": "#f2e661",
+   "success": "#61f285",
+   "border": "#9f9fdb"
+  },
+  "light": {
+   "bg": "#ffffff",
+   "surface": "#ffffff",
+   "text": "#1d1b1d",
+   "primary": "#3a3a34",
+   "secondary": "#e6e4e8",
+   "error": "#dd5f6b",
+   "warning": "#ffc107",
+   "success": "#42c95b",
+   "border": "#413d48"
+  }
+ },
+ {
+  "slug": "mizuki-akiyama",
+  "category": "community",
+  "name": "Mizuki-Akiyama",
+  "dark": {
+   "bg": "#10111b",
+   "surface": "#191b2b",
+   "text": "#eee7f0",
+   "primary": "#e6a6c8",
+   "secondary": "#afa2d8",
+   "error": "#f08a9b",
+   "warning": "#efd08d",
+   "success": "#a7dec9",
+   "border": "#b8b1c9"
+  },
+  "light": {
+   "bg": "#fff7fb",
+   "surface": "#ffffff",
+   "text": "#21101c",
+   "primary": "#b72f78",
+   "secondary": "#6f4bbb",
+   "error": "#e22f2f",
+   "warning": "#c08c1c",
+   "success": "#32af90",
+   "border": "#562e47"
+  }
+ },
+ {
+  "slug": "monochrome",
+  "category": "community",
+  "name": "Monochrome",
+  "dark": {
+   "bg": "#111111",
+   "surface": "#1c1c1c",
+   "text": "#828282",
+   "primary": "#aaaaaa",
+   "secondary": "#a7a7a7",
+   "error": "#dddddd",
+   "warning": "#aaaaaa",
+   "success": "#cccccc",
+   "border": "#bdbdbd"
+  },
+  "light": {
+   "bg": "#d4d4d4",
+   "surface": "#e2e2e2",
+   "text": "#696969",
+   "primary": "#555555",
+   "secondary": "#505058",
+   "error": "#414141",
+   "warning": "#747474",
+   "success": "#525252",
+   "border": "#424242"
+  }
+ },
+ {
+  "slug": "murasaki",
+  "category": "community",
+  "name": "Murasaki",
+  "dark": {
+   "bg": "#300443",
+   "surface": "#41055a",
+   "text": "#fef7e7",
+   "primary": "#e8bcfb",
+   "secondary": "#8e0cc6",
+   "error": "#e80e4f",
+   "warning": "#f3bb39",
+   "success": "#da8efa",
+   "border": "#c99fdb"
+  },
+  "light": {
+   "bg": "#f7e7fe",
+   "surface": "#ffffff",
+   "text": "#6f099a",
+   "primary": "#8e0cc6",
+   "secondary": "#ca65f6",
+   "error": "#f4487c",
+   "warning": "#f3bd40",
+   "success": "#c245f7",
+   "border": "#4e2460"
+  }
+ },
+ {
+  "slug": "murata",
+  "category": "community",
+  "name": "Murata",
+  "dark": {
+   "bg": "#1a1b1c",
+   "surface": "#262829",
+   "text": "#cdc5bd",
+   "primary": "#db6d6d",
+   "secondary": "#d1b394",
+   "error": "#db6d6d",
+   "warning": "#e6ccb1",
+   "success": "#b0cc9d",
+   "border": "#c2bdb7"
+  },
+  "light": {
+   "bg": "#fdf8f2",
+   "surface": "#ffffff",
+   "text": "#1a1b1c",
+   "primary": "#bf5a5a",
+   "secondary": "#94765a",
+   "error": "#da6262",
+   "warning": "#af957c",
+   "success": "#819e71",
+   "border": "#3d4248"
+  }
+ },
+ {
+  "slug": "naysayer",
+  "category": "community",
+  "name": "NaySayer",
+  "dark": {
+   "bg": "#062329",
+   "surface": "#09353e",
+   "text": "#d1b897",
+   "primary": "#2ec09c",
+   "secondary": "#8cde94",
+   "error": "#ff0000",
+   "warning": "#ffaa00",
+   "success": "#a6e22e",
+   "border": "#9fd8db"
+  },
+  "light": {
+   "bg": "#ffffff",
+   "surface": "#ffffff",
+   "text": "#062329",
+   "primary": "#2ec09c",
+   "secondary": "#8cde94",
+   "error": "#fa4286",
+   "warning": "#e1d45b",
+   "success": "#6bc967",
+   "border": "#244060"
+  }
+ },
+ {
+  "slug": "neon-surf",
+  "category": "community",
+  "name": "Neon Surf",
+  "dark": {
+   "bg": "#000000",
+   "surface": "#0c0c0c",
+   "text": "#80c7f4",
+   "primary": "#00a7f4",
+   "secondary": "#22d3ee",
+   "error": "#b74e91",
+   "warning": "#f7c375",
+   "success": "#0e7b89",
+   "border": "#9fc2db"
+  },
+  "light": {
+   "bg": "#f0faff",
+   "surface": "#ffffff",
+   "text": "#06101a",
+   "primary": "#0285c7",
+   "secondary": "#0890b2",
+   "error": "#b8408a",
+   "warning": "#c0911c",
+   "success": "#14acc1",
+   "border": "#245060"
+  }
+ },
+ {
+  "slug": "noctalia-legacy",
+  "category": "community",
+  "name": "Noctalia legacy",
+  "dark": {
+   "bg": "#1c1822",
+   "surface": "#282231",
+   "text": "#e9e4f0",
+   "primary": "#c7a1d8",
+   "secondary": "#a984c4",
+   "error": "#e9899c",
+   "warning": "#c7a1d8",
+   "success": "#e0b7c9",
+   "border": "#b8adcc"
+  },
+  "light": {
+   "bg": "#f5f1fa",
+   "surface": "#ffffff",
+   "text": "#1c1822",
+   "primary": "#9b59ba",
+   "secondary": "#784999",
+   "error": "#e15c76",
+   "warning": "#ad76c6",
+   "success": "#c47899",
+   "border": "#433352"
+  }
+ },
+ {
+  "slug": "nord-aurora",
+  "category": "community",
+  "name": "Nord Aurora",
+  "dark": {
+   "bg": "#2e3440",
+   "surface": "#38404f",
+   "text": "#eceff4",
+   "primary": "#b48ead",
+   "secondary": "#a3be8c",
+   "error": "#bf616b",
+   "warning": "#ebcb8b",
+   "success": "#a3be8c",
+   "border": "#aeb8cb"
+  },
+  "light": {
+   "bg": "#eceff4",
+   "surface": "#ffffff",
+   "text": "#2e3440",
+   "primary": "#d08670",
+   "secondary": "#b48ead",
+   "error": "#c7757d",
+   "warning": "#e3b55a",
+   "success": "#9cb983",
+   "border": "#343e51"
+  }
+ },
+ {
+  "slug": "oasis-abyss",
+  "category": "community",
+  "name": "Oasis Abyss",
+  "dark": {
+   "bg": "#1a1a1a",
+   "surface": "#272727",
+   "text": "#ffdacc",
+   "primary": "#d06666",
+   "secondary": "#ffa347",
+   "error": "#ffa0a0",
+   "warning": "#ffa347",
+   "success": "#96ea7f",
+   "border": "#dbb89f"
+  },
+  "light": {
+   "bg": "#e8e0d8",
+   "surface": "#f3eeea",
+   "text": "#7c4734",
+   "primary": "#7d2b2b",
+   "secondary": "#ab5907",
+   "error": "#c88f6b",
+   "warning": "#978d32",
+   "success": "#43966a",
+   "border": "#523f33"
+  }
+ },
+ {
+  "slug": "occult-umbral",
+  "category": "community",
+  "name": "Occult Umbral",
+  "dark": {
+   "bg": "#0a0a12",
+   "surface": "#131322",
+   "text": "#e4ded2",
+   "primary": "#8b2e2e",
+   "secondary": "#8baa82",
+   "error": "#c25b5b",
+   "warning": "#e6c27a",
+   "success": "#8baa82",
+   "border": "#b0b0c9"
+  },
+  "light": {
+   "bg": "#efe6da",
+   "surface": "#f8f3ee",
+   "text": "#0a0a12",
+   "primary": "#8b2e2e",
+   "secondary": "#5a1f6f",
+   "error": "#ca7272",
+   "warning": "#c07d19",
+   "success": "#448254",
+   "border": "#5c2828"
+  }
+ },
+ {
+  "slug": "one",
+  "category": "community",
+  "name": "One",
+  "dark": {
+   "bg": "#1e2127",
+   "surface": "#292d35",
+   "text": "#cdd4e1",
+   "primary": "#61afef",
+   "secondary": "#c678dd",
+   "error": "#e06c76",
+   "warning": "#ffd966",
+   "success": "#a9dc76",
+   "border": "#b0b8c9"
+  },
+  "light": {
+   "bg": "#e8e8e8",
+   "surface": "#f5f5f5",
+   "text": "#383a42",
+   "primary": "#4078f2",
+   "secondary": "#a626a4",
+   "error": "#cd695f",
+   "warning": "#feae01",
+   "success": "#74ba73",
+   "border": "#243760"
+  }
+ },
+ {
+  "slug": "one-dark-two",
+  "category": "community",
+  "name": "One Dark Two",
+  "dark": {
+   "bg": "#21252b",
+   "surface": "#2b3038",
+   "text": "#c9ccd3",
+   "primary": "#62bac6",
+   "secondary": "#eac786",
+   "error": "#e27881",
+   "warning": "#edcf97",
+   "success": "#a8cc8e",
+   "border": "#b6bbc4"
+  },
+  "light": {
+   "bg": "#e6e6e6",
+   "surface": "#f3f3f3",
+   "text": "#282c34",
+   "primary": "#5497a2",
+   "secondary": "#baa072",
+   "error": "#c07d84",
+   "warning": "#bfa77d",
+   "success": "#99b389",
+   "border": "#3b3f4a"
+  }
+ },
+ {
+  "slug": "osaka-jade",
+  "category": "community",
+  "name": "Osaka jade",
+  "dark": {
+   "bg": "#081512",
+   "surface": "#0f2721",
+   "text": "#a6b5b1",
+   "primary": "#1e9176",
+   "secondary": "#167a63",
+   "error": "#933636",
+   "warning": "#f4d67a",
+   "success": "#95d988",
+   "border": "#a7d3c8"
+  },
+  "light": {
+   "bg": "#aec2b4",
+   "surface": "#becec3",
+   "text": "#2c3d35",
+   "primary": "#3b7561",
+   "secondary": "#526e4a",
+   "error": "#ad575c",
+   "warning": "#c7ac75",
+   "success": "#a5bb81",
+   "border": "#384c42"
+  }
+ },
+ {
+  "slug": "oxide",
+  "category": "community",
+  "name": "Oxide",
+  "dark": {
+   "bg": "#231d1b",
+   "surface": "#312926",
+   "text": "#e6dbd3",
+   "primary": "#b85b30",
+   "secondary": "#8b9a5a",
+   "error": "#c25d4e",
+   "warning": "#dbb98f",
+   "success": "#8b9a5a",
+   "border": "#c9b6b0"
+  },
+  "light": {
+   "bg": "#f2e8d8",
+   "surface": "#f9f5ed",
+   "text": "#3a2e25",
+   "primary": "#b85b30",
+   "secondary": "#6b8050",
+   "error": "#cc6251",
+   "warning": "#d0a462",
+   "success": "#8aa26b",
+   "border": "#534632"
+  }
+ },
+ {
+  "slug": "oxocarbon",
+  "category": "community",
+  "name": "Oxocarbon",
+  "dark": {
+   "bg": "#161616",
+   "surface": "#222222",
+   "text": "#f2f4f8",
+   "primary": "#33b1ff",
+   "secondary": "#42be65",
+   "error": "#ee5396",
+   "warning": "#82cfff",
+   "success": "#42be65",
+   "border": "#b3b9c7"
+  },
+  "light": {
+   "bg": "#f2f4f8",
+   "surface": "#ffffff",
+   "text": "#161616",
+   "primary": "#0f62fe",
+   "secondary": "#42be65",
+   "error": "#ee4f94",
+   "warning": "#ff6a3d",
+   "success": "#6fcd8a",
+   "border": "#424242"
+  }
+ },
+ {
+  "slug": "paradise",
+  "category": "community",
+  "name": "Paradise",
+  "dark": {
+   "bg": "#151515",
+   "surface": "#212121",
+   "text": "#e8e3e3",
+   "primary": "#8da3b9",
+   "secondary": "#8aa6a2",
+   "error": "#b66467",
+   "warning": "#d9bb8c",
+   "success": "#8c977d",
+   "border": "#c2b7b7"
+  },
+  "light": {
+   "bg": "#f5f5f5",
+   "surface": "#ffffff",
+   "text": "#151515",
+   "primary": "#334b5f",
+   "secondary": "#3b7873",
+   "error": "#c17b7e",
+   "warning": "#cfa96d",
+   "success": "#a0a993",
+   "border": "#424242"
+  }
+ },
+ {
+  "slug": "peche",
+  "category": "community",
+  "name": "Peche",
+  "dark": {
+   "bg": "#0e1214",
+   "surface": "#181f23",
+   "text": "#abbcc4",
+   "primary": "#9dd2c0",
+   "secondary": "#faddd2",
+   "error": "#a7cce1",
+   "warning": "#c7e5db",
+   "success": "#9dd2c0",
+   "border": "#b1c1c9"
+  },
+  "light": {
+   "bg": "#e8eff2",
+   "surface": "#ffffff",
+   "text": "#738a92",
+   "primary": "#6db09a",
+   "secondary": "#eabcae",
+   "error": "#78abc4",
+   "warning": "#81bba8",
+   "success": "#81bba8",
+   "border": "#38454d"
+  }
+ },
+ {
+  "slug": "rose-pine-alt",
+  "category": "community",
+  "name": "Rose Pine Alt",
+  "dark": {
+   "bg": "#191724",
+   "surface": "#242133",
+   "text": "#e0def4",
+   "primary": "#c4a7e7",
+   "secondary": "#f6c177",
+   "error": "#eb6f92",
+   "warning": "#f6c177",
+   "success": "#3e90b0",
+   "border": "#aea7d2"
+  },
+  "light": {
+   "bg": "#fffaf3",
+   "surface": "#ffffff",
+   "text": "#575279",
+   "primary": "#907aa9",
+   "secondary": "#ea9e34",
+   "error": "#c07c8f",
+   "warning": "#edab4f",
+   "success": "#368fb2",
+   "border": "#4c3c39"
+  }
+ },
+ {
+  "slug": "rose-pine-moon",
+  "category": "community",
+  "name": "Rose Pine Moon",
+  "dark": {
+   "bg": "#232136",
+   "surface": "#2d2b46",
+   "text": "#e0def4",
+   "primary": "#ea9a97",
+   "secondary": "#9ccfd8",
+   "error": "#eb6f92",
+   "warning": "#f6c177",
+   "success": "#3e90b0",
+   "border": "#aca7d3"
+  },
+  "light": {
+   "bg": "#fffaf3",
+   "surface": "#ffffff",
+   "text": "#575279",
+   "primary": "#d7837e",
+   "secondary": "#56949f",
+   "error": "#c07c8f",
+   "warning": "#edab4f",
+   "success": "#368fb2",
+   "border": "#4c3c39"
+  }
+ },
+ {
+  "slug": "rose-pine-moon-alt",
+  "category": "community",
+  "name": "Rose Pine Moon Alt",
+  "dark": {
+   "bg": "#232136",
+   "surface": "#2d2b46",
+   "text": "#e0def4",
+   "primary": "#c4a7e7",
+   "secondary": "#f6c177",
+   "error": "#eb6f92",
+   "warning": "#f6c177",
+   "success": "#3e90b0",
+   "border": "#aca7d3"
+  },
+  "light": {
+   "bg": "#fffaf3",
+   "surface": "#ffffff",
+   "text": "#575279",
+   "primary": "#907aa9",
+   "secondary": "#ea9e34",
+   "error": "#c07c8f",
+   "warning": "#edab4f",
+   "success": "#368fb2",
+   "border": "#4c3c39"
+  }
+ },
+ {
+  "slug": "rosey-amoled",
+  "category": "community",
+  "name": "Rosey AMOLED",
+  "dark": {
+   "bg": "#000000",
+   "surface": "#0c0c0c",
+   "text": "#ffe0eb",
+   "primary": "#ff8cb3",
+   "secondary": "#ffb3cc",
+   "error": "#ff99b8",
+   "warning": "#ffe0f0",
+   "success": "#ffd6e8",
+   "border": "#db9fbe"
+  },
+  "light": {
+   "bg": "#fff5fa",
+   "surface": "#ffffff",
+   "text": "#2c1822",
+   "primary": "#e57399",
+   "secondary": "#ff99b8",
+   "error": "#ff3d77",
+   "warning": "#ff3d7e",
+   "success": "#d8658d",
+   "border": "#543042"
+  }
+ },
+ {
+  "slug": "shien",
+  "category": "community",
+  "name": "Shien",
+  "dark": {
+   "bg": "#15131b",
+   "surface": "#201d2a",
+   "text": "#bfb3db",
+   "primary": "#9b8bc1",
+   "secondary": "#7866a3",
+   "error": "#b87a87",
+   "warning": "#ded4b6",
+   "success": "#91bfb6",
+   "border": "#b5aacf"
+  },
+  "light": {
+   "bg": "#efeef1",
+   "surface": "#ffffff",
+   "text": "#15131b",
+   "primary": "#5d507c",
+   "secondary": "#7866a3",
+   "error": "#b26c7b",
+   "warning": "#9b8e6c",
+   "success": "#668f87",
+   "border": "#3d3450"
+  }
+ },
+ {
+  "slug": "shinonome",
+  "category": "community",
+  "name": "Shinonome",
+  "dark": {
+   "bg": "#1a1d20",
+   "surface": "#252a2e",
+   "text": "#ebcfb2",
+   "primary": "#d5aca9",
+   "secondary": "#b38d97",
+   "error": "#b38d97",
+   "warning": "#f3dfca",
+   "success": "#e2c3c1",
+   "border": "#a5bdd4"
+  },
+  "light": {
+   "bg": "#ebcfb2",
+   "surface": "#f1ddc9",
+   "text": "#3d3732",
+   "primary": "#424b54",
+   "secondary": "#8c4352",
+   "error": "#b15b6d",
+   "warning": "#b57f57",
+   "success": "#688f7b",
+   "border": "#3b444a"
+  }
+ },
+ {
+  "slug": "solarized",
+  "category": "community",
+  "name": "Solarized",
+  "dark": {
+   "bg": "#002b36",
+   "surface": "#003f4f",
+   "text": "#839496",
+   "primary": "#b58800",
+   "secondary": "#d33682",
+   "error": "#dc322f",
+   "warning": "#657b83",
+   "success": "#586e75",
+   "border": "#9fceda"
+  },
+  "light": {
+   "bg": "#fdf6e3",
+   "surface": "#ffffff",
+   "text": "#657b83",
+   "primary": "#b58800",
+   "secondary": "#d33682",
+   "error": "#e35b59",
+   "warning": "#f2b600",
+   "success": "#bad600",
+   "border": "#544c30"
+  }
+ },
+ {
+  "slug": "solarized-osaka",
+  "category": "community",
+  "name": "Solarized Osaka",
+  "dark": {
+   "bg": "#001419",
+   "surface": "#002832",
+   "text": "#839395",
+   "primary": "#29a298",
+   "secondary": "#db302d",
+   "error": "#db302d",
+   "warning": "#b28500",
+   "success": "#859900",
+   "border": "#b5c1c4"
+  },
+  "light": {
+   "bg": "#fdf5e2",
+   "surface": "#ffffff",
+   "text": "#576d74",
+   "primary": "#29a298",
+   "secondary": "#db302d",
+   "error": "#e35c5a",
+   "warning": "#efb300",
+   "success": "#bad600",
+   "border": "#3b4949"
+  }
+ },
+ {
+  "slug": "sway-classic",
+  "category": "community",
+  "name": "Sway Classic",
+  "dark": {
+   "bg": "#222222",
+   "surface": "#2e2e2e",
+   "text": "#f0f0f0",
+   "primary": "#4c7899",
+   "secondary": "#2e9ef4",
+   "error": "#900000",
+   "warning": "#d7a900",
+   "success": "#78a300",
+   "border": "#b7bfc2"
+  },
+  "light": {
+   "bg": "#f5f5f5",
+   "surface": "#ffffff",
+   "text": "#222222",
+   "primary": "#285577",
+   "secondary": "#1a6da8",
+   "error": "#cd0000",
+   "warning": "#ecb500",
+   "success": "#89c400",
+   "border": "#424242"
+  }
+ },
+ {
+  "slug": "tokyo-night-moon",
+  "category": "community",
+  "name": "Tokyo Night Moon",
+  "dark": {
+   "bg": "#1f2335",
+   "surface": "#282e45",
+   "text": "#a9b1d6",
+   "primary": "#7a88cf",
+   "secondary": "#d7729f",
+   "error": "#f7768e",
+   "warning": "#e6c484",
+   "success": "#9bd58a",
+   "border": "#a9aed0"
+  },
+  "light": {
+   "bg": "#f0f2f7",
+   "surface": "#ffffff",
+   "text": "#4e71c2",
+   "primary": "#4e71c2",
+   "secondary": "#85539c",
+   "error": "#e55763",
+   "warning": "#b2a48a",
+   "success": "#698d51",
+   "border": "#2c3758"
+  }
+ },
+ {
+  "slug": "tokyo-night-storm",
+  "category": "community",
+  "name": "Tokyo Night Storm",
+  "dark": {
+   "bg": "#24283b",
+   "surface": "#2a2e44",
+   "text": "#c0caf5",
+   "primary": "#7aa2f7",
+   "secondary": "#ba9af7",
+   "error": "#f7768e",
+   "warning": "#e0b068",
+   "success": "#73dacb",
+   "border": "#9faadb"
+  },
+  "light": {
+   "bg": "#f0f2f7",
+   "surface": "#ffffff",
+   "text": "#4e71c2",
+   "primary": "#4e71c2",
+   "secondary": "#85539c",
+   "error": "#e55763",
+   "warning": "#b2a48a",
+   "success": "#698d51",
+   "border": "#2c3758"
+  }
+ },
+ {
+  "slug": "vesper",
+  "category": "community",
+  "name": "Vesper",
+  "dark": {
+   "bg": "#0c0c0c",
+   "surface": "#181818",
+   "text": "#ffffff",
+   "primary": "#ffc799",
+   "secondary": "#99ffe4",
+   "error": "#ff8080",
+   "warning": "#ffc799",
+   "success": "#99ffe4",
+   "border": "#bdbdbd"
+  },
+  "light": {
+   "bg": "#f2f2f2",
+   "surface": "#ffffff",
+   "text": "#0c0c0c",
+   "primary": "#ffb070",
+   "secondary": "#00cc99",
+   "error": "#ff3d3d",
+   "warning": "#ff943d",
+   "success": "#0affc2",
+   "border": "#424242"
+  }
+ },
+ {
+  "slug": "zenbones",
+  "category": "community",
+  "name": "Zenbones",
+  "dark": {
+   "bg": "#1c1917",
+   "surface": "#2a2522",
+   "text": "#b4bdc3",
+   "primary": "#b4bdc3",
+   "secondary": "#888f94",
+   "error": "#de6e7b",
+   "warning": "#d69d67",
+   "success": "#8bae68",
+   "border": "#b7bec2"
+  },
+  "light": {
+   "bg": "#f0edec",
+   "surface": "#ffffff",
+   "text": "#2c363c",
+   "primary": "#2c363c",
+   "secondary": "#cfc1ba",
+   "error": "#c94f69",
+   "warning": "#c56234",
+   "success": "#6f9644",
+   "border": "#4d3f37"
+  }
+ }
+]

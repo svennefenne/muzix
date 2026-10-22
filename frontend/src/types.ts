@@ -1,0 +1,215 @@
+export interface User {
+  id: number;
+  username: string;
+  is_admin: boolean;
+  prefs: Prefs;
+}
+
+export interface Prefs {
+  scheme?: string;
+  mode?: "system" | "light" | "dark";
+  genre_skins?: boolean;
+  skin_lock?: string;          // a skin pinned by hand ("" = follow the music)
+  volume?: number;
+  quality?: "original" | "lossless" | "high" | "low";
+  visualizer?: boolean;
+  speed?: number;              // audiobooks / podcasts
+}
+
+export interface AuthState {
+  needs_setup: boolean;
+  user: User | null;
+  site_name: string;
+  allow_signup: boolean;
+  version: string;
+  defaults: { scheme: string; mode: "system" | "light" | "dark"; genre_skins: boolean };
+}
+
+export interface Track {
+  id: number;
+  title: string;
+  artist: string;
+  albumartist: string;
+  album: string;
+  album_id: number | null;
+  artist_id: number | null;
+  track_no: number;
+  disc_no: number;
+  year: number;
+  genre: string;
+  duration: number;
+  format: string;
+  kind: "music" | "vgm";
+  family: string | null;
+  subsong: number;
+  sample_rate: number;
+  bit_depth: number;
+  bitrate: number;
+  system: string;
+  art: string | null;
+  stream: string;
+  liked: boolean;
+  tags: string[];
+  item_id?: number;
+}
+
+export interface Album {
+  id: number;
+  title: string;
+  artist: string;
+  artist_id: number | null;
+  year: number;
+  genre: string;
+  kind: "music" | "vgm";
+  track_count: number;
+  duration: number;
+  formats: string[];
+  art: string | null;
+  added_at: string | null;
+  liked: boolean;
+}
+
+export interface AlbumDetail extends Album {
+  tracks: Track[];
+  more: Album[];
+  colors: string[];
+  folder: string;
+  artist_tags: string[];
+}
+
+export interface Artist {
+  id: number;
+  name: string;
+  genre: string;
+  tags: string[];
+  art: string | null;
+  album_count: number | null;
+  liked: boolean;
+}
+
+export interface ArtistDetail extends Artist {
+  albums: Album[];
+  top_tracks: Track[];
+}
+
+export interface Genre {
+  name: string;
+  albums: number;
+  tracks: number;
+  art: string[];
+}
+
+export interface Home {
+  stats: { tracks: number; albums: number; artists: number; vgm_tracks: number; hours: number };
+  recently_played: Album[];
+  recently_added: Album[];
+  most_played: Album[];
+  rediscover: Album[];
+  vgm: Album[];
+  genres: Genre[];
+}
+
+export interface Playlist {
+  id: number;
+  name: string;
+  description: string;
+  public: boolean;
+  owner_id: number;
+  track_count: number;
+  duration: number;
+  art: string[];
+  updated_at: string | null;
+  tracks?: Track[];
+}
+
+export interface Book {
+  id: number;
+  title: string;
+  author: string;
+  narrator: string;
+  series: string;
+  year: number;
+  duration: number;
+  art: string | null;
+  position: number;
+  finished: boolean;
+  updated_at: string | null;
+  description?: string;
+  chapters?: { title: string; start: number }[];
+  parts?: { position: number; title: string; duration: number; offset: number; format: string; stream: string }[];
+}
+
+export interface Feed {
+  id: number;
+  url: string;
+  title: string;
+  author: string;
+  description: string;
+  image: string;
+  link: string;
+  categories: string[];
+  error: string;
+  subscribed: boolean;
+  auto_download: boolean;
+  unplayed: number | null;
+  last_checked: string | null;
+  episodes?: Episode[];
+}
+
+export interface Episode {
+  id: number;
+  feed_id: number;
+  title: string;
+  description: string;
+  published: string | null;
+  duration: number;
+  image: string;
+  downloaded: boolean;
+  position: number;
+  finished: boolean;
+  stream: string;
+  feed_title?: string | null;
+}
+
+export interface PodcastHit {
+  title: string;
+  author: string;
+  url: string;
+  image: string;
+  genre: string;
+}
+
+export interface Station {
+  id?: number;
+  uuid: string;
+  name: string;
+  url: string;
+  homepage: string;
+  favicon: string;
+  tags: string;
+  country: string;
+  countrycode?: string;
+  codec: string;
+  bitrate: number;
+  votes?: number;
+  hls?: boolean;
+}
+
+export interface Job {
+  id: number;
+  type: string;
+  title: string;
+  status: "queued" | "running" | "done" | "failed" | "cancelled";
+  progress: number;
+  message: string;
+  result: Record<string, unknown>;
+  created_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  log?: string;
+}
+
+export interface Paged<T> {
+  total: number;
+  items: T[];
+}

@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "muzix"
+version = "0.1.0"
+description = "Self-hosted music, VGM, audiobook, podcast and radio player"
+requires-python = ">=3.12"
+license = "MIT"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy>=2.0.30",
+    "pydantic>=2.7",
+    "python-multipart>=0.0.9",
+    "argon2-cffi>=23.1",
+    "itsdangerous>=2.2",
+    "mutagen>=1.47",
+    "pillow>=10.4",
+    "httpx>=0.27",
+    "feedparser>=6.0",
+    "mido>=1.3",
+    "mediafile>=0.12",
+    "pyyaml>=6",
+]
+
+[project.optional-dependencies]
+organize = ["beets>=2.2", "pylast>=5.2", "requests>=2.31"]
+dev = ["pytest>=8", "pytest-asyncio>=0.23"]
+
+[project.scripts]
+muzix = "muzix.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["muzix*"]
+
+[tool.setuptools.package-data]
+muzix = ["organize/*.yaml", "static/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
