@@ -6,10 +6,12 @@ is its own album (the game). Everything else is grouped by album tag within
 its folder.
 """
 
+import itertools
 import logging
 import os
 import re
 import time
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 
 from sqlalchemy import delete, func, select, text, update
@@ -213,18 +215,37 @@ def scan_root(ctx, root: Root, full: bool, base=0.0, span=1.0) -> dict:
         """Tracks without an album tag join their folder's album."""
         folder = os.path.dirname(path)
         if folder not in folder_albums:
-            best = s.scalar(select(Track.album).where(Track.path.like(folder.replace("%", "\\%") + "/%", escape="\\"),
+            # a range on the path index ("0" sorts right after "/"), unlike LIKE
+            best = s.scalar(select(Track.album).where(Track.path > folder + "/", Track.path < folder + "0",
                                                       Track.album != "").group_by(Track.album)
                             .order_by(func.count().desc()).limit(1))
             if not best:
                 return album_from_folder(folder, row["albumartist"] or row["artist"])
             folder_albums[folder] = best
         return folder_albums[folder]
-    with ThreadPoolExecutor(THREADS) as pool:
+
+    def read_all():
+        """Read files in order, keeping the readers busy while batches are stored."""
+        window = deque()
+        with ThreadPoolExecutor(THREADS) as pool:
+            try:
+                for f in todo:
+                    window.append((f, pool.submit(read_file, f[0], root.kind)))
+                    if len(window) >= THREADS * 8:
+                        f, fut = window.popleft()
+                        yield f, fut.result()
+                while window:
+                    f, fut = window.popleft()
+                    yield f, fut.result()
+            finally:
+                for _, fut in window:
+                    fut.cancel()
+
+    reader = read_all()
+    try:
         for start in range(0, len(todo), BATCH):
             ctx.check()
-            batch = todo[start:start + BATCH]
-            results = list(pool.map(lambda f: (f, read_file(f[0], root.kind)), batch))
+            results = list(itertools.islice(reader, BATCH))
             # tagged files first, so untagged ones can join their folder's album
             results.sort(key=lambda r: not all(row["album"] for row in r[1]))
             with db.session() as s:
@@ -245,6 +266,8 @@ def scan_root(ctx, root: Root, full: bool, base=0.0, span=1.0) -> dict:
                             stats["added"] += 1
             done = min(start + BATCH, len(todo))
             ctx.update(base + span * done / max(1, len(todo)), f"{root.path}: {done}/{len(todo)} read")
+    finally:
+        reader.close()
 
     with db.session() as s:
         gone = s.execute(delete(Track).where(Track.root_id == root.id, Track.seen_scan != gen))

@@ -54,7 +54,8 @@ you choose from 98 colour schemes, each with a light and a dark version.
    `https://github.com/svennefenne/muzix`, or copy `unraid/muzix.xml` to
    `/boot/config/plugins/dockerMan/templates-user/`.
 2. Check the paths: appdata → `/config`, your music share → `/music`,
-   audiobooks → `/audiobooks`. "Library folders on first start" says which
+   audiobooks → `/audiobooks`, books → `/books` (its `Audiobooks` sub-folder is
+   used). "Library folders on first start" says which
    sub-folders become music / VGM / audiobook folders (changeable later).
 3. Start it and open `http://<server>:8080`. The first visit creates the admin
    account and starts the first scan.
@@ -65,7 +66,9 @@ Plain Docker:
 docker run -d --name muzix -p 8080:8080 \
   -v /mnt/user/appdata/muzix:/config \
   -v /mnt/user/media/musik:/music \
-  -v /mnt/user/media/books:/audiobooks:ro \
+  -v /mnt/user/media/audiobooks:/audiobooks:ro \
+  -v /mnt/user/media/books:/books:ro \
+  -e MUZIX_DEFAULT_ROOTS="/music/mp3:music,/music/all-mods:vgm,/music/amiga-mods:vgm,/music/Game Soundtracks:vgm,/audiobooks:audiobooks,/books/Audiobooks:audiobooks" \
   -e PUID=99 -e PGID=100 \
   ghcr.io/svennefenne/muzix:latest
 ```

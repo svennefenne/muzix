@@ -23,6 +23,12 @@ from .scanner import find_cover
 log = logging.getLogger("muzix.books")
 DISC_DIR = re.compile(r"^(cd|disc|disk|part|del)[\s._-]*\d+$", re.I)
 SINGLE_BOOK_EXT = {"m4b"}
+# what Windows Media Player and friends write when a rip had no lookup
+PLACEHOLDER = re.compile(r"^unknown (album|artist)\b", re.I)
+
+
+def real_tag(value: str) -> str:
+    return "" if PLACEHOLDER.match(value or "") else value or ""
 
 
 def natural_key(s: str):
@@ -84,11 +90,12 @@ def read_book(path: str, parts: list[str]) -> dict:
     first = infos[0]
     folder = path if os.path.isdir(path) else os.path.dirname(path)
     stem = os.path.splitext(os.path.basename(path))[0] if os.path.isfile(path) else os.path.basename(path)
-    title = first.album or stem
-    author = first.albumartist or first.artist
+    album = real_tag(first.album)
+    title = album or stem
+    author = real_tag(first.albumartist) or real_tag(first.artist)
     m = re.match(r"^(.+?)\s+-\s+(.+)$", stem)
     if not author and m:
-        author, title = m.group(1), first.album or m.group(2)
+        author, title = m.group(1), album or m.group(2)
     chapters, offset, part_rows = [], 0.0, []
     for i, (p, info) in enumerate(zip(parts, infos, strict=True)):
         part_title = info.title or os.path.splitext(os.path.basename(p))[0]
