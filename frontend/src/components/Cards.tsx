@@ -18,9 +18,9 @@ export function AlbumCard({ a }: { a: Album }) {
   );
 }
 
-export function ArtistCard({ a }: { a: Artist }) {
+export function ArtistCard({ a, to }: { a: Artist; to?: string }) {
   return (
-    <Link to={`/artist/${a.id}`} className="card">
+    <Link to={to || `/artist/${a.id}`} className="card">
       <Art src={a.art} name={a.name} round />
       <button className="play-fab" aria-label={`Play ${a.name}`}
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); playRandom({ artist_id: a.id, kind: "all" }); }}>
@@ -48,13 +48,13 @@ export function PlaylistCard({ p }: { p: Playlist }) {
   );
 }
 
-export function GenreCard({ g }: { g: Genre }) {
+export function GenreCard({ g, to }: { g: Genre; to?: string }) {
   return (
-    <Link to={`/genre/${encodeURIComponent(g.name)}`} className="genre-card">
+    <Link to={to || `/genre/${encodeURIComponent(g.name)}`} className="genre-card">
       <div className="mosaic">{g.art.slice(0, 4).map((u) => <img key={u} src={`${u}?s=160`} alt="" loading="lazy" />)}</div>
       <div>
         <div className="h3">{g.name}</div>
-        <div className="card-sub">{g.albums} albums</div>
+        <div className="card-sub">{g.artists != null ? `${g.artists} artists · ` : ""}{g.albums} albums</div>
       </div>
     </Link>
   );

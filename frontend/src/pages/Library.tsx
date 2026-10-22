@@ -1,21 +1,27 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { Heart, ListPlus, Play, Plus, Shuffle, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-import { Link, NavLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { ChevronRight, Disc3, Heart, ListPlus, Mic2, Play, Plus, Shuffle, Tags, Trash2, UserRound } from "lucide-react";
+import { Fragment, useCallback, useEffect, useState, type ReactNode } from "react";
+import { Link, Navigate, NavLink, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, fmtLong, fmtNumber } from "../api";
 import { playAlbum, playRandom, playTracks, queryClient, toggleLike, usePlaylistPicker } from "../actions";
-import { AlbumCard, ArtistCard, GenreCard, PlaylistCard } from "../components/Cards";
+import {
+  ALBUM_SORTS, AlbumItems, ARTIST_SORTS, ArtistItems, DisplaySwitch, GENRE_SORTS, GenreItems, Segmented, SortMenu,
+  useBrowse, type Choice,
+} from "../components/Browse";
+import { AlbumCard, ArtistCard, PlaylistCard } from "../components/Cards";
 import { TrackList } from "../components/TrackList";
 import { Art, Display, Empty, Kicker, Loading, Modal, Section, useInView } from "../components/ui";
 import { useUi } from "../store/ui";
-import type { Album, AlbumDetail, Artist, ArtistDetail, Genre, Paged, Playlist, Track } from "../types";
+import type { Album, AlbumDetail, Artist, ArtistDetail, Genre, LibraryView, Paged, Playlist, SearchResults, Track } from "../types";
 
 function LibraryNav() {
-  const items = [["/library", "Albums"], ["/library/artists", "Artists"], ["/library/genres", "Genres"],
-    ["/library/liked", "Liked songs"], ["/library/playlists", "Playlists"]];
+  const { pathname } = useLocation();
+  const browsing = !/^\/library\/(liked|playlists)/.test(pathname);
   return (
     <nav className="subnav">
-      {items.map(([to, label]) => <NavLink key={to} to={to} end className={({ isActive }) => (isActive ? "active" : "")}>{label}</NavLink>)}
+      <Link to="/library" className={browsing ? "active" : ""}>Browse</Link>
+      <NavLink to="/library/liked" className={({ isActive }) => (isActive ? "active" : "")}>Liked songs</NavLink>
+      <NavLink to="/library/playlists" className={({ isActive }) => (isActive ? "active" : "")}>Playlists</NavLink>
     </nav>
   );
 }
@@ -32,77 +38,146 @@ function usePaged<T>(key: unknown[], path: string, params: Record<string, string
   });
 }
 
-function InfiniteGrid<T>({ q, render, small }: { q: ReturnType<typeof usePaged<T>>; render: (x: T) => React.ReactNode; small?: boolean }) {
+/** Loads more pages as the end of the list scrolls into view. */
+function Infinite<T>({ q, children, empty }: { q: ReturnType<typeof usePaged<T>>; children: (items: T[]) => ReactNode; empty?: ReactNode }) {
   const more = useCallback(() => { if (q.hasNextPage && !q.isFetchingNextPage) q.fetchNextPage(); }, [q]);
   const sentinel = useInView(more, !!q.hasNextPage);
   const items = q.data?.pages.flatMap((p) => p.items) || [];
   if (q.isLoading) return <Loading />;
-  if (!items.length) return <Empty title="Nothing here yet">Add music folders on the admin page and scan them.</Empty>;
+  if (!items.length) return <>{empty || <Empty title="Nothing here yet">Add music folders on the admin page and scan them.</Empty>}</>;
   return (
     <>
-      <div className={`grid ${small ? "small" : ""}`}>{items.map(render)}</div>
+      {children(items)}
       <div ref={sentinel} style={{ height: 1 }} />
     </>
   );
 }
 
-export function Albums() {
-  const [params, setParams] = useSearchParams();
-  const sort = params.get("sort") || "added";
-  const q = usePaged<Album>(["albums"], "/api/albums", { kind: "music", sort });
+// ---------------------------------------------------------------- browsing: Genre → Artist → Album
+
+const VIEWS: Choice<LibraryView>[] = [
+  { value: "genres", label: "Genre", icon: <Tags size={14} />, title: "Genres, then their artists, then albums" },
+  { value: "artists", label: "Artist", icon: <Mic2 size={14} />, title: "Artists, then their albums" },
+  { value: "albums", label: "Album", icon: <Disc3 size={14} />, title: "All albums" },
+];
+const enc = encodeURIComponent;
+
+/** /library opens the view used last. */
+export function LibraryHome() {
+  const view = useUi((s) => s.libraryView);
+  return <Navigate to={`/library/${view}`} replace />;
+}
+
+function Crumbs({ items }: { items: [string, string?][] }) {
+  return (
+    <nav className="crumbs" aria-label="You are here">
+      {items.map(([label, to], i) => (
+        <Fragment key={i}>
+          {i > 0 && <ChevronRight size={13} />}
+          {to ? <Link to={to}>{label}</Link> : <span>{label}</span>}
+        </Fragment>
+      ))}
+    </nav>
+  );
+}
+
+function BrowseShell({ view, title, kicker, crumbs, browse, sorts, actions, children }: {
+  view: LibraryView; title: string; kicker: (string | number | null | undefined | false)[]; crumbs?: [string, string?][];
+  browse: ReturnType<typeof useBrowse>; sorts: [string, string][]; actions?: ReactNode; children: ReactNode;
+}) {
+  const nav = useNavigate();
+  const setPref = useUi((s) => s.setPref);
+  return (
+    <div className="page wide">
+      <Kicker parts={kicker} />
+      <Display l1={title} small />
+      <LibraryNav />
+      <div className="toolbar browsebar">
+        <div className="tool">
+          <span className="seg-label">View</span>
+          <Segmented label="View" value={view} options={VIEWS} onChange={(v) => { setPref("library_view", v); nav(`/library/${v}`); }} />
+        </div>
+        <SortMenu value={browse.sort} options={sorts} onChange={browse.setSort} />
+        <div className="grow" />
+        {actions}
+        <DisplaySwitch value={browse.display} onChange={browse.setDisplay} />
+      </div>
+      {crumbs && <Crumbs items={crumbs} />}
+      {children}
+    </div>
+  );
+}
+
+export function LibraryGenres() {
+  const b = useBrowse("library.genres", GENRE_SORTS, "albums", "genres");
+  const q = useQuery({ queryKey: ["genres", b.sort], queryFn: () => api.get<Genre[]>("/api/genres", { sort: b.sort, limit: 500 }) });
+  return (
+    <BrowseShell view="genres" title="Library" kicker={["Library", q.data && `${q.data.length} genres`]} browse={b} sorts={GENRE_SORTS}
+                 actions={<button className="btn" onClick={() => playRandom({ kind: "music" })}><Shuffle size={15} /> Shuffle all</button>}>
+      {q.data ? (q.data.length ? <GenreItems items={q.data} display={b.display} linkTo={(g) => `/library/genres/${enc(g.name)}`} />
+        : <Empty title="No genres yet">Genres come from the genre folders and tags of your music.</Empty>) : <Loading />}
+    </BrowseShell>
+  );
+}
+
+export function LibraryGenreArtists() {
+  const { genre = "" } = useParams();
+  const b = useBrowse("library.genre-artists", ARTIST_SORTS, "albums", "artists");
+  const q = usePaged<Artist>(["artists", "genre", genre], "/api/artists", { genre, sort: b.sort }, 100);
   const total = q.data?.pages[0]?.total;
   return (
-    <div className="page wide">
-      <Kicker parts={["Library", total !== undefined && `${fmtNumber(total)} albums`]} />
-      <Display l1="Library" small />
-      <LibraryNav />
-      <div className="toolbar">
-        <span className="dim">Sort by</span>
-        <select className="select" style={{ width: 170 }} value={sort} onChange={(e) => setParams({ sort: e.target.value })}>
-          <option value="added">Recently added</option>
-          <option value="name">Title</option>
-          <option value="artist">Artist</option>
-          <option value="year">Year</option>
-        </select>
-        <div className="grow" />
-        <button className="btn" onClick={() => playRandom({ kind: "music" })}><Shuffle size={15} /> Shuffle all</button>
-      </div>
-      <InfiniteGrid q={q} render={(a) => <AlbumCard key={a.id} a={a} />} />
-    </div>
+    <BrowseShell view="genres" title={genre} kicker={["Genre", total !== undefined && `${fmtNumber(total)} artists`]}
+                 crumbs={[["Genres", "/library/genres"], [genre]]} browse={b} sorts={ARTIST_SORTS}
+                 actions={<button className="btn" onClick={() => playRandom({ genre })}><Shuffle size={15} /> Shuffle {genre}</button>}>
+      <Infinite q={q}>{(items) => <ArtistItems items={items} display={b.display} linkTo={(a) => `/library/genres/${enc(genre)}/${a.id}`} />}</Infinite>
+    </BrowseShell>
   );
 }
 
-export function Artists() {
-  const [sort, setSort] = useState("name");
-  const q = usePaged<Artist>(["artists"], "/api/artists", { sort }, 100);
+export function LibraryArtists() {
+  const b = useBrowse("library.artists", ARTIST_SORTS, "name", "artists");
+  const q = usePaged<Artist>(["artists", "all"], "/api/artists", { sort: b.sort }, 100);
+  const total = q.data?.pages[0]?.total;
   return (
-    <div className="page wide">
-      <Kicker parts={["Library", q.data && `${fmtNumber(q.data.pages[0].total)} artists`]} />
-      <Display l1="Artists" small />
-      <LibraryNav />
-      <div className="toolbar">
-        <span className="dim">Sort by</span>
-        <select className="select" style={{ width: 170 }} value={sort} onChange={(e) => setSort(e.target.value)}>
-          <option value="name">Name</option>
-          <option value="albums">Most albums</option>
-        </select>
-      </div>
-      <InfiniteGrid q={q} small render={(a) => <ArtistCard key={a.id} a={a} />} />
-    </div>
+    <BrowseShell view="artists" title="Library" kicker={["Library", total !== undefined && `${fmtNumber(total)} artists`]} browse={b} sorts={ARTIST_SORTS}
+                 actions={<button className="btn" onClick={() => playRandom({ kind: "music" })}><Shuffle size={15} /> Shuffle all</button>}>
+      <Infinite q={q}>{(items) => <ArtistItems items={items} display={b.display} linkTo={(a) => `/library/artists/${a.id}`} />}</Infinite>
+    </BrowseShell>
   );
 }
 
-export function Genres() {
-  const q = useQuery({ queryKey: ["genres"], queryFn: () => api.get<Genre[]>("/api/genres") });
+/** One artist's albums, reached from the Genre or the Artist view. */
+export function LibraryArtistAlbums() {
+  const { id = "", genre } = useParams();
+  const b = useBrowse("library.artist-albums", ALBUM_SORTS, "year", "albums");
+  const artist = useQuery({ queryKey: ["artist", Number(id)], queryFn: () => api.get<ArtistDetail>(`/api/artists/${id}`) });
+  const q = usePaged<Album>(["albums", "artist", id], "/api/albums", { kind: "all", artist_id: id, sort: b.sort });
+  const name = artist.data?.name || "…";
+  const total = q.data?.pages[0]?.total;
+  const crumbs: [string, string?][] = genre
+    ? [["Genres", "/library/genres"], [genre, `/library/genres/${enc(genre)}`], [name]]
+    : [["Artists", "/library/artists"], [name]];
   return (
-    <div className="page wide">
-      <Kicker parts={["Library", q.data && `${q.data.length} genres`]} />
-      <Display l1="Genres" small />
-      <LibraryNav />
-      {q.data ? <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))" }}>
-        {q.data.map((g) => <GenreCard key={g.name} g={g} />)}
-      </div> : <Loading />}
-    </div>
+    <BrowseShell view={genre ? "genres" : "artists"} title={name} crumbs={crumbs} browse={b} sorts={ALBUM_SORTS}
+                 kicker={["Artist", artist.data?.genre, total !== undefined && `${fmtNumber(total)} albums`]}
+                 actions={<>
+                   <button className="btn" onClick={() => playRandom({ artist_id: Number(id), kind: "all" })}><Shuffle size={15} /> Shuffle</button>
+                   <Link className="btn" to={`/artist/${id}`} title="Top songs and more"><UserRound size={15} /> Artist page</Link>
+                 </>}>
+      <Infinite q={q}>{(items) => <AlbumItems items={items} display={b.display} />}</Infinite>
+    </BrowseShell>
+  );
+}
+
+export function LibraryAlbums() {
+  const b = useBrowse("library.albums", ALBUM_SORTS, "added", "albums");
+  const q = usePaged<Album>(["albums", "all"], "/api/albums", { kind: "music", sort: b.sort });
+  const total = q.data?.pages[0]?.total;
+  return (
+    <BrowseShell view="albums" title="Library" kicker={["Library", total !== undefined && `${fmtNumber(total)} albums`]} browse={b} sorts={ALBUM_SORTS}
+                 actions={<button className="btn" onClick={() => playRandom({ kind: "music" })}><Shuffle size={15} /> Shuffle all</button>}>
+      <Infinite q={q}>{(items) => <AlbumItems items={items} display={b.display} />}</Infinite>
+    </BrowseShell>
   );
 }
 
@@ -260,7 +335,7 @@ export function GenrePage() {
       {artists.data && artists.data.items.length > 0 && (
         <Section title="Artists"><div className="scroller">{artists.data.items.map((a) => <ArtistCard key={a.id} a={a} />)}</div></Section>
       )}
-      <Section title="Albums"><InfiniteGrid q={q} render={(a) => <AlbumCard key={a.id} a={a} />} /></Section>
+      <Section title="Albums"><Infinite q={q}>{(items) => <div className="grid">{items.map((a) => <AlbumCard key={a.id} a={a} />)}</div>}</Infinite></Section>
     </div>
   );
 }
@@ -333,7 +408,7 @@ export function SearchPage() {
   }, [text, setParams]);
   const q = useQuery({
     queryKey: ["search", qs], enabled: qs.length > 1,
-    queryFn: () => api.get<{ artists: Artist[]; albums: Album[]; tracks: Track[] }>("/api/search", { q: qs, limit: 24 }),
+    queryFn: () => api.get<SearchResults>("/api/search", { q: qs, limit: 24 }),
   });
   const r = q.data;
   return (
@@ -341,10 +416,21 @@ export function SearchPage() {
       <Kicker parts={["Search the library"]} />
       <input className="input" autoFocus placeholder="Artists, albums, songs, chiptunes…" value={text}
              onChange={(e) => setText(e.target.value)} style={{ height: 54, fontSize: 20, margin: "12px 0 8px" }} />
-      {r && !r.artists.length && !r.albums.length && !r.tracks.length && <Empty title={`Nothing found for "${qs}"`} />}
+      {r && !r.artists.length && !r.albums.length && !r.tracks.length && !r.books.length && <Empty title={`Nothing found for "${qs}"`} />}
       {r && r.tracks.length > 0 && <Section title="Songs"><TrackList tracks={r.tracks.slice(0, 10)} showArt /></Section>}
       {r && r.artists.length > 0 && <Section title="Artists"><div className="scroller">{r.artists.map((a) => <ArtistCard key={a.id} a={a} />)}</div></Section>}
       {r && r.albums.length > 0 && <Section title="Albums"><div className="grid">{r.albums.map((a) => <AlbumCard key={a.id} a={a} />)}</div></Section>}
+      {r && r.books.length > 0 && (
+        <Section title="Audiobooks">
+          <div className="grid">{r.books.map((b) => (
+            <Link key={b.id} to={`/audiobooks/${b.id}`} className="card">
+              <Art src={b.art} name={b.title} />
+              <div className="card-title ellipsis">{b.title}</div>
+              <div className="card-sub ellipsis">{b.author || "Unknown author"}</div>
+            </Link>
+          ))}</div>
+        </Section>
+      )}
     </div>
   );
 }

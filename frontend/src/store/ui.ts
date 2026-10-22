@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { api } from "../api";
-import type { Prefs, User } from "../types";
+import type { BrowsePref, LibraryView, Prefs, User } from "../types";
 
 type Mode = "system" | "light" | "dark";
 
@@ -14,11 +14,14 @@ interface UiState {
   skinRules: Record<string, string>;
   visualizer: boolean;
   quality: NonNullable<Prefs["quality"]>;
+  libraryView: LibraryView;
+  browse: Record<string, BrowsePref>;
   queueOpen: boolean;
   nowPlayingOpen: boolean;
   toast: { text: string; kind: "info" | "error"; id: number } | null;
   setUser: (u: User | null) => void;
   setPref: <K extends keyof Prefs>(key: K, value: Prefs[K]) => void;
+  setBrowse: (key: string, patch: BrowsePref) => void;
   setQueueOpen: (v: boolean) => void;
   setNowPlayingOpen: (v: boolean) => void;
   notify: (text: string, kind?: "info" | "error") => void;
@@ -64,6 +67,8 @@ export const useUi = create<UiState>((set, get) => ({
   skinRules: {},
   visualizer: initial.visualizer ?? true,
   quality: initial.quality || "original",
+  libraryView: initial.library_view || "albums",
+  browse: initial.browse || {},
   queueOpen: false,
   nowPlayingOpen: false,
   toast: null,
@@ -77,16 +82,23 @@ export const useUi = create<UiState>((set, get) => ({
       skinLock: p.skin_lock ?? get().skinLock,
       visualizer: p.visualizer ?? get().visualizer,
       quality: p.quality ?? get().quality,
+      libraryView: p.library_view ?? get().libraryView,
+      browse: p.browse ?? get().browse,
     });
   },
   setPref: (key, value) => {
     const map: Partial<Record<keyof Prefs, keyof UiState>> = {
       scheme: "scheme", mode: "mode", genre_skins: "genreSkins", skin_lock: "skinLock",
-      visualizer: "visualizer", quality: "quality",
+      visualizer: "visualizer", quality: "quality", library_view: "libraryView",
     };
     const field = map[key];
     if (field) set({ [field]: value } as Partial<UiState>);
     persist({ [key]: value } as Prefs);
+  },
+  setBrowse: (key, patch) => {
+    const browse = { ...get().browse, [key]: { ...get().browse[key], ...patch } };
+    set({ browse });
+    persist({ browse });
   },
   setQueueOpen: (v) => set({ queueOpen: v }),
   setNowPlayingOpen: (v) => set({ nowPlayingOpen: v }),

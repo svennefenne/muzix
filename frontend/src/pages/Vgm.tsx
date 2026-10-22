@@ -4,20 +4,26 @@ import { useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, fmtNumber } from "../api";
 import { playRandom } from "../actions";
-import { AlbumCard } from "../components/Cards";
+import { AlbumItems, DisplaySwitch, SortMenu, useBrowse } from "../components/Browse";
 import { Display, Empty, Kicker, Loading, Section, Stripes, useInView } from "../components/ui";
 import { SYSTEM_ACCENTS } from "../theme/skins";
 import type { Album, Paged } from "../types";
 
 interface SystemRow { system: string; tracks: number; albums: number }
 
+const VGM_SORTS: [string, string][] = [
+  ["name", "Title"], ["artist", "Composer"], ["added", "Recently added"], ["tracks", "Most tunes"],
+  ["year", "Newest first"], ["year_asc", "Oldest first"], ["played", "Most played"],
+];
+
 export default function Vgm() {
   const [params, setParams] = useSearchParams();
   const system = params.get("system") || "";
+  const b = useBrowse("vgm", VGM_SORTS, "name");
   const systems = useQuery({ queryKey: ["vgm-systems"], queryFn: () => api.get<SystemRow[]>("/api/vgm/systems") });
   const albums = useInfiniteQuery({
-    queryKey: ["vgm-albums", system],
-    queryFn: ({ pageParam }) => api.get<Paged<Album>>("/api/albums", { kind: "vgm", system: system || undefined, sort: "name", limit: 60, offset: pageParam }),
+    queryKey: ["vgm-albums", system, b.sort],
+    queryFn: ({ pageParam }) => api.get<Paged<Album>>("/api/albums", { kind: "vgm", system: system || undefined, sort: b.sort, limit: 60, offset: pageParam }),
     initialPageParam: 0,
     getNextPageParam: (last, all) => {
       const n = all.reduce((s, p) => s + p.items.length, 0);
@@ -62,9 +68,14 @@ export default function Vgm() {
       )}
 
       <Section kicker={system || "Every system"} title="Games & collections">
+        <div className="toolbar browsebar">
+          <SortMenu value={b.sort} options={VGM_SORTS} onChange={b.setSort} />
+          <div className="grow" />
+          <DisplaySwitch value={b.display} onChange={b.setDisplay} />
+        </div>
         {albums.isLoading ? <Loading /> : items.length ? (
           <>
-            <div className="grid">{items.map((a) => <AlbumCard key={a.id} a={a} />)}</div>
+            <AlbumItems items={items} display={b.display} vgm />
             <div ref={sentinel} style={{ height: 1 }} />
           </>
         ) : <Empty title="No VGM yet">Add a folder with chiptunes or tracker modules as a "VGM" folder on the admin page.</Empty>}

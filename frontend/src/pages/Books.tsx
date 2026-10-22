@@ -4,10 +4,16 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, ago, fmtLong, fmtNumber, fmtTime } from "../api";
 import { queryClient } from "../actions";
+import { DisplaySwitch, Rows, SortMenu, useBrowse } from "../components/Browse";
 import { Art, Display, Empty, Kicker, Loading, Section } from "../components/ui";
 import { engine } from "../player/engine";
 import { fromBook, usePlayer } from "../store/player";
-import type { Book, Paged } from "../types";
+import type { Book, DisplayMode, Paged } from "../types";
+
+const BOOK_SORTS: [string, string][] = [
+  ["title", "Title"], ["author", "Author"], ["series", "Series"], ["added", "Recently added"],
+  ["listened", "Recently listened"], ["length", "Longest first"],
+];
 
 function BookCard({ b }: { b: Book }) {
   const pct = b.duration ? Math.min(100, (b.position / b.duration) * 100) : 0;
@@ -21,11 +27,39 @@ function BookCard({ b }: { b: Book }) {
   );
 }
 
+function progressText(b: Book) {
+  if (b.finished) return "Finished";
+  return b.duration && b.position > 0 ? `${Math.round((b.position / b.duration) * 100)} %` : "";
+}
+
+function BookItems({ items, display }: { items: Book[]; display: DisplayMode }) {
+  if (display !== "list")
+    return <div className={`grid ${display === "grid" ? "compact" : ""}`}>{items.map((b) => <BookCard key={b.id} b={b} />)}</div>;
+  return (
+    <Rows cols="48px minmax(0, 2fr) minmax(0, 1.2fr) minmax(0, 1.2fr) 92px 84px" colsSm="44px minmax(0, 1fr) 64px"
+          head={["", "Title", "Author", "Series", "Length", "Progress"].map((h, i) => <span key={i} className={i === 2 || i === 3 || i === 4 ? "l-opt" : i === 5 ? "l-num" : ""}>{h}</span>)}>
+      {items.map((b) => (
+        <Link key={b.id} to={`/audiobooks/${b.id}`} className="lrow">
+          <div className="l-thumb"><Art src={b.art} name={b.title} size={96} /></div>
+          <div className="l-main">
+            <div className="l-title ellipsis">{b.title}</div>
+            <div className="l-sub ellipsis l-sm">{b.author || "Unknown author"}</div>
+          </div>
+          <span className="l-col ellipsis l-opt">{b.author}</span>
+          <span className="l-col ellipsis l-opt">{b.series}</span>
+          <span className="l-col l-opt">{b.duration ? fmtLong(b.duration) : ""}</span>
+          <span className="l-num">{progressText(b)}</span>
+        </Link>
+      ))}
+    </Rows>
+  );
+}
+
 export default function Books() {
   const [q, setQ] = useState("");
-  const [sort, setSort] = useState("title");
+  const b = useBrowse("books", BOOK_SORTS, "title");
   const listening = useQuery({ queryKey: ["books", "listening"], queryFn: () => api.get<Paged<Book>>("/api/books", { status: "listening", limit: 20 }) });
-  const all = useQuery({ queryKey: ["books", q, sort], queryFn: () => api.get<Paged<Book>>("/api/books", { q, sort, limit: 1000 }) });
+  const all = useQuery({ queryKey: ["books", q, b.sort], queryFn: () => api.get<Paged<Book>>("/api/books", { q, sort: b.sort, limit: 1000 }) });
   return (
     <div className="page wide">
       <Kicker parts={["Audiobooks", all.data && `${fmtNumber(all.data.total)} books`]} />
@@ -36,15 +70,13 @@ export default function Books() {
         </Section>
       )}
       <Section title="All books">
-        <div className="toolbar">
+        <div className="toolbar browsebar">
           <input className="input" style={{ maxWidth: 340 }} placeholder="Search titles, authors, series" value={q} onChange={(e) => setQ(e.target.value)} />
-          <select className="select" style={{ width: 160 }} value={sort} onChange={(e) => setSort(e.target.value)}>
-            <option value="title">Title</option>
-            <option value="author">Author</option>
-            <option value="added">Recently added</option>
-          </select>
+          <SortMenu value={b.sort} options={BOOK_SORTS} onChange={b.setSort} />
+          <div className="grow" />
+          <DisplaySwitch value={b.display} onChange={b.setDisplay} />
         </div>
-        {all.data ? (all.data.items.length ? <div className="grid">{all.data.items.map((b) => <BookCard key={b.id} b={b} />)}</div>
+        {all.data ? (all.data.items.length ? <BookItems items={all.data.items} display={b.display} />
           : <Empty title="No audiobooks">Add a folder of audiobooks as an "audiobooks" folder on the admin page.</Empty>) : <Loading />}
       </Section>
     </div>

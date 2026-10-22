@@ -14,7 +14,13 @@ export interface Prefs {
   quality?: "original" | "lossless" | "high" | "low";
   visualizer?: boolean;
   speed?: number;              // audiobooks / podcasts
+  library_view?: LibraryView;
+  browse?: Record<string, BrowsePref>;   // sort and display mode per page
 }
+
+export type LibraryView = "genres" | "artists" | "albums";
+export type DisplayMode = "list" | "grid" | "gallery";
+export interface BrowsePref { display?: DisplayMode; sort?: string }
 
 export interface AuthState {
   needs_setup: boolean;
@@ -96,8 +102,12 @@ export interface Genre {
   name: string;
   albums: number;
   tracks: number;
+  artists?: number;
   art: string[];
 }
+
+export interface BookHit { id: number; title: string; author: string; series: string; art: string | null }
+export interface SearchResults { artists: Artist[]; albums: Album[]; tracks: Track[]; books: BookHit[] }
 
 export interface Home {
   stats: { tracks: number; albums: number; artists: number; vgm_tracks: number; hours: number };

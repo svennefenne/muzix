@@ -3,19 +3,32 @@ import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, Response
-from sqlalchemy import func, select, text
+from sqlalchemy import case, func, select, text
 from sqlalchemy.orm import Session
 
 from .. import art, serial
 from ..db import get_db
-from ..models import Album, Artist, Like, Track, User
+from ..models import Album, Artist, Book, Like, PlayEvent, Track, User
 from ..security import current_user
 
 router = APIRouter(prefix="/api", tags=["library"])
 ALBUM_SORTS = {
-    "added": Album.added_at.desc(), "name": func.lower(Album.title), "year": Album.year.desc(),
-    "artist": func.lower(Album.artist_name),
+    "added": (Album.added_at.desc(),),
+    "name": (func.lower(Album.title),),
+    "artist": (func.lower(Album.artist_name), Album.year, func.lower(Album.title)),
+    "year": (Album.year.desc(), func.lower(Album.title)),
+    # oldest first, albums without a year at the end
+    "year_asc": (case((Album.year > 0, 0), else_=1), Album.year, func.lower(Album.title)),
+    "tracks": (Album.track_count.desc(), func.lower(Album.title)),
 }
+GENRE_SORTS = {"albums": "n DESC", "name": "lower(genre)", "artists": "a DESC, n DESC"}
+
+
+def plays_by(column, user: User):
+    """(id, plays) for this user's play history, grouped by a track column."""
+    return (select(column.label("ref"), func.count().label("plays"))
+            .join(PlayEvent, PlayEvent.track_id == Track.id)
+            .where(PlayEvent.user_id == user.id).group_by(column).subquery())
 
 
 def liked(db: Session, user: User, kind: str) -> set[int]:
@@ -76,15 +89,18 @@ def home(db: Session = Depends(get_db), user: User = Depends(current_user)):
 
 
 @router.get("/genres")
-def genres(db: Session = Depends(get_db), user: User = Depends(current_user), limit: int = 100):
+def genres(db: Session = Depends(get_db), user: User = Depends(current_user), limit: int = 100,
+           sort: str = "albums"):
+    order = GENRE_SORTS.get(sort, GENRE_SORTS["albums"])
     rows = db.execute(text(
-        "SELECT genre, count(*) n, sum(track_count) t FROM albums WHERE kind='music' AND genre != '' "
-        "GROUP BY genre ORDER BY n DESC LIMIT :l"), {"l": limit}).all()
+        "SELECT genre, count(*) n, sum(track_count) t, count(DISTINCT artist_id) a FROM albums "
+        f"WHERE kind='music' AND genre != '' GROUP BY genre ORDER BY {order} LIMIT :l"), {"l": limit}).all()
     out = []
-    for g, n, t in rows:
+    for g, n, t, a in rows:
         arts = db.scalars(select(Album.id).where(Album.genre == g, Album.art != "")
                           .order_by(func.random()).limit(4)).all()
-        out.append({"name": g, "albums": n, "tracks": t, "art": [serial.art_url("album", i) for i in arts]})
+        out.append({"name": g, "albums": n, "tracks": t, "artists": a,
+                    "art": [serial.art_url("album", i) for i in arts]})
     return out
 
 
@@ -106,8 +122,13 @@ def albums(db: Session = Depends(get_db), user: User = Depends(current_user),
     if liked_only:
         q = q.where(Album.id.in_(select(Like.item_id).where(Like.user_id == user.id, Like.item_type == "album")))
     total = db.scalar(select(func.count()).select_from(q.subquery()))
-    items = db.scalars(q.order_by(ALBUM_SORTS.get(sort, ALBUM_SORTS["added"]), Album.id)
-                       .limit(limit).offset(offset))
+    if sort == "played":
+        played = plays_by(Track.album_id, user)
+        q = q.outerjoin(played, played.c.ref == Album.id)
+        order = (func.coalesce(played.c.plays, 0).desc(), Album.added_at.desc())
+    else:
+        order = ALBUM_SORTS.get(sort, ALBUM_SORTS["added"])
+    items = db.scalars(q.order_by(*order, Album.id).limit(limit).offset(offset))
     lk = liked(db, user, "album")
     return {"total": total, "items": [serial.album(a, lk) for a in items]}
 
@@ -138,16 +159,24 @@ def album(album_id: int, db: Session = Depends(get_db), user: User = Depends(cur
 def artists(db: Session = Depends(get_db), user: User = Depends(current_user),
             genre: str | None = None, liked_only: bool = False, sort: str = "name",
             limit: int = Query(100, le=500), offset: int = 0):
-    counts = select(Album.artist_id, func.count().label("n")).where(Album.kind == "music") \
-        .group_by(Album.artist_id).subquery()
-    q = select(Artist, counts.c.n).join(counts, counts.c.artist_id == Artist.id)
+    # through the albums, so an artist shows up in every genre they have albums in
+    counts = select(Album.artist_id, func.count().label("n"), func.max(Album.added_at).label("added")) \
+        .where(Album.kind == "music")
     if genre:
-        q = q.where(Artist.genre == genre)
+        counts = counts.where(Album.genre == genre)
+    counts = counts.group_by(Album.artist_id).subquery()
+    q = select(Artist, counts.c.n).join(counts, counts.c.artist_id == Artist.id)
     if liked_only:
         q = q.where(Artist.id.in_(select(Like.item_id).where(Like.user_id == user.id, Like.item_type == "artist")))
     total = db.scalar(select(func.count()).select_from(q.subquery()))
-    order = counts.c.n.desc() if sort == "albums" else func.lower(Artist.name)
-    rows = db.execute(q.order_by(order).limit(limit).offset(offset)).all()
+    if sort == "played":
+        played = plays_by(Track.artist_id, user)
+        q = q.outerjoin(played, played.c.ref == Artist.id)
+        order = (func.coalesce(played.c.plays, 0).desc(), func.lower(Artist.name))
+    else:
+        order = {"albums": (counts.c.n.desc(), func.lower(Artist.name)),
+                 "added": (counts.c.added.desc(),)}.get(sort, (func.lower(Artist.name),))
+    rows = db.execute(q.order_by(*order, Artist.id).limit(limit).offset(offset)).all()
     lk = liked(db, user, "artist")
     return {"total": total, "items": [serial.artist(a, lk, n) for a, n in rows]}
 
@@ -211,7 +240,7 @@ def search(q: str, db: Session = Depends(get_db), user: User = Depends(current_u
            limit: int = Query(20, le=100)):
     fq = fts_query(q)
     if not fq:
-        return {"artists": [], "albums": [], "tracks": []}
+        return {"artists": [], "albums": [], "tracks": [], "books": []}
     out = {}
     for kind, model in (("artist", Artist), ("album", Album), ("track", Track)):
         ids = [int(r[0]) for r in db.execute(text(
@@ -219,10 +248,15 @@ def search(q: str, db: Session = Depends(get_db), user: User = Depends(current_u
             {"q": fq, "k": kind, "l": limit})]
         rows = {x.id: x for x in db.scalars(select(model).where(model.id.in_(ids)))}
         out[kind] = [rows[i] for i in ids if i in rows]
+    like = f"%{q.strip()}%"
+    books = db.scalars(select(Book).where(Book.title.ilike(like) | Book.author.ilike(like) | Book.series.ilike(like))
+                       .order_by(func.lower(Book.title)).limit(min(limit, 10)))
     return {
         "artists": [serial.artist(a, liked(db, user, "artist")) for a in out["artist"]],
         "albums": [serial.album(a, liked(db, user, "album")) for a in out["album"]],
         "tracks": tracks_json(db, user, out["track"]),
+        "books": [{"id": b.id, "title": b.title, "author": b.author, "series": b.series,
+                   "art": f"/api/art/book/{b.id}" if b.art else None} for b in books],
     }
 
 

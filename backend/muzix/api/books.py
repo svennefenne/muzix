@@ -15,7 +15,14 @@ from .library import _send
 from .stream import stream_file
 
 router = APIRouter(prefix="/api/books", tags=["audiobooks"])
-SORTS = {"title": func.lower(Book.title), "author": func.lower(Book.author), "added": Book.added_at.desc()}
+SORTS = {
+    "title": (func.lower(Book.title),),
+    "author": (func.lower(Book.author), func.lower(Book.series), func.lower(Book.title)),
+    "series": (Book.series == "", func.lower(Book.series), func.lower(Book.title)),
+    "added": (Book.added_at.desc(),),
+    "listened": (BookProgress.updated_at.is_(None), BookProgress.updated_at.desc(), func.lower(Book.title)),
+    "length": (Book.duration.desc(),),
+}
 
 
 def book_json(b: Book, prog: BookProgress | None, full=False, parts=None):
@@ -47,8 +54,8 @@ def books(db: Session = Depends(get_db), user: User = Depends(current_user), q: 
     elif status == "new":
         query = query.where(BookProgress.book_id.is_(None))
     total = db.scalar(select(func.count()).select_from(query.subquery()))
-    order = BookProgress.updated_at.desc() if status == "listening" else SORTS.get(sort, SORTS["title"])
-    rows = db.execute(query.order_by(order, Book.id).limit(limit).offset(offset)).all()
+    order = (BookProgress.updated_at.desc(),) if status == "listening" else SORTS.get(sort, SORTS["title"])
+    rows = db.execute(query.order_by(*order, Book.id).limit(limit).offset(offset)).all()
     return {"total": total, "items": [book_json(b, p) for b, p in rows]}
 
 

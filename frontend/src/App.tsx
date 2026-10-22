@@ -5,9 +5,13 @@ import { api } from "./api";
 import { Display, Kicker, Loading, MenuHost } from "./components/ui";
 import { Footer, NowPlaying, PlaylistPicker, QueueDrawer, Toast } from "./layout/Overlays";
 import { PlayerBar } from "./layout/PlayerBar";
+import { focusQuickSearch } from "./layout/QuickSearch";
 import { isTyping, TopBar } from "./layout/TopBar";
 import Home from "./pages/Home";
-import { AlbumPage, Albums, Artists, ArtistPage, GenrePage, Genres, Liked, PlaylistPage, Playlists, SearchPage } from "./pages/Library";
+import {
+  AlbumPage, ArtistPage, GenrePage, LibraryAlbums, LibraryArtistAlbums, LibraryArtists, LibraryGenreArtists, LibraryGenres,
+  LibraryHome, Liked, PlaylistPage, Playlists, SearchPage,
+} from "./pages/Library";
 import { engine } from "./player/engine";
 import { usePlayer } from "./store/player";
 import { useUi } from "./store/ui";
@@ -28,10 +32,12 @@ function Shortcuts() {
   const nav = useNavigate();
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
+      const search = () => { e.preventDefault(); if (!focusQuickSearch()) nav("/search"); };
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") return search();
       if (isTyping(e) || e.ctrlKey || e.metaKey || e.altKey) return;
       const s = usePlayer.getState();
       if (e.key === " ") { e.preventDefault(); engine.toggle(); }
-      else if (e.key === "/") { e.preventDefault(); nav("/search"); }
+      else if (e.key === "/") search();
       else if (e.key === "ArrowRight") engine.seek(s.position + (e.shiftKey ? 30 : 5));
       else if (e.key === "ArrowLeft") engine.seek(s.position - (e.shiftKey ? 30 : 5));
       else if (e.key.toLowerCase() === "m") s.set({ muted: !s.muted });
@@ -58,9 +64,13 @@ function Shell() {
           <Suspense fallback={<div className="page"><Loading /></div>}>
             <Routes>
               <Route path="/" element={<Home />} />
-              <Route path="/library" element={<Albums />} />
-              <Route path="/library/artists" element={<Artists />} />
-              <Route path="/library/genres" element={<Genres />} />
+              <Route path="/library" element={<LibraryHome />} />
+              <Route path="/library/genres" element={<LibraryGenres />} />
+              <Route path="/library/genres/:genre" element={<LibraryGenreArtists />} />
+              <Route path="/library/genres/:genre/:id" element={<LibraryArtistAlbums />} />
+              <Route path="/library/artists" element={<LibraryArtists />} />
+              <Route path="/library/artists/:id" element={<LibraryArtistAlbums />} />
+              <Route path="/library/albums" element={<LibraryAlbums />} />
               <Route path="/library/liked" element={<Liked />} />
               <Route path="/library/playlists" element={<Playlists />} />
               <Route path="/album/:id" element={<AlbumPage />} />

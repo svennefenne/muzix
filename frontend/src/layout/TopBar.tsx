@@ -7,6 +7,7 @@ import { useMenu } from "../components/ui";
 import { usePlayer } from "../store/player";
 import { useUi } from "../store/ui";
 import type { Home } from "../types";
+import { QuickSearch } from "./QuickSearch";
 
 export const TABS = [
   { to: "/", label: "Home", end: true },
@@ -110,17 +111,18 @@ export function TopBar() {
       </nav>
       <span className="keychip" title="Next tab (E)">E</span>
       <Ticker />
+      <QuickSearch />
       <div className="topbar-right">
         <button className="iconbtn" title="Now playing" onClick={() => setNowPlayingOpen(true)}>
           <LevelRing /><Activity size={15} />
         </button>
-        <button className="iconbtn" title="Search (/)" onClick={() => nav("/search")}><Search size={15} /></button>
+        <button className="iconbtn show-sm" title="Search (/)" onClick={() => nav("/search")}><Search size={15} /></button>
         <button className="iconbtn hide-sm" title={`Light/dark: ${mode} (click for ${nextMode})`} onClick={() => setPref("mode", nextMode)}>
           <ModeIcon size={15} />
         </button>
-        <button className="iconbtn hide-sm" title="Fullscreen (F11)" onClick={toggleFullscreen}><Monitor size={15} /></button>
+        <button className="iconbtn hide-sm trim-2" title="Fullscreen (F11)" onClick={toggleFullscreen}><Monitor size={15} /></button>
         {home.data && (
-          <button className="pill hide-sm" onClick={() => nav("/library")} title="Your library">
+          <button className="pill hide-sm trim-1" onClick={() => nav("/library")} title="Your library">
             <span className="dot" /> Library <span className="count">{fmtNumber(home.data.stats.tracks + home.data.stats.vgm_tracks)}</span>
           </button>
         )}
