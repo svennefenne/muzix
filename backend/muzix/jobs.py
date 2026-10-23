@@ -9,6 +9,7 @@ import threading
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
 from datetime import datetime, timezone
 
 from sqlalchemy import select, update
@@ -17,10 +18,11 @@ from . import db
 from .models import Job
 
 log = logging.getLogger("muzix.jobs")
-_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="job")
+_pool = ThreadPoolExecutor(max_workers=6, thread_name_prefix="job")
 _registry: dict[str, callable] = {}
 _cancel: set[int] = set()
 _lock = threading.Lock()
+_turns: dict[str, threading.Lock] = {}     # jobs of one kind run one after another
 
 
 class Cancelled(Exception):
@@ -74,15 +76,21 @@ def job(type_: str):
 
 
 def submit(type_: str, title: str = "", **params) -> int:
+    """Start a job. A job of the same kind and settings that hasn't started yet
+    covers this request too; one that is already running may have missed the
+    change (a folder added mid-scan), so this one waits and runs after it."""
+    parallel = bool(params.pop("_allow_parallel", False))
     with _lock, db.session() as s:
-        existing = s.scalar(select(Job).where(Job.type == type_, Job.status.in_(("queued", "running"))))
-        if existing is not None and not params.get("_allow_parallel"):
-            return existing.id
-        row = Job(type=type_, title=title or type_, params={k: v for k, v in params.items() if k != "_allow_parallel"})
+        if not parallel:
+            for waiting in s.scalars(select(Job).where(Job.type == type_, Job.status == "queued")):
+                if (waiting.params or {}) == params:
+                    return waiting.id
+        row = Job(type=type_, title=title or type_, params=params)
         s.add(row)
         s.flush()
         job_id = row.id
-    _pool.submit(_run, job_id)
+        turn = None if parallel else _turns.setdefault(type_, threading.Lock())
+    _pool.submit(_run, job_id, turn)
     return job_id
 
 
@@ -90,7 +98,12 @@ def cancel(job_id: int):
     _cancel.add(job_id)
 
 
-def _run(job_id: int):
+def _run(job_id: int, turn: threading.Lock | None = None):
+    with turn or nullcontext():
+        _execute(job_id)
+
+
+def _execute(job_id: int):
     with db.session() as s:
         row = s.get(Job, job_id)
         row.status, row.started_at = "running", datetime.now(timezone.utc)

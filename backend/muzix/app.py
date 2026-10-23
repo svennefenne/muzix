@@ -55,6 +55,26 @@ def create_app() -> FastAPI:
     def health():
         return {"ok": True, "version": __version__}
 
+    @app.get("/manifest.webmanifest", include_in_schema=False)
+    def manifest():
+        """Makes Muzix installable: a home screen icon that opens without browser bars."""
+        name = settings.get("site_name") or "Muzix"
+        icon = {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png"}
+        return JSONResponse({
+            "id": "/", "name": name, "short_name": name[:12],
+            "description": "Your music, chiptunes, audiobooks, podcasts and radio",
+            "start_url": "/", "scope": "/", "display": "standalone",
+            "background_color": "#0a1020", "theme_color": "#0a1020", "categories": ["music", "entertainment"],
+            "icons": [
+                {**icon, "purpose": "any"},
+                {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+                {"src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+            ],
+            "shortcuts": [{"name": label, "url": url, "icons": [icon]} for label, url in (
+                ("Library", "/library"), ("VGM", "/vgm"), ("Audiobooks", "/audiobooks"),
+                ("Podcasts", "/podcasts"), ("Radio", "/radio"))],
+        }, media_type="application/manifest+json", headers={"Cache-Control": "no-cache"})
+
     @app.exception_handler(404)
     async def not_found(request: Request, exc):
         if request.url.path.startswith("/api/"):

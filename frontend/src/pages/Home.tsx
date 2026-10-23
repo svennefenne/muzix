@@ -46,18 +46,26 @@ export default function Home() {
   const d = q.data;
   const arts = (list: Album[]) => list.map((a) => a.art);
   const latest = d.recently_added[0];
+  const quick = (d.recently_played.length >= 4 ? d.recently_played : [...d.recently_played, ...d.recently_added]).slice(0, 8);
 
   return (
     <div className="page">
+      <nav className="home-chips phone-only" aria-label="Sections">
+        <button className="hchip on" onClick={() => playRandom({ kind: "music" })}><Shuffle size={14} /> Shuffle</button>
+        {[["/library", "Music"], ["/vgm", "VGM"], ["/audiobooks", "Audiobooks"], ["/podcasts", "Podcasts"], ["/radio", "Radio"], ["/spotify", "Spotify"]]
+          .map(([to, label]) => <Link key={to} to={to} className="hchip">{label}</Link>)}
+      </nav>
       <div className="hero">
         <div>
-          <Kicker parts={["Muzix terminal", `${fmtNumber(d.stats.tracks)} tracks`, `${fmtNumber(d.stats.albums)} albums`, `${fmtNumber(d.stats.hours)} hours`]} />
+          <div className="desktop-only">
+            <Kicker parts={["Muzix terminal", `${fmtNumber(d.stats.tracks)} tracks`, `${fmtNumber(d.stats.albums)} albums`, `${fmtNumber(d.stats.hours)} hours`]} />
+          </div>
           <Display l1={`${greeting()},`} l2={user?.username || "listener"} />
-          <p className="lede">
+          <p className="lede desktop-only">
             Your whole collection in one place: {fmtNumber(d.stats.artists)} artists, {fmtNumber(d.stats.vgm_tracks)} chiptunes and tracker
             songs, audiobooks, podcasts and radio. The app dresses up for whatever's playing.
           </p>
-          <div className="row-actions">
+          <div className="row-actions desktop-only">
             <button className="btn primary" onClick={() => playRandom({ kind: "music" })}><Shuffle size={15} /> Shuffle everything</button>
             {latest && <button className="btn" onClick={() => playAlbum(latest.id)}>Latest: {latest.title}</button>}
           </div>
@@ -70,7 +78,16 @@ export default function Home() {
         )}
       </div>
 
-      <div className="bento">
+      <div className="quick-grid phone-only">
+        {quick.map((a) => (
+          <Link key={a.id} to={`/album/${a.id}`} className="quick">
+            <Art src={a.art} name={a.title} size={160} />
+            <span>{a.title}</span>
+          </Link>
+        ))}
+      </div>
+
+      <div className="bento desktop-only">
         <Tile to="/library" className="big" kicker="Your collection" title="Library" color="var(--primary)"
               sub={`${fmtNumber(d.stats.albums)} albums · ${fmtNumber(d.stats.artists)} artists`}
               art={arts([...d.recently_added, ...d.rediscover])} />

@@ -411,11 +411,17 @@ export function SearchPage() {
     queryFn: () => api.get<SearchResults>("/api/search", { q: qs, limit: 24 }),
   });
   const r = q.data;
+  // Spotify-style "Browse all" while nothing is typed
+  const genres = useQuery({ queryKey: ["genres", "albums"], queryFn: () => api.get<Genre[]>("/api/genres", { sort: "albums", limit: 500 }), enabled: !qs });
+  const [desktop] = useState(() => window.matchMedia("(min-width: 861px)").matches);
   return (
     <div className="page wide">
       <Kicker parts={["Search the library"]} />
-      <input className="input" autoFocus placeholder="Artists, albums, songs, chiptunes…" value={text}
-             onChange={(e) => setText(e.target.value)} style={{ height: 54, fontSize: 20, margin: "12px 0 8px" }} />
+      <input className="input searchbox" autoFocus={desktop} placeholder="Artists, albums, songs, audiobooks…" value={text}
+             onChange={(e) => setText(e.target.value)} />
+      {!qs && genres.data && genres.data.length > 0 && (
+        <Section title="Browse all"><GenreItems items={genres.data} display="gallery" linkTo={(g) => `/library/genres/${enc(g.name)}`} /></Section>
+      )}
       {r && !r.artists.length && !r.albums.length && !r.tracks.length && !r.books.length && <Empty title={`Nothing found for "${qs}"`} />}
       {r && r.tracks.length > 0 && <Section title="Songs"><TrackList tracks={r.tracks.slice(0, 10)} showArt /></Section>}
       {r && r.artists.length > 0 && <Section title="Artists"><div className="scroller">{r.artists.map((a) => <ArtistCard key={a.id} a={a} />)}</div></Section>}

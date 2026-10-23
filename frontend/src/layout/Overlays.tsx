@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, Plus, X } from "lucide-react";
+import { ChevronDown, Heart, ListMusic, Pause, Play, Plus, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, fmtNumber, fmtTime } from "../api";
-import { queryClient, usePlaylistPicker } from "../actions";
+import { queryClient, toggleLike, usePlaylistPicker } from "../actions";
 import { Art, Modal } from "../components/ui";
 import { engine } from "../player/engine";
 import { usePlayer } from "../store/player";
@@ -117,6 +117,43 @@ function Visualizer() {
   return <canvas ref={ref} className="viz" />;
 }
 
+/** Spotify-style controls for the full-screen player on phones. */
+function PhoneTransport() {
+  const s = usePlayer();
+  const cur = s.current();
+  const setQueueOpen = useUi((u) => u.setQueueOpen);
+  const [liked, setLiked] = useState<Record<string, boolean>>({});
+  const isLiked = cur ? liked[cur.key] ?? !!cur.liked : false;
+  const spoken = cur?.kind === "book" || cur?.kind === "episode";
+  return (
+    <div className="np-phone">
+      <div className="np-transport">
+        <button className={`ctl ${s.shuffle ? "on" : ""}`} aria-label="Shuffle" onClick={() => s.set({ shuffle: !s.shuffle })}><Shuffle size={22} /></button>
+        <button className="ctl" aria-label={spoken ? "Back 15 seconds" : "Previous"}
+                onClick={() => (spoken ? engine.seek(s.position - 15) : engine.prev())}><SkipBack size={30} fill="currentColor" /></button>
+        <button className="ctl play" aria-label={s.playing ? "Pause" : "Play"} onClick={() => engine.toggle()}>
+          {s.playing ? <Pause size={30} fill="currentColor" /> : <Play size={30} fill="currentColor" style={{ marginLeft: 3 }} />}
+        </button>
+        <button className="ctl" aria-label={spoken ? "Forward 30 seconds" : "Next"}
+                onClick={() => (spoken ? engine.seek(s.position + 30) : engine.next())}><SkipForward size={30} fill="currentColor" /></button>
+        <button className={`ctl ${s.repeat !== "off" ? "on" : ""}`} aria-label={`Repeat: ${s.repeat}`}
+                onClick={() => s.set({ repeat: s.repeat === "off" ? "all" : s.repeat === "all" ? "one" : "off" })}>
+          {s.repeat === "one" ? <Repeat1 size={22} /> : <Repeat size={22} />}
+        </button>
+      </div>
+      <div className="np-extra">
+        {cur?.kind === "track" ? (
+          <button className={`ctl ${isLiked ? "on" : ""}`} aria-label="Like"
+                  onClick={async () => setLiked({ ...liked, [cur.key]: await toggleLike("track", Number(cur.id), isLiked) })}>
+            <Heart size={22} fill={isLiked ? "currentColor" : "none"} />
+          </button>
+        ) : <span />}
+        <button className="ctl" aria-label="Queue" onClick={() => setQueueOpen(true)}><ListMusic size={22} /></button>
+      </div>
+    </div>
+  );
+}
+
 export function NowPlaying() {
   const { nowPlayingOpen, setNowPlayingOpen } = useUi();
   const cur = usePlayer((s) => (s.index >= 0 ? s.queue[s.index] : null));
@@ -143,8 +180,9 @@ export function NowPlaying() {
               <div className="np-big-title">{live || cur.title}</div>
               <div className="lede" style={{ fontSize: 20 }}>{live ? cur.title : cur.artist}</div>
               <Visualizer />
-              <div style={{ marginTop: 24, maxWidth: 640 }}><SeekBar /></div>
-              <div className="row-actions" style={{ marginTop: 18 }}>
+              <div className="np-seek"><SeekBar /></div>
+              <PhoneTransport />
+              <div className="row-actions np-desktop-actions" style={{ marginTop: 18 }}>
                 <button className="btn" onClick={() => engine.prev()}>Previous</button>
                 <button className="btn accent" onClick={() => engine.toggle()}>Play / pause</button>
                 <button className="btn" onClick={() => engine.next()}>Next</button>

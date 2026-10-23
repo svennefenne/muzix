@@ -2,7 +2,9 @@ import { useQuery } from "@tanstack/react-query";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { api } from "./api";
+import { Logo } from "./components/Logo";
 import { Display, Kicker, Loading, MenuHost } from "./components/ui";
+import { MiniPlayer, TabBar } from "./layout/Mobile";
 import { Footer, NowPlaying, PlaylistPicker, QueueDrawer, Toast } from "./layout/Overlays";
 import { PlayerBar } from "./layout/PlayerBar";
 import { focusQuickSearch } from "./layout/QuickSearch";
@@ -94,6 +96,8 @@ function Shell() {
       </main>
       <PlayerBar />
       <Footer />
+      <MiniPlayer />
+      <TabBar />
       <QueueDrawer />
       <NowPlaying />
       <PlaylistPicker />
@@ -124,8 +128,7 @@ function AuthScreen({ state, onDone }: { state: AuthState; onDone: () => void })
       <ThemeApplier />
       <form className="auth-card" onSubmit={submit}>
         <div className="logo" style={{ marginBottom: 26 }}>
-          <div className="logo-mark"><span /><span /><span /><span /><span /></div>
-          <div className="logo-text"><span className="logo-kicker">Self-hosted</span><span className="logo-name">{state.site_name}</span></div>
+          <Logo name={state.site_name} />
         </div>
         <Kicker parts={[setup ? "First start" : "Welcome back", `v${state.version}`]} />
         <Display l1={setup ? "Set up" : mode === "signup" ? "Join" : "Sign in"} l2={setup ? "Muzix" : undefined} small />

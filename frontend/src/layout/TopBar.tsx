@@ -3,6 +3,7 @@ import { Activity, Monitor, Moon, Search, Settings, Shield, Sun, SunMoon, LogOut
 import { useEffect, useMemo } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { api, fmtNumber } from "../api";
+import { Logo } from "../components/Logo";
 import { useMenu } from "../components/ui";
 import { usePlayer } from "../store/player";
 import { useUi } from "../store/ui";
@@ -83,7 +84,6 @@ export function TopBar() {
 
   const nextMode = mode === "system" ? "dark" : mode === "dark" ? "light" : "system";
   const ModeIcon = mode === "system" ? SunMoon : mode === "dark" ? Moon : Sun;
-  const [kick, ...rest] = (siteName || "Muzix").split(" ");
   const userMenu = (e: React.MouseEvent) => showMenu(e, [
     { heading: user?.username || "" },
     { label: "Settings", icon: <Settings size={16} />, onClick: () => nav("/settings") },
@@ -95,11 +95,7 @@ export function TopBar() {
   return (
     <header className="topbar">
       <NavLink to="/" className="logo" aria-label="Home">
-        <div className="logo-mark"><span /><span /><span /><span /><span /></div>
-        <div className="logo-text">
-          <span className="logo-kicker">{rest.length ? kick : "Self-hosted"}</span>
-          <span className="logo-name">{rest.length ? rest.join(" ") : kick}</span>
-        </div>
+        <Logo name={siteName || "Muzix"} />
       </NavLink>
       <span className="keychip" title="Previous tab (Q)">Q</span>
       <nav className="tabs" aria-label="Main">
@@ -113,7 +109,7 @@ export function TopBar() {
       <Ticker />
       <QuickSearch />
       <div className="topbar-right">
-        <button className="iconbtn" title="Now playing" onClick={() => setNowPlayingOpen(true)}>
+        <button className="iconbtn hide-sm" title="Now playing" onClick={() => setNowPlayingOpen(true)}>
           <LevelRing /><Activity size={15} />
         </button>
         <button className="iconbtn show-sm" title="Search (/)" onClick={() => nav("/search")}><Search size={15} /></button>
@@ -126,9 +122,9 @@ export function TopBar() {
             <span className="dot" /> Library <span className="count">{fmtNumber(home.data.stats.tracks + home.data.stats.vgm_tracks)}</span>
           </button>
         )}
-        <button className="pill" onClick={userMenu}>
+        <button className="pill userpill" onClick={userMenu} aria-label={`Account: ${user?.username}`}>
           <span className="avatar">{(user?.username || "?")[0].toUpperCase()}</span>
-          {user?.username}
+          <span className="uname">{user?.username}</span>
         </button>
       </div>
     </header>
