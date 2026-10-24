@@ -19,7 +19,8 @@ SessionLocal: sessionmaker | None = None
 def init(url: str | None = None):
     global engine, SessionLocal
     env.ensure_dirs()
-    engine = create_engine(url or f"sqlite:///{env.DB_PATH}",
+    # covers and streams can hold a connection for a moment; leave room for page loads
+    engine = create_engine(url or f"sqlite:///{env.DB_PATH}", pool_size=10, max_overflow=30,
                            connect_args={"check_same_thread": False, "timeout": 30})
 
     @event.listens_for(engine, "connect")
@@ -29,6 +30,8 @@ def init(url: str | None = None):
         cur.execute("PRAGMA synchronous=NORMAL")
         cur.execute("PRAGMA foreign_keys=ON")
         cur.close()
+        # SQLite's lower() only knows A-Z; "Árstíðir" and "Проект Звездолет" need real casefolding
+        conn.create_function("casefold", 1, lambda v: v.casefold() if isinstance(v, str) else v, deterministic=True)
 
     SessionLocal = sessionmaker(engine, expire_on_commit=False)
     from . import models  # noqa: F401  (register tables)

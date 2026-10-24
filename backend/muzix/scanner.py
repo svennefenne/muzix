@@ -15,6 +15,7 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 
 from sqlalchemy import delete, func, select, text, update
+from sqlalchemy.exc import IntegrityError
 
 from . import db, formats, jobs, settings
 from .meta import chip, tags
@@ -283,6 +284,7 @@ class Resolver:
     def __init__(self):
         self.artists: dict[str, int] = {}
         self.albums: dict[str, int] = {}
+        self.by_name: dict[str, int] | None = None     # every artist, by casefolded name
 
     def artist(self, s, name: str) -> int | None:
         name = (name or "").strip()
@@ -291,12 +293,18 @@ class Resolver:
         key = norm(name)
         if key in self.artists:
             return self.artists[key]
-        aid = s.scalar(select(Artist.id).where(func.lower(Artist.name) == name.lower()))
+        if self.by_name is None:
+            self.by_name = {n.casefold(): i for i, n in s.execute(select(Artist.id, Artist.name))}
+        aid = self.by_name.get(name.casefold())
         if aid is None:
-            a = Artist(name=name)
-            s.add(a)
-            s.flush()
-            aid = a.id
+            try:
+                with s.begin_nested():
+                    a = Artist(name=name)
+                    s.add(a)
+                aid = a.id
+            except IntegrityError:      # the name exists after all (another spelling of case)
+                aid = s.scalar(select(Artist.id).where(Artist.name == name))
+            self.by_name[name.casefold()] = aid
         self.artists[key] = aid
         return aid
 

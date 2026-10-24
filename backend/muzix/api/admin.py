@@ -191,7 +191,7 @@ def users(db: Session = Depends(get_db)):
 def add_user(body: UserBody, db: Session = Depends(get_db)):
     if not body.password:
         raise HTTPException(400, "A new user needs a password")
-    if db.scalar(select(User.id).where(func.lower(User.username) == body.username.lower())):
+    if db.scalar(select(User.id).where(func.casefold(User.username) == body.username.casefold())):
         raise HTTPException(409, "That username is taken")
     u = User(username=body.username, password_hash=hash_password(body.password), is_admin=body.is_admin)
     db.add(u)

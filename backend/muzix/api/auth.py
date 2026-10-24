@@ -70,7 +70,7 @@ def add_default_roots(db: Session):
 
 @router.post("/login")
 def login(body: Credentials, request: Request, response: Response, db: Session = Depends(get_db)):
-    user = db.scalar(select(User).where(func.lower(User.username) == body.username.strip().lower()))
+    user = db.scalar(select(User).where(func.casefold(User.username) == body.username.strip().casefold()))
     if user is None or not check_password(user, body.password):
         raise HTTPException(401, "Wrong username or password")
     start_session(db, user, request, response)
@@ -87,7 +87,7 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
 def signup(body: Credentials, request: Request, response: Response, db: Session = Depends(get_db)):
     if not settings.get("allow_signup"):
         raise HTTPException(403, "Sign-up is turned off")
-    if db.scalar(select(User.id).where(func.lower(User.username) == body.username.strip().lower())):
+    if db.scalar(select(User.id).where(func.casefold(User.username) == body.username.strip().casefold())):
         raise HTTPException(409, "That username is taken")
     if len(body.password) < 6:
         raise HTTPException(400, "Use at least 6 characters for the password")

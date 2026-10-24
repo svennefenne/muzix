@@ -19,9 +19,10 @@ export function Footer() {
   const home = useQuery({ queryKey: ["home"], queryFn: () => api.get<Home>("/api/home"), enabled: !!user });
   const jobs = useQuery({
     queryKey: ["jobs-mini"], enabled: !!user?.is_admin, refetchInterval: 8000,
-    queryFn: () => api.get<{ status: string; title: string; progress: number }[]>("/api/admin/jobs", { limit: 5 }),
+    queryFn: () => api.get<{ type: string; status: string; title: string; progress: number }[]>("/api/admin/jobs", { limit: 5 }),
   });
   const running = (jobs.data || []).filter((j) => j.status === "running");
+  const lastScan = (jobs.data || []).find((j) => j.type === "scan");
   return (
     <footer className="footer">
       <span>Muzix</span><span className="sep">·</span>
@@ -31,6 +32,7 @@ export function Footer() {
       <span className="sep">·</span>
       <span>{theme.skin ? `Skin: ${theme.skin.name}` : "Skin: off"}</span>
       {running[0] && <><span className="sep">·</span><Link to="/admin/jobs">{running[0].title} {Math.round(running[0].progress * 100)}%</Link></>}
+      {!running[0] && lastScan?.status === "failed" && <><span className="sep">·</span><Link to="/admin/jobs" className="error-text">Last scan failed</Link></>}
       <div className="right">
         <button className="chip hide-sm" onClick={toggleFullscreen}>Go fullscreen! F11</button>
         <Link className="chip" to="/settings">Appearance</Link>

@@ -127,7 +127,7 @@ def genres(artist: str = Query(..., min_length=1, max_length=200), db: Session =
     key = artist.strip().casefold()
     if key in _genres:
         return _genres[key]
-    a = db.scalar(select(Artist).where(func.lower(Artist.name) == key, func.json_array_length(Artist.tags) > 0))
+    a = db.scalar(select(Artist).where(func.casefold(Artist.name) == key, func.json_array_length(Artist.tags) > 0))
     if a is not None:
         _genres[key] = [t[0] for t in a.tags[:8]]
         return _genres[key]

@@ -272,13 +272,6 @@ def vgm_systems(db: Session = Depends(get_db), user: User = Depends(current_user
 
 # ---------------------------------------------------------------- art
 
-def _track_path(db: Session):
-    def get(track_id: int):
-        t = db.get(Track, track_id)
-        return t.path if t else None
-    return get
-
-
 def _send(data, ident, size):
     if not data:
         return Response(status_code=404)
@@ -288,12 +281,24 @@ def _send(data, ident, size):
     return FileResponse(path, media_type="image/webp", headers={"Cache-Control": "public, max-age=604800"})
 
 
+def _resolved(ref: str, db: Session):
+    """The art reference plus the track path it may need, so the session can be released
+    before the (slow) image work: a page of covers would otherwise use up the connections."""
+    path = None
+    if ref.startswith("embedded:"):
+        t = db.get(Track, int(ref.split(":", 1)[1]))
+        path = t.path if t else None
+    db.close()
+    return ref, (lambda _id: path)
+
+
 @router.get("/art/album/{album_id}")
 def album_art(album_id: int, s: int = 300, db: Session = Depends(get_db)):
     a = db.get(Album, album_id)
     if a is None or not a.art:
         return Response(status_code=404)
-    data, ident = art.source_bytes(a.art, _track_path(db))
+    ref, path_of = _resolved(a.art, db)
+    data, ident = art.source_bytes(ref, path_of)
     return _send(data, ident, s)
 
 
@@ -309,5 +314,6 @@ def artist_art(artist_id: int, s: int = 300, db: Session = Depends(get_db)):
                     .order_by(Album.year).limit(1))
     if alb is None:
         return Response(status_code=404)
-    data, ident = art.source_bytes(alb.art, _track_path(db))
+    ref, path_of = _resolved(alb.art, db)
+    data, ident = art.source_bytes(ref, path_of)
     return _send(data, ident, s)
