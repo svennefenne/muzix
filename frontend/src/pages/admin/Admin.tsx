@@ -10,7 +10,7 @@ import type { Job } from "../../types";
 import { SchemePicker } from "../Settings";
 
 interface Root { id: number; path: string; kind: string; name: string; enabled: boolean; upload_target: boolean; excludes: string[]; items: number; exists: boolean; writable: boolean; last_scan: string | null }
-interface Status { version: string; tools: Record<string, boolean>; counts: Record<string, number>; cache_bytes: number; art_bytes: number; data_dir: string; data_free_bytes: number }
+interface Status { version: string; tools: Record<string, boolean>; counts: Record<string, number>; cache_bytes: number | null; art_bytes: number | null; data_dir: string; data_free_bytes: number }
 interface SettingSpec { key: string; type: string; default: unknown; group: string; label: string; help: string; choices: string[]; min: number | null; max: number | null; value: unknown }
 
 const TOOL_INFO: Record<string, string> = {
@@ -87,9 +87,9 @@ function Overview() {
       <section className="panel">
         <div className="panel-head"><div className="h3">Storage</div></div>
         <div className="list">
-          <div className="list-row"><HardDrive size={16} /><div className="grow">Rendered chiptune cache</div><b>{fmtBytes(s.cache_bytes)}</b>
+          <div className="list-row"><HardDrive size={16} /><div className="grow">Rendered chiptune cache</div><b>{s.cache_bytes == null ? "counting…" : fmtBytes(s.cache_bytes)}</b>
             <button className="btn small ghost" onClick={async () => { await api.post("/api/admin/cache/clear?what=render"); st.refetch(); }}>Clear</button></div>
-          <div className="list-row"><HardDrive size={16} /><div className="grow">Cover art cache</div><b>{fmtBytes(s.art_bytes)}</b>
+          <div className="list-row"><HardDrive size={16} /><div className="grow">Cover art cache</div><b>{s.art_bytes == null ? "counting…" : fmtBytes(s.art_bytes)}</b>
             <button className="btn small ghost" onClick={async () => { await api.post("/api/admin/cache/clear?what=art"); st.refetch(); }}>Clear</button></div>
           <div className="list-row"><HardDrive size={16} /><div className="grow">Free space in {s.data_dir}</div><b>{fmtBytes(s.data_free_bytes)}</b></div>
         </div>

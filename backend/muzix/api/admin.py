@@ -1,5 +1,7 @@
 import os
 import shutil
+import threading
+import time
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -237,6 +239,26 @@ def _dir_size(path) -> int:
     return total
 
 
+# Adding up folder sizes can take half a minute on a busy Unraid user share, so the
+# status page never waits for it: sizes are worked out in the background, at most
+# every ten minutes, and the page shows the last known values.
+_sizes = {"at": 0.0, "cache": None, "art": None}
+_sizes_busy = threading.Lock()
+
+
+def _refresh_sizes():
+    try:
+        _sizes.update(cache=_dir_size(env.CACHE_DIR), art=_dir_size(env.ART_DIR), at=time.time())
+    finally:
+        _sizes_busy.release()
+
+
+def _folder_sizes(force=False):
+    if (force or time.time() - _sizes["at"] > 600) and _sizes_busy.acquire(blocking=False):
+        threading.Thread(target=_refresh_sizes, daemon=True, name="folder-sizes").start()
+    return _sizes["cache"], _sizes["art"]
+
+
 @router.get("/status")
 def status(db: Session = Depends(get_db)):
     tools = {name: render.have(name) for name in ("ffmpeg", "ffprobe", "sidplayfp", "fluidsynth", "ymtool", "furnace", "beet")}
@@ -244,14 +266,15 @@ def status(db: Session = Depends(get_db)):
     tools["libopenmpt"] = openmpt.available()
     count = lambda m, *w: db.scalar(select(func.count()).select_from(m).where(*w))
     disk = shutil.disk_usage(env.DATA_DIR)
+    cache_bytes, art_bytes = _folder_sizes()
     return {
         "version": __version__,
         "tools": tools,
         "counts": {"tracks": count(Track, Track.kind == "music"), "vgm": count(Track, Track.kind == "vgm"),
                    "albums": count(Album), "artists": count(Artist), "books": count(Book),
                    "feeds": count(Feed), "users": count(User)},
-        "cache_bytes": _dir_size(env.CACHE_DIR),
-        "art_bytes": _dir_size(env.ART_DIR),
+        "cache_bytes": cache_bytes,       # None until the first background count is done
+        "art_bytes": art_bytes,
         "data_dir": str(env.DATA_DIR),
         "data_free_bytes": disk.free,
     }
@@ -264,4 +287,5 @@ def clear_cache(what: str = "render"):
         raise HTTPException(400, "Unknown cache")
     shutil.rmtree(target, ignore_errors=True)
     target.mkdir(parents=True, exist_ok=True)
+    _folder_sizes(force=True)
     return {"ok": True}
