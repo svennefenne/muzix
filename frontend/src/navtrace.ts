@@ -10,6 +10,11 @@ export function note(what: string) {
   if (trace.length > 200) trace.shift();
 }
 
+function shown() {
+  const h = document.querySelector(".frame-scroll .display, .frame-scroll .h2, .frame-scroll h1");
+  return (h?.textContent || "(no heading)").replace(/\s+/g, " ").trim().slice(0, 40);
+}
+
 function flush(why: string) {
   note(why);
   const mode = matchMedia("(display-mode: standalone)").matches ? "installed app" : "browser tab";
@@ -25,7 +30,12 @@ export function startNavTrace() {
       note(m);
     };
   }
-  addEventListener("popstate", () => note("popstate (back/forward)"));
+  addEventListener("popstate", () => {
+    note("popstate (back/forward)");
+    // what the screen actually shows right after, and a moment later
+    for (const ms of [0, 300, 1000])
+      setTimeout(() => note(`${ms} ms later the page shows "${shown()}"`), ms);
+  });
   addEventListener("pageshow", (e) => note(`pageshow persisted=${e.persisted}`));
   addEventListener("pagehide", () => flush("pagehide"));
   document.addEventListener("fullscreenchange", () => note(`fullscreen ${document.fullscreenElement ? "on" : "off"}`));

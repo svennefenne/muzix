@@ -26,7 +26,9 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      {/* page changes render straight away: as transitions, a back swipe in the installed app
+          could leave the old page up while the address had already gone back */}
+      <BrowserRouter useTransitions={false}>
         <App />
       </BrowserRouter>
     </QueryClientProvider>
