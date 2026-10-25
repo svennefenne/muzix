@@ -577,6 +577,36 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
 .nowplaying { position: fixed; inset: 0; z-index: 50; display: grid; grid-template-rows: auto 1fr auto; background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(30px); animation: fade .25s; }
 .nowplaying-body { display: grid; grid-template-columns: minmax(0, 520px) minmax(0, 1fr); gap: 56px; align-items: center; padding: 20px 60px; min-height: 0; }
 .nowplaying .art { box-shadow: 0 40px 120px #000c; }
+.np-artist-link { text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 4px; transition: text-decoration-color .15s; }
+.np-artist-link:hover { color: var(--text); text-decoration-color: currentColor; }
+
+/* the big cover turns over to the album's songs */
+.np-flip { position: relative; aspect-ratio: 1; perspective: 1800px; }
+.np-flip-inner { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform .6s cubic-bezier(.2, .75, .25, 1); }
+.np-flip.flipped .np-flip-inner { transform: rotateY(180deg); }
+.np-face { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; border-radius: calc(var(--radius) * .7); }
+.np-front { padding: 0; border: 0; background: none; cursor: pointer; }
+.np-front:disabled { cursor: default; }
+.np-front .art { width: 100%; height: 100%; }
+.np-back {
+  transform: rotateY(180deg); display: flex; flex-direction: column; overflow: hidden;
+  background: var(--surface); border: 1px solid var(--border-strong); box-shadow: 0 40px 120px #000c;
+}
+.np-back-head { display: flex; flex-direction: column; gap: 3px; padding: 16px 18px 12px; border-bottom: 1px solid var(--border); }
+.np-back-head b { font: 800 16px/1.2 var(--font-ui); }
+.np-back-head span { font-size: 13px; color: var(--text-dim); }
+.np-back-list { flex: 1; min-height: 0; margin: 0; padding: 6px; list-style: none; overflow-y: auto; overscroll-behavior: contain; }
+.np-back-row {
+  display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; gap: 12px; width: 100%;
+  padding: 10px; border: 0; border-radius: 6px; background: none; color: var(--text); text-align: left; cursor: pointer;
+  font: 600 14px/1.3 var(--font-ui);
+}
+.np-back-row:hover { background: color-mix(in srgb, var(--text) 7%, transparent); }
+.np-back-row:focus-visible { outline-offset: -2px; }
+.np-back-row.on { color: var(--primary); }
+.np-back-row .n { display: flex; justify-content: flex-end; font: 500 12.5px/1 var(--font-mono); color: var(--text-dim); }
+.np-back-row .dur { font: 500 12.5px/1 var(--font-mono); color: var(--text-dim); }
+@media (prefers-reduced-motion: reduce) { .np-flip-inner { transition: none; } }
 .nowplaying canvas.viz { width: 100%; height: 160px; display: block; }
 .np-seek { margin-top: 24px; max-width: 640px; }
 .np-phone { display: none; }
@@ -915,7 +945,7 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
   .nowplaying { grid-template-columns: minmax(0, 1fr); }
   .nowplaying-body { grid-template-columns: minmax(0, 1fr); align-content: start; gap: 20px; padding: 0 22px 24px; overflow-y: auto; overflow-x: hidden; }
   .nowplaying-body > * { min-width: 0; }
-  .nowplaying-body > .art { width: min(100%, 44vh); justify-self: center; }
+  .nowplaying-body > .np-flip { width: min(100%, 44vh); justify-self: center; }
   .np-big-title { font-size: 26px; margin: 6px 0; }
   .nowplaying .lede { font-size: 16px !important; margin-bottom: 8px; }
   .nowplaying canvas.viz { height: 56px; }

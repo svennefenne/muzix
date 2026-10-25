@@ -1,16 +1,16 @@
-import { CastButton, CastNote } from "../components/CastButton";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, Heart, ListMusic, Pause, Play, Plus, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, fmtNumber, fmtTime } from "../api";
-import { queryClient, toggleLike, usePlaylistPicker } from "../actions";
+import { playTracks, queryClient, toggleLike, usePlaylistPicker } from "../actions";
+import { CastButton, CastNote } from "../components/CastButton";
 import { Art, Modal } from "../components/ui";
 import { engine } from "../player/engine";
-import { usePlayer } from "../store/player";
+import { usePlayer, type PlayItem } from "../store/player";
 import { useUi } from "../store/ui";
 import { useActiveTheme } from "../theme/ThemeApplier";
-import type { Home, Playlist } from "../types";
+import type { AlbumDetail, Home, Playlist } from "../types";
 import { SeekBar } from "./PlayerBar";
 import { toggleFullscreen } from "./TopBar";
 
@@ -162,6 +162,62 @@ function PhoneTransport() {
   );
 }
 
+/** The big cover. With a song from an album playing, a tap turns it over to that album's
+ * songs (tap one to play it); a tap anywhere outside turns it back. */
+function FlipCover({ cur }: { cur: PlayItem | null }) {
+  const [flipped, setFlipped] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const albumId = cur?.albumId ?? null;
+  const album = useQuery({
+    queryKey: ["album", albumId], enabled: flipped && !!albumId,
+    queryFn: () => api.get<AlbumDetail>(`/api/albums/${albumId}`),
+  });
+  // another album playing shows its cover again
+  useEffect(() => {
+    setFlipped(false);
+  }, [albumId]);
+  useEffect(() => {
+    if (!flipped) return;
+    const away = (e: PointerEvent) => {
+      if (!box.current?.contains(e.target as Node)) setFlipped(false);
+    };
+    document.addEventListener("pointerdown", away, true);
+    return () => document.removeEventListener("pointerdown", away, true);
+  }, [flipped]);
+  const a = album.data;
+  return (
+    <div ref={box} className={`np-flip ${flipped ? "flipped" : ""}`}>
+      <div className="np-flip-inner">
+        <button className="np-face np-front" disabled={!albumId} tabIndex={flipped ? -1 : 0}
+                aria-label={albumId ? `Show the songs on ${cur?.album || "this album"}` : undefined} onClick={() => setFlipped(true)}>
+          <Art src={cur?.art} name={cur?.album || cur?.title} size={1200} />
+        </button>
+        <div className="np-face np-back" aria-hidden={!flipped}>
+          <div className="np-back-head">
+            <b className="ellipsis">{a?.title || cur?.album}</b>
+            <span className="ellipsis">{[a?.artist, a?.year || null].filter(Boolean).join(" · ")}</span>
+          </div>
+          <ol className="np-back-list">
+            {(a?.tracks || []).map((t, i) => {
+              const on = cur?.key === `track:${t.id}`;
+              return (
+                <li key={t.id}>
+                  <button className={`np-back-row ${on ? "on" : ""}`} tabIndex={flipped ? 0 : -1} aria-current={on || undefined}
+                          onClick={() => playTracks(a!.tracks, i)}>
+                    <span className="n">{on ? <span className="eq"><i /><i /><i /></span> : t.track_no || i + 1}</span>
+                    <span className="ellipsis">{t.title}</span>
+                    <span className="dur">{fmtTime(t.duration)}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function NowPlaying() {
   const { nowPlayingOpen, setNowPlayingOpen } = useUi();
   const cur = usePlayer((s) => (s.index >= 0 ? s.queue[s.index] : null));
@@ -180,13 +236,17 @@ export function NowPlaying() {
         <button className="iconbtn" aria-label="Close" onClick={() => setNowPlayingOpen(false)}><ChevronDown size={18} /></button>
       </div>
       <div className="nowplaying-body">
-        <Art src={cur?.art} name={cur?.album || cur?.title} size={1200} />
+        <FlipCover cur={cur} />
         <div style={{ minWidth: 0 }}>
           {cur ? (
             <>
               <div className="kicker">{[cur.kind === "radio" ? "On air" : cur.system || cur.genre, cur.album].filter(Boolean).join(" · ")}</div>
               <div className="np-big-title">{live || cur.title}</div>
-              <div className="lede" style={{ fontSize: 20 }}>{live ? cur.title : cur.artist}</div>
+              <div className="lede" style={{ fontSize: 20 }}>
+                {live ? cur.title : cur.artistId
+                  ? <Link className="np-artist-link" to={`/artist/${cur.artistId}`} onClick={() => setNowPlayingOpen(false)}>{cur.artist}</Link>
+                  : cur.artist}
+              </div>
               <Visualizer />
               <div className="np-seek"><SeekBar /></div>
               <PhoneTransport />

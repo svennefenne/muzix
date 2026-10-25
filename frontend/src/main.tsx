@@ -10,6 +10,15 @@ import "./styles/base.css";
 import "./styles/skins.css";
 
 reportGlobalErrors();
+keepPhonesUpright();
+
+/** Installed on a phone, Muzix stays upright; tablets turn freely. The manifest asks for it
+ * on phones; this lock takes effect at once where the browser allows it. */
+function keepPhonesUpright() {
+  const o = screen.orientation as ScreenOrientation & { lock?: (o: "portrait") => Promise<void> };
+  if (matchMedia("(display-mode: standalone)").matches && Math.min(screen.width, screen.height) < 600)
+    o?.lock?.("portrait").catch(() => {});
+}
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

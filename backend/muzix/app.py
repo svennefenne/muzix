@@ -56,11 +56,16 @@ def create_app() -> FastAPI:
         return {"ok": True, "version": __version__}
 
     @app.get("/manifest.webmanifest", include_in_schema=False)
-    def manifest():
-        """Makes Muzix installable: a home screen icon that opens without browser bars."""
+    def manifest(request: Request):
+        """Makes Muzix installable: a home screen icon that opens without browser bars. Installed
+        on a phone it stays upright; tablets turn freely (Android tablets' browsers leave "Mobile"
+        out of their user agent)."""
         name = settings.get("site_name") or "Muzix"
         icon = {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png"}
+        ua = request.headers.get("user-agent", "")
+        phone = ("Android" in ua and "Mobile" in ua) or "iPhone" in ua
         return JSONResponse({
+            **({"orientation": "portrait"} if phone else {}),
             "id": "/", "name": name, "short_name": name[:12],
             "description": "Your music, chiptunes, audiobooks, podcasts and radio",
             "start_url": "/", "scope": "/", "display": "standalone",
@@ -73,7 +78,7 @@ def create_app() -> FastAPI:
             "shortcuts": [{"name": label, "url": url, "icons": [icon]} for label, url in (
                 ("Library", "/library"), ("VGM", "/vgm"), ("Audiobooks", "/audiobooks"),
                 ("Podcasts", "/podcasts"), ("Radio", "/radio"))],
-        }, media_type="application/manifest+json", headers={"Cache-Control": "no-cache"})
+        }, media_type="application/manifest+json", headers={"Cache-Control": "no-cache", "Vary": "User-Agent"})
 
     @app.exception_handler(404)
     async def not_found(request: Request, exc):
