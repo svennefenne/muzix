@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { api } from "../api";
 import { castStatus } from "../components/CastButton";
+import { SEARCH_ENGINES } from "../components/StationHistory";
 import { Display, Kicker, Switch } from "../components/ui";
 import { usePlayer } from "../store/player";
 import { useUi } from "../store/ui";
@@ -102,6 +103,20 @@ export default function Settings() {
           <label>Visualizer & reactive backgrounds</label>
           <div className="row-actions"><Switch checked={ui.visualizer} onChange={(v) => ui.setPref("visualizer", v)} label="Visualizer" />
             <span className="dim">Skin backgrounds and the now-playing view move with the music.</span></div>
+        </div>
+        <div className="field">
+          <label>Searching for a song</label>
+          <select className="select" style={{ maxWidth: 360 }} aria-label="Search engine"
+                  value={SEARCH_ENGINES.some(([, u]) => u === ui.searchEngine) ? ui.searchEngine : "custom"}
+                  onChange={(e) => ui.setPref("search_engine", e.target.value === "custom" ? "https://example.com/search?q=%s" : e.target.value)}>
+            {SEARCH_ENGINES.map(([name, url]) => <option key={url} value={url}>{name}</option>)}
+            <option value="custom">Another engine…</option>
+          </select>
+          {!SEARCH_ENGINES.some(([, u]) => u === ui.searchEngine) && (
+            <input className="input" style={{ maxWidth: 360 }} value={ui.searchEngine} aria-label="Search address"
+                   onChange={(e) => ui.setPref("search_engine", e.target.value)} />
+          )}
+          <div className="help">The Web button in a station's history searches here. Muzix can't use your browser's own default engine, so pick it here; for another engine, give its search address with %s where the words go.</div>
         </div>
         <div className="field">
           <label>Cast to speakers</label>

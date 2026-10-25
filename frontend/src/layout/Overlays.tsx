@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, Heart, ListMusic, Pause, Play, Plus, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, X } from "lucide-react";
+import { ChevronDown, Heart, History, ListMusic, Pause, Play, Plus, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, fmtNumber, fmtTime } from "../api";
 import { playTracks, queryClient, toggleLike, usePlaylistPicker } from "../actions";
 import { CastButton, CastNote } from "../components/CastButton";
+import { useStationHistory } from "../components/StationHistory";
 import { Art, Modal } from "../components/ui";
 import { engine } from "../player/engine";
 import { usePlayer, type PlayItem } from "../store/player";
@@ -125,6 +126,7 @@ function Visualizer() {
 
 /** Spotify-style controls for the full-screen player on phones. */
 function PhoneTransport() {
+  const showHistory = useStationHistory((s) => s.show);
   const s = usePlayer();
   const cur = s.current();
   const setQueueOpen = useUi((u) => u.setQueueOpen);
@@ -152,6 +154,10 @@ function PhoneTransport() {
           <button className={`ctl ${isLiked ? "on" : ""}`} aria-label="Like"
                   onClick={async () => setLiked({ ...liked, [cur.key]: await toggleLike("track", Number(cur.id), isLiked) })}>
             <Heart size={22} fill={isLiked ? "currentColor" : "none"} />
+          </button>
+        ) : cur?.kind === "radio" ? (
+          <button className="ctl" aria-label={`Played on ${cur.title}`} onClick={() => showHistory(String(cur.id), cur.title)}>
+            <History size={22} />
           </button>
         ) : <span />}
         <CastButton size={22} />
@@ -219,6 +225,7 @@ function FlipCover({ cur }: { cur: PlayItem | null }) {
 }
 
 export function NowPlaying() {
+  const showHistory = useStationHistory((s) => s.show);
   const { nowPlayingOpen, setNowPlayingOpen } = useUi();
   const cur = usePlayer((s) => (s.index >= 0 ? s.queue[s.index] : null));
   const live = usePlayer((s) => s.liveTitle);
@@ -254,6 +261,9 @@ export function NowPlaying() {
                 <button className="btn" onClick={() => engine.prev()}>Previous</button>
                 <button className="btn accent" onClick={() => engine.toggle()}>Play / pause</button>
                 <button className="btn" onClick={() => engine.next()}>Next</button>
+                {cur.kind === "radio" && (
+                  <button className="btn" onClick={() => showHistory(String(cur.id), cur.title)}><History size={15} /> Played here</button>
+                )}
                 <CastButton className="btn" size={15} label />
               </div>
               <div className="np-desktop-actions"><CastNote /></div>

@@ -277,6 +277,17 @@ class Station(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class RadioPlay(Base):
+    """A song a station played while this user listened (the title the stream announced)."""
+    __tablename__ = "radio_plays"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    station: Mapped[str] = mapped_column(String(2048))   # radio-browser id, or the stream address
+    title: Mapped[str] = mapped_column(String(512))
+    played_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (Index("ix_radio_plays_user_station", "user_id", "station", "played_at"),)
+
+
 # ---------------------------------------------------------------- spotify & jobs
 
 class SpotifyLink(Base):

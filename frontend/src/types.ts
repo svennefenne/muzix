@@ -17,6 +17,7 @@ export interface Prefs {
   library_view?: LibraryView;
   sidebar_collapsed?: boolean;           // the library panel as an icon strip
   np_panel?: boolean;                    // the "Now playing" panel on the right
+  search_engine?: string;                // web search for a song: a URL with %s for the words
   browse?: Record<string, BrowsePref>;   // sort and display mode per page
 }
 

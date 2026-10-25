@@ -1,11 +1,12 @@
 /** The right-hand "Now playing" panel of the desktop layout (Spotify's Now Playing view):
  * the cover, what's playing, the skin it put on, and what comes next. */
 
-import { Heart, ListMusic, Maximize2, Shuffle, X } from "lucide-react";
+import { Heart, History, ListMusic, Maximize2, Shuffle, X } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { fmtTime } from "../api";
 import { playRandom, toggleLike } from "../actions";
+import { useStationHistory } from "../components/StationHistory";
 import { Art } from "../components/ui";
 import { engine } from "../player/engine";
 import { usePlayer } from "../store/player";
@@ -18,6 +19,7 @@ export function NowPanel() {
   const index = usePlayer((s) => s.index);
   const live = usePlayer((s) => s.liveTitle);
   const theme = useActiveTheme();
+  const showHistory = useStationHistory((s) => s.show);
   const [liked, setLiked] = useState<Record<string, boolean>>({});
   const cur = index >= 0 ? queue[index] : null;
   const next = queue.slice(index + 1, index + 6);
@@ -53,6 +55,11 @@ export function NowPanel() {
             <p className="np-skin"><b>{theme.skin.name}</b> skin · {theme.skin.blurb}</p>
           )}
           {cur.albumId && <Link className="np-albumlink" to={`/album/${cur.albumId}`}>Go to the album</Link>}
+          {cur.kind === "radio" && (
+            <button className="np-link np-albumlink" onClick={() => showHistory(String(cur.id), cur.title)}>
+              <History size={14} /> Played on this station
+            </button>
+          )}
 
           <section className="np-next">
             <div className="np-next-head">

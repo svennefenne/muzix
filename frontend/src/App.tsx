@@ -4,6 +4,7 @@ import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { api } from "./api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Logo } from "./components/Logo";
+import { StationHistory } from "./components/StationHistory";
 import { Display, Kicker, Loading, MenuHost } from "./components/ui";
 import { MiniPlayer, TabBar } from "./layout/Mobile";
 import { NowPanel } from "./layout/NowPanel";
@@ -114,6 +115,7 @@ function Shell() {
       <QueueDrawer />
       <NowPlaying />
       <PlaylistPicker />
+      <StationHistory />
       <MenuHost />
       <Toast />
     </div>

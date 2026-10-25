@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { Heart, Play, Radio as RadioIcon } from "lucide-react";
+import { Heart, History, Play, Radio as RadioIcon, Tags, X } from "lucide-react";
 import { useState } from "react";
 import { api } from "../api";
 import { queryClient } from "../actions";
+import { useStationHistory } from "../components/StationHistory";
 import { Art, Display, Empty, Kicker, Loading, Section } from "../components/ui";
 import { engine } from "../player/engine";
 import { fromStation, usePlayer } from "../store/player";
@@ -11,6 +12,7 @@ import type { Station } from "../types";
 
 function StationGrid({ list, saved }: { list: Station[]; saved: Station[] }) {
   const notify = useUi((s) => s.notify);
+  const showHistory = useStationHistory((s) => s.show);
   const cur = usePlayer((s) => (s.index >= 0 ? s.queue[s.index]?.key : null));
   const savedBy = new Map(saved.map((s) => [s.uuid || s.url, s]));
   const toggle = async (s: Station) => {
@@ -39,6 +41,8 @@ function StationGrid({ list, saved }: { list: Station[]; saved: Station[] }) {
               <button className="mini" aria-label="Play" onClick={(e) => { e.stopPropagation(); engine.play([fromStation(s)]); }}><Play size={14} fill="currentColor" /></button>
               <button className={`mini ${isSaved ? "liked" : ""}`} aria-label={isSaved ? "Remove" : "Save"}
                       onClick={(e) => { e.stopPropagation(); toggle(s); }}><Heart size={14} fill={isSaved ? "currentColor" : "none"} /></button>
+              <button className="mini" aria-label={`Played on ${s.name}`} title="Played while you listened"
+                      onClick={(e) => { e.stopPropagation(); showHistory(s.uuid || s.url, s.name); }}><History size={14} /></button>
             </div>
           </div>
         );
@@ -51,6 +55,8 @@ export default function Radio() {
   const [term, setTerm] = useState("");
   const [tag, setTag] = useState("");
   const [query, setQuery] = useState<{ q?: string; tag?: string } | null>(null);
+  const [tagsOpen, setTagsOpen] = useState(false);
+  const [tagFind, setTagFind] = useState("");
   const saved = useQuery({ queryKey: ["stations"], queryFn: () => api.get<Station[]>("/api/radio/stations") });
   const top = useQuery({ queryKey: ["radio-top"], queryFn: () => api.get<{ top: Station[]; local?: Station[] }>("/api/radio/top"), staleTime: 600_000 });
   const tags = useQuery({ queryKey: ["radio-tags"], queryFn: () => api.get<{ name: string; stations: number }[]>("/api/radio/tags"), staleTime: 3600_000 });
@@ -64,14 +70,28 @@ export default function Radio() {
         <input className="input" style={{ maxWidth: 380 }} placeholder="Station name" value={term}
                onChange={(e) => setTerm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && setQuery({ q: term, tag })} />
         <button className="btn" onClick={() => setQuery({ q: term, tag })}><RadioIcon size={15} /> Search</button>
-        {tag && <button className="btn ghost" onClick={() => { setTag(""); setQuery(term ? { q: term } : null); }}>Tag: {tag} ✕</button>}
+        {/* the tags wait behind a button, so the stations come first */}
+        <button className={`btn ${tag ? "accent" : ""}`} aria-expanded={tagsOpen} onClick={() => setTagsOpen(!tagsOpen)}>
+          <Tags size={15} /> {tag ? `Tag: ${tag}` : "Tags"}
+        </button>
+        {tag && (
+          <button className="btn ghost" onClick={() => { setTag(""); setQuery(term ? { q: term } : null); }}>
+            <X size={14} /> Clear tag
+          </button>
+        )}
       </div>
-      {tags.data && (
-        <div className="tags" style={{ marginBottom: 10 }}>
-          {tags.data.slice(0, 36).map((t) => (
-            <button key={t.name} className="tag" style={{ cursor: "pointer", background: tag === t.name ? "var(--primary)" : "transparent", color: tag === t.name ? "var(--on-primary)" : undefined }}
-                    onClick={() => { setTag(t.name); setQuery({ q: term, tag: t.name }); }}>{t.name}</button>
-          ))}
+      {tagsOpen && tags.data && (
+        <div className="tag-panel">
+          <input className="input" placeholder="Find a tag" value={tagFind} aria-label="Find a tag"
+                 onChange={(e) => setTagFind(e.target.value)} />
+          <div className="tags">
+            {tags.data.filter((t) => t.name.toLowerCase().includes(tagFind.trim().toLowerCase())).map((t) => (
+              <button key={t.name} className={`tag tag-pick ${tag === t.name ? "on" : ""}`} aria-pressed={tag === t.name}
+                      onClick={() => { setTag(t.name); setQuery({ q: term, tag: t.name }); setTagsOpen(false); setTagFind(""); }}>
+                {t.name} <small>{t.stations}</small>
+              </button>
+            ))}
+          </div>
         </div>
       )}
       {query && <Section kicker="Search" title={[query.q, query.tag].filter(Boolean).join(" · ") || "Stations"}>

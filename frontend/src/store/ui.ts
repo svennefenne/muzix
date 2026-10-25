@@ -18,6 +18,7 @@ interface UiState {
   browse: Record<string, BrowsePref>;
   sidebarCollapsed: boolean;
   npPanel: boolean;
+  searchEngine: string;
   queueOpen: boolean;
   nowPlayingOpen: boolean;
   toast: { text: string; kind: "info" | "error"; id: number } | null;
@@ -73,6 +74,7 @@ export const useUi = create<UiState>((set, get) => ({
   browse: initial.browse || {},
   sidebarCollapsed: initial.sidebar_collapsed ?? false,
   npPanel: initial.np_panel ?? true,
+  searchEngine: initial.search_engine || "https://www.google.com/search?q=%s",
   queueOpen: false,
   nowPlayingOpen: false,
   toast: null,
@@ -90,13 +92,14 @@ export const useUi = create<UiState>((set, get) => ({
       browse: p.browse ?? get().browse,
       sidebarCollapsed: p.sidebar_collapsed ?? get().sidebarCollapsed,
       npPanel: p.np_panel ?? get().npPanel,
+      searchEngine: p.search_engine ?? get().searchEngine,
     });
   },
   setPref: (key, value) => {
     const map: Partial<Record<keyof Prefs, keyof UiState>> = {
       scheme: "scheme", mode: "mode", genre_skins: "genreSkins", skin_lock: "skinLock",
       visualizer: "visualizer", quality: "quality", library_view: "libraryView",
-      sidebar_collapsed: "sidebarCollapsed", np_panel: "npPanel",
+      sidebar_collapsed: "sidebarCollapsed", np_panel: "npPanel", search_engine: "searchEngine",
     };
     const field = map[key];
     if (field) set({ [field]: value } as Partial<UiState>);
