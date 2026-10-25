@@ -16,6 +16,8 @@ interface UiState {
   quality: NonNullable<Prefs["quality"]>;
   libraryView: LibraryView;
   browse: Record<string, BrowsePref>;
+  sidebarCollapsed: boolean;
+  npPanel: boolean;
   queueOpen: boolean;
   nowPlayingOpen: boolean;
   toast: { text: string; kind: "info" | "error"; id: number } | null;
@@ -69,6 +71,8 @@ export const useUi = create<UiState>((set, get) => ({
   quality: initial.quality || "original",
   libraryView: initial.library_view || "albums",
   browse: initial.browse || {},
+  sidebarCollapsed: initial.sidebar_collapsed ?? false,
+  npPanel: initial.np_panel ?? true,
   queueOpen: false,
   nowPlayingOpen: false,
   toast: null,
@@ -84,12 +88,15 @@ export const useUi = create<UiState>((set, get) => ({
       quality: p.quality ?? get().quality,
       libraryView: p.library_view ?? get().libraryView,
       browse: p.browse ?? get().browse,
+      sidebarCollapsed: p.sidebar_collapsed ?? get().sidebarCollapsed,
+      npPanel: p.np_panel ?? get().npPanel,
     });
   },
   setPref: (key, value) => {
     const map: Partial<Record<keyof Prefs, keyof UiState>> = {
       scheme: "scheme", mode: "mode", genre_skins: "genreSkins", skin_lock: "skinLock",
       visualizer: "visualizer", quality: "quality", library_view: "libraryView",
+      sidebar_collapsed: "sidebarCollapsed", np_panel: "npPanel",
     };
     const field = map[key];
     if (field) set({ [field]: value } as Partial<UiState>);

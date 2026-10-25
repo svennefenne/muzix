@@ -2,12 +2,13 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.orm import Session
 
 from .. import serial
 from ..db import get_db
-from ..models import Album, Artist, Like, Playlist, PlaylistItem, Track, User
+from ..models import (Album, Artist, Book, BookProgress, Feed, Like, Playlist, PlaylistItem, Station,
+                      Subscription, Track, User)
 from ..security import check_password, current_user, hash_password
 from .library import tracks_json
 
@@ -183,3 +184,59 @@ def reorder(pid: int, body: Reorder, db: Session = Depends(get_db), user: User =
                    .values(position=pos))
     db.commit()
     return {"ok": True}
+
+
+# ---------------------------------------------------------------- the "Your library" panel
+
+def _recent_albums(db: Session, user: User, kind: str, limit: int) -> list[Album]:
+    ids = [r[0] for r in db.execute(text(
+        "SELECT t.album_id, max(p.played_at) m FROM plays p JOIN tracks t ON t.id = p.track_id "
+        "WHERE p.user_id = :u AND t.kind = :k AND t.album_id IS NOT NULL "
+        "GROUP BY t.album_id ORDER BY m DESC LIMIT :l"), {"u": user.id, "k": kind, "l": limit})]
+    rows = {a.id: a for a in db.scalars(select(Album).where(Album.id.in_(ids)))}
+    return [rows[i] for i in ids if i in rows]
+
+
+def _album_item(a: Album, liked: set[int]) -> dict:
+    return {"id": a.id, "title": a.title, "artist": a.artist_name, "year": a.year, "kind": a.kind,
+            "art": serial.art_url("album", a.id) if a.art else None, "liked": a.id in liked}
+
+
+@router.get("/sidebar")
+def sidebar(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Everything the library panel lists, in one request: what you saved, follow,
+    listen to or played lately."""
+    liked_albums = set(db.scalars(select(Like.item_id).where(Like.user_id == user.id, Like.item_type == "album")))
+    liked_ids = liked_albums
+    albums = list(db.scalars(select(Album).where(Album.id.in_(liked_albums), Album.kind == "music")
+                             .order_by(func.lower(Album.artist_name), Album.year)))
+    seen = {a.id for a in albums}
+    albums += [a for a in _recent_albums(db, user, "music", 30) if a.id not in seen]
+    games = _recent_albums(db, user, "vgm", 24)
+    if len(games) < 8:
+        have = {a.id for a in games}
+        games += [a for a in db.scalars(select(Album).where(Album.kind == "vgm").order_by(Album.added_at.desc()).limit(12))
+                  if a.id not in have][: 8 - len(games)]
+    liked_artists = set(db.scalars(select(Like.item_id).where(Like.user_id == user.id, Like.item_type == "artist")))
+    artists = db.scalars(select(Artist).where(Artist.id.in_(liked_artists)).order_by(func.lower(Artist.name)))
+    books = db.execute(select(Book, BookProgress).join(BookProgress, BookProgress.book_id == Book.id)
+                       .where(BookProgress.user_id == user.id, BookProgress.position > 0,
+                              BookProgress.finished.is_(False))
+                       .order_by(BookProgress.updated_at.desc()).limit(20)).all()
+    feeds = db.scalars(select(Feed).join(Subscription, Subscription.feed_id == Feed.id)
+                       .where(Subscription.user_id == user.id).order_by(func.lower(Feed.title)))
+    stations = db.scalars(select(Station).where(Station.user_id == user.id).order_by(func.lower(Station.name)))
+    lists = db.scalars(select(Playlist).where(Playlist.user_id == user.id).order_by(Playlist.updated_at.desc()))
+    from .radio import saved_json
+    return {
+        "liked_songs": db.scalar(select(func.count()).select_from(Like)
+                                 .where(Like.user_id == user.id, Like.item_type == "track")),
+        "playlists": [{"id": p.id, "name": p.name, "art": (playlist_json(db, p)["art"] or [None])[0]} for p in lists],
+        "albums": [_album_item(a, liked_ids) for a in albums],
+        "games": [_album_item(a, liked_ids) for a in games],
+        "artists": [{"id": a.id, "name": a.name, "art": serial.art_url("artist", a.id)} for a in artists],
+        "books": [{"id": b.id, "title": b.title, "author": b.author, "art": f"/api/art/book/{b.id}" if b.art else None,
+                   "progress": round(p.position / b.duration, 3) if b.duration else 0} for b, p in books],
+        "podcasts": [{"id": f.id, "title": f.title or f.url, "author": f.author, "art": f.image or None} for f in feeds],
+        "stations": [saved_json(st) for st in stations],
+    }

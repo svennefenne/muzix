@@ -45,8 +45,9 @@ you choose from 98 colour schemes, each with a light and a dark version.
   with MusicBrainz (beets), gets cover art and a main genre, and is filed as
   `Genre/Artist/Artist - Year - Album/1. Artist - Album - Title (Year).ext`.
   Chiptunes go to your VGM folder.
-- Deck Force-style layout: tabs in the top bar (Q / E switch tabs), a framed
-  page, player and status line below. Works on phones too.
+- Spotify-style layout in the Deck Force look: your library on the left, the
+  page in a frame, what's playing on the right (toggle it from the player bar),
+  player and status line below. Works on phones too.
 
 ## Install on Unraid
 
@@ -107,7 +108,7 @@ requests as "CORS request did not succeed".
 | ← / → | seek 5 s (Shift: 30 s) |
 | N / P | next / previous |
 | M | mute |
-| Q / E | previous / next tab |
+| Q / E | previous / next section |
 | / | search |
 
 ## Development

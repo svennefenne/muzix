@@ -15,6 +15,8 @@ export interface Prefs {
   visualizer?: boolean;
   speed?: number;              // audiobooks / podcasts
   library_view?: LibraryView;
+  sidebar_collapsed?: boolean;           // the library panel as an icon strip
+  np_panel?: boolean;                    // the "Now playing" panel on the right
   browse?: Record<string, BrowsePref>;   // sort and display mode per page
 }
 
@@ -104,6 +106,18 @@ export interface Genre {
   tracks: number;
   artists?: number;
   art: string[];
+}
+
+export interface SidebarAlbum { id: number; title: string; artist: string; year: number; kind: "music" | "vgm"; art: string | null; liked: boolean }
+export interface SidebarData {
+  liked_songs: number;
+  playlists: { id: number; name: string; art: string | null }[];
+  albums: SidebarAlbum[];
+  games: SidebarAlbum[];
+  artists: { id: number; name: string; art: string | null }[];
+  books: { id: number; title: string; author: string; art: string | null; progress: number }[];
+  podcasts: { id: number; title: string; author: string; art: string | null }[];
+  stations: Station[];
 }
 
 export interface BookHit { id: number; title: string; author: string; series: string; art: string | null }

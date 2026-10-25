@@ -1,4 +1,4 @@
-import { Heart, ListMusic, Maximize2, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Volume1, Volume2, VolumeX } from "lucide-react";
+import { Heart, ListMusic, Maximize2, PanelRight, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Volume1, Volume2, VolumeX } from "lucide-react";
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { fmtTime } from "../api";
@@ -46,7 +46,7 @@ function qualityLabel(cur: ReturnType<typeof usePlayer.getState>["queue"][number
 export function PlayerBar() {
   const s = usePlayer();
   const cur = s.current();
-  const { queueOpen, setQueueOpen, setNowPlayingOpen } = useUi();
+  const { queueOpen, setQueueOpen, setNowPlayingOpen, npPanel, setPref } = useUi();
   const [liked, setLiked] = useState<Record<string, boolean>>({});
   const isLiked = cur ? liked[cur.key] ?? !!cur.liked : false;
   const VolIcon = s.muted || s.volume === 0 ? VolumeX : s.volume < 0.5 ? Volume1 : Volume2;
@@ -109,6 +109,10 @@ export function PlayerBar() {
             {[0.75, 1, 1.15, 1.25, 1.5, 1.75, 2].map((v) => <option key={v} value={v}>{v}×</option>)}
           </select>
         )}
+        <button className={`ctl np-toggle ${npPanel ? "on" : ""}`} aria-label="Now playing panel" aria-pressed={npPanel}
+                title={npPanel ? "Hide the now playing panel" : "Show the now playing panel"} onClick={() => setPref("np_panel", !npPanel)}>
+          <PanelRight size={18} />
+        </button>
         <button className={`ctl ${queueOpen ? "on" : ""}`} aria-label="Queue" onClick={() => setQueueOpen(!queueOpen)}>
           <ListMusic size={18} />
         </button>

@@ -5,6 +5,8 @@ import { api } from "./api";
 import { Logo } from "./components/Logo";
 import { Display, Kicker, Loading, MenuHost } from "./components/ui";
 import { MiniPlayer, TabBar } from "./layout/Mobile";
+import { NowPanel } from "./layout/NowPanel";
+import { Sidebar } from "./layout/Sidebar";
 import { Footer, NowPlaying, PlaylistPicker, QueueDrawer, Toast } from "./layout/Overlays";
 import { PlayerBar } from "./layout/PlayerBar";
 import { focusQuickSearch } from "./layout/QuickSearch";
@@ -54,6 +56,7 @@ function Shortcuts() {
 
 function Shell() {
   const loc = useLocation();
+  const npPanel = useUi((s) => s.npPanel);
   const scroll = useRef<HTMLDivElement>(null);
   useEffect(() => scroll.current?.scrollTo({ top: 0 }), [loc.pathname]);
   return (
@@ -61,6 +64,8 @@ function Shell() {
       <ThemeApplier />
       <Shortcuts />
       <TopBar />
+      <div className={`workspace ${npPanel ? "np-open" : ""}`}>
+      <Sidebar />
       <main className="frame">
         <div className="frame-scroll" ref={scroll}>
           <Suspense fallback={<div className="page"><Loading /></div>}>
@@ -94,6 +99,8 @@ function Shell() {
           </Suspense>
         </div>
       </main>
+      {npPanel && <NowPanel />}
+      </div>
       <PlayerBar />
       <Footer />
       <MiniPlayer />

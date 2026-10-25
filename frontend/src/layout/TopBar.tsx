@@ -1,13 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
-import { Activity, Monitor, Moon, Search, Settings, Shield, Sun, SunMoon, LogOut } from "lucide-react";
+import { Activity, House, Monitor, Moon, Search, Settings, Shield, Sun, SunMoon, LogOut } from "lucide-react";
 import { useEffect, useMemo } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { api, fmtNumber } from "../api";
+import { api } from "../api";
 import { Logo } from "../components/Logo";
 import { useMenu } from "../components/ui";
 import { usePlayer } from "../store/player";
 import { useUi } from "../store/ui";
-import type { Home } from "../types";
 import { QuickSearch } from "./QuickSearch";
 
 export const TABS = [
@@ -64,11 +62,11 @@ export function TopBar() {
   const { user, mode, setPref, setNowPlayingOpen, siteName } = useUi();
   const nav = useNavigate();
   const loc = useLocation();
+  const atHome = loc.pathname === "/";
   const showMenu = useMenu((s) => s.show);
-  const home = useQuery({ queryKey: ["home"], queryFn: () => api.get<Home>("/api/home"), enabled: !!user });
   const tabs = user?.is_admin ? [...TABS, { to: "/admin", label: "Admin" }] : TABS;
 
-  // Q / E step through the tabs, like a console's shoulder buttons
+  // Q / E step through the sections, like a console's shoulder buttons
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey || isTyping(e)) return;
@@ -94,20 +92,16 @@ export function TopBar() {
 
   return (
     <header className="topbar">
-      <NavLink to="/" className="logo" aria-label="Home">
-        <Logo name={siteName || "Muzix"} />
-      </NavLink>
-      <span className="keychip" title="Previous tab (Q)">Q</span>
-      <nav className="tabs" aria-label="Main">
-        {tabs.map((t) => (
-          <NavLink key={t.to} to={t.to} end={"end" in t ? t.end : false} className={({ isActive }) => `tab ${isActive ? "active" : ""}`}>
-            {t.label}
-          </NavLink>
-        ))}
-      </nav>
-      <span className="keychip" title="Next tab (E)">E</span>
-      <Ticker />
-      <QuickSearch />
+      <div className="topbar-left">
+        <NavLink to="/" className="logo" aria-label="Home">
+          <Logo name={siteName || "Muzix"} />
+        </NavLink>
+        <Ticker />
+      </div>
+      <div className="topbar-center">
+        <NavLink to="/" end className={`iconbtn homebtn ${atHome ? "on" : ""}`} title="Home" aria-label="Home"><House size={17} /></NavLink>
+        <QuickSearch />
+      </div>
       <div className="topbar-right">
         <button className="iconbtn hide-sm" title="Now playing" onClick={() => setNowPlayingOpen(true)}>
           <LevelRing /><Activity size={15} />
@@ -117,11 +111,6 @@ export function TopBar() {
           <ModeIcon size={15} />
         </button>
         <button className="iconbtn hide-sm trim-2" title="Fullscreen (F11)" onClick={toggleFullscreen}><Monitor size={15} /></button>
-        {home.data && (
-          <button className="pill hide-sm trim-1" onClick={() => nav("/library")} title="Your library">
-            <span className="dot" /> Library <span className="count">{fmtNumber(home.data.stats.tracks + home.data.stats.vgm_tracks)}</span>
-          </button>
-        )}
         <button className="pill userpill" onClick={userMenu} aria-label={`Account: ${user?.username}`}>
           <span className="avatar">{(user?.username || "?")[0].toUpperCase()}</span>
           <span className="uname">{user?.username}</span>

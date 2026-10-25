@@ -213,8 +213,8 @@
 }
 
 /* light skins keep the frame readable */
-[data-skin="punk"] .frame, [data-skin="classical"] .frame, [data-skin="country"] .frame,
-[data-skin="pop"] .frame, [data-skin="comedy"] .frame, [data-skin="kids"] .frame {
-  background: color-mix(in srgb, var(--bg) 78%, transparent);
+:root[data-skin="punk"], :root[data-skin="classical"], :root[data-skin="country"],
+:root[data-skin="pop"], :root[data-skin="comedy"], :root[data-skin="kids"] {
+  --frame-bg: color-mix(in srgb, var(--bg) 78%, transparent);
 }
 [data-skin="classical"] .lede, [data-skin="classical"] body { font-size: 17px; }

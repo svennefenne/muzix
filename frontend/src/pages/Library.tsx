@@ -203,12 +203,15 @@ export function Liked() {
 
 export function Playlists() {
   const q = useQuery({ queryKey: ["playlists"], queryFn: () => api.get<Playlist[]>("/api/playlists") });
-  const [creating, setCreating] = useState(false);
+  // "+" in the library panel lands here with { create: true }
+  const loc = useLocation();
+  const [creating, setCreating] = useState(() => Boolean((loc.state as { create?: boolean } | null)?.create));
   const [name, setName] = useState("");
   const nav = useNavigate();
   const create = async () => {
     const p = await api.post<Playlist>("/api/playlists", { name: name.trim() || "New playlist" });
     queryClient.invalidateQueries({ queryKey: ["playlists"] });
+    queryClient.invalidateQueries({ queryKey: ["sidebar"] });
     nav(`/playlist/${p.id}`);
   };
   return (

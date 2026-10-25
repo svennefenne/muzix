@@ -50,8 +50,8 @@ export default function Home() {
 
   return (
     <div className="page">
-      <nav className="home-chips phone-only" aria-label="Sections">
-        <button className="hchip on" onClick={() => playRandom({ kind: "music" })}><Shuffle size={14} /> Shuffle</button>
+      <nav className="home-chips" aria-label="Sections">
+        <button className="hchip on phone-only" onClick={() => playRandom({ kind: "music" })}><Shuffle size={14} /> Shuffle</button>
         {[["/library", "Music"], ["/vgm", "VGM"], ["/audiobooks", "Audiobooks"], ["/podcasts", "Podcasts"], ["/radio", "Radio"], ["/spotify", "Spotify"]]
           .map(([to, label]) => <Link key={to} to={to} className="hchip">{label}</Link>)}
       </nav>
@@ -78,7 +78,7 @@ export default function Home() {
         )}
       </div>
 
-      <div className="quick-grid phone-only">
+      <div className="quick-grid">
         {quick.map((a) => (
           <Link key={a.id} to={`/album/${a.id}`} className="quick">
             <Art src={a.art} name={a.title} size={160} />
