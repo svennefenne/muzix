@@ -10,7 +10,7 @@ from .. import art
 from ..db import get_db
 from ..meta import tags
 from ..models import Book, BookPart, BookProgress, User
-from ..security import current_user
+from ..security import current_user, stream_user
 from .library import _send
 from .stream import stream_file
 
@@ -70,7 +70,7 @@ def book(book_id: int, db: Session = Depends(get_db), user: User = Depends(curre
 
 @router.get("/{book_id}/parts/{position}/stream")
 def part_stream(book_id: int, position: int, q: str = "original", t: float = 0.0,
-                db: Session = Depends(get_db), user: User = Depends(current_user)):
+                db: Session = Depends(get_db), user: User = Depends(stream_user)):
     p = db.scalar(select(BookPart).where(BookPart.book_id == book_id, BookPart.position == position))
     if p is None:
         raise HTTPException(404, "No such part")

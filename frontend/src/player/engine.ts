@@ -5,6 +5,7 @@
 import { api } from "../api";
 import { usePlayer, type PlayItem } from "../store/player";
 import { useUi } from "../store/ui";
+import { caster } from "./cast";
 import { spotify } from "./spotify";
 
 class Engine {
@@ -36,6 +37,31 @@ class Engine {
     });
     this.applyVolume();
     spotify.onEnded = () => this.next(true);
+    // on a Cast speaker the speaker plays; we keep the books (plays, resume points, radio titles)
+    caster.attach({
+      onStart: () => {
+        this.el.pause();
+        spotify.pause();
+      },
+      onItem: (key) => {
+        const item = usePlayer.getState().queue.find((i) => i.key === key);
+        window.clearInterval(this.radioTimer);
+        this.saveProgress();
+        this.scrobbled = false;
+        this.loadedKey = key;
+        usePlayer.getState().set({ liveTitle: "", error: "" });
+        if (item) {
+          this.updateMediaSession(item);
+          if (item.kind === "radio") this.pollRadio(item);
+        }
+      },
+      onTime: (pos) => this.progress(pos),
+      onEnd: (pos) => {
+        usePlayer.getState().set({ playing: false, buffering: false });
+        if (usePlayer.getState().current()) this.load(false, pos);
+      },
+    });
+    caster.load();
     usePlayer.subscribe((s, prev) => {
       if (s.volume !== prev.volume || s.muted !== prev.muted) this.applyVolume();
       if (s.speed !== prev.speed) el.playbackRate = s.speed;
@@ -48,6 +74,7 @@ class Engine {
   play(items: PlayItem[], start = 0) {
     if (!items.length) return;
     usePlayer.getState().set({ queue: items, index: start });
+    if (caster.active) return caster.loadQueue(start, items[start]?.resume ?? 0);
     this.load(true);
   }
 
@@ -58,10 +85,12 @@ class Engine {
     q.splice(next ? s.index + 1 : q.length, 0, ...items);
     s.set({ queue: q });
     useUi.getState().notify(next ? `Playing next: ${items[0].title}` : `Added ${items.length > 1 ? items.length + " songs" : items[0].title} to the queue`);
+    if (caster.active) caster.syncUpcoming();
   }
 
   jump(index: number) {
     usePlayer.getState().set({ index });
+    if (caster.active) return caster.jump(index);
     this.load(true);
   }
 
@@ -71,6 +100,7 @@ class Engine {
     let idx = s.index;
     if (index < idx) idx--;
     s.set({ queue: q, index: Math.min(idx, q.length - 1) });
+    if (caster.active) return index === s.index ? caster.loadQueue(Math.min(idx, q.length - 1), 0, s.playing) : caster.syncUpcoming();
     if (index === s.index) this.load(s.playing);
   }
 
@@ -84,9 +114,11 @@ class Engine {
     else if (from < idx && to >= idx) idx--;
     else if (from > idx && to <= idx) idx++;
     s.set({ queue: q, index: idx });
+    if (caster.active) caster.syncUpcoming();
   }
 
   clear() {
+    if (caster.active) caster.stopMedia();
     this.stop();
     usePlayer.getState().set({ queue: [], index: -1, position: 0, duration: 0 });
   }
@@ -94,6 +126,7 @@ class Engine {
   toggle() {
     const cur = usePlayer.getState().current();
     if (!cur) return;
+    if (caster.active) return caster.toggle();
     if (cur.kind === "spotify") return spotify.toggle();
     this.ensureAudioGraph();
     if (this.el.paused) {
@@ -105,6 +138,7 @@ class Engine {
   next(auto = false) {
     const s = usePlayer.getState();
     if (!s.queue.length) return;
+    if (caster.active) return caster.next();
     if (auto && s.repeat === "one") return this.seek(0, true);
     let idx = s.index + 1;
     if (s.shuffle && s.queue.length > 1) {
@@ -124,6 +158,7 @@ class Engine {
   }
 
   prev() {
+    if (caster.active) return caster.prev();
     const s = usePlayer.getState();
     if (s.position > 4 || s.index <= 0) return this.seek(0);
     s.set({ index: s.index - 1 });
@@ -195,6 +230,7 @@ class Engine {
     if (item.kind === "spotify") return spotify.seek(t);
     if (item.kind === "radio") return;
     t = Math.max(0, item.duration ? Math.min(t, item.duration - 0.5) : t);
+    if (caster.active) return caster.seek(t);
     const local = t - this.offset;
     const el = this.el;
     const canSeek = el.seekable.length > 0 && local >= 0 && el.seekable.end(el.seekable.length - 1) >= local - 1
@@ -213,28 +249,38 @@ class Engine {
   // ------------------------------------------------------------ events
 
   private onTime() {
+    if (caster.active) return;
+    const item = usePlayer.getState().current();
+    if (!item || item.kind === "spotify") return;
+    const pos = this.offset + this.el.currentTime;
+    this.progress(pos, isFinite(this.el.duration) ? this.el.duration : 0);
+    // chip renders are cut to length; a stream that runs over the planned time stops here
+    if (item.kind === "track" && item.duration && pos > item.duration + 1.5) this.onEnded();
+  }
+
+  /** Bookkeeping as playback moves on, here or on a Cast speaker: plays, resume points, prefetch. */
+  private progress(pos: number, mediaDuration = 0) {
     const s = usePlayer.getState();
     const item = s.current();
     if (!item || item.kind === "spotify") return;
-    const pos = this.offset + this.el.currentTime;
     s.set({ position: pos });
-    const dur = item.duration || (isFinite(this.el.duration) ? this.el.duration : 0);
+    const dur = item.duration || mediaDuration;
     if (!this.scrobbled && item.kind === "track" && (pos > 30 || (dur && pos > dur / 2))) {
       this.scrobbled = true;
       api.post("/api/plays", { track_id: item.id }).catch(() => {});
     }
     if (Date.now() - this.lastSave > 10000) this.saveProgress();
     if (dur && dur - pos < 30) this.prefetchNext();
-    // chip renders are cut to length; a stream that runs over the planned time stops here
-    if (item.kind === "track" && item.duration && pos > item.duration + 1.5) this.onEnded();
   }
 
   private onEnded() {
+    if (caster.active) return;
     this.saveProgress(true);
     this.next(true);
   }
 
   private onError() {
+    if (caster.active) return;
     const item = usePlayer.getState().current();
     if (!item || !this.el.getAttribute("src")) return;
     const msg = item.kind === "radio" ? "The station isn't answering" : `Couldn't play ${item.title}`;
@@ -323,6 +369,7 @@ class Engine {
 
   private applyVolume() {
     const s = usePlayer.getState();
+    if (caster.active) return caster.setVolume(s.muted ? 0 : s.volume, s.muted);
     this.el.volume = s.muted ? 0 : s.volume ** 1.6;   // perceptual curve
     spotify.setVolume(s.muted ? 0 : s.volume);
   }

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from .. import formats, render, settings
 from ..db import get_db
 from ..models import PlayEvent, Track, User
-from ..security import current_user
+from ..security import cast_token, current_user, stream_user
 
 router = APIRouter(prefix="/api", tags=["stream"])
 
@@ -20,11 +20,15 @@ def stream_file(path: str, fmt: str, codec: str, sample_rate: int, bit_depth: in
     """Response for an audio file on disk (shared with audiobooks and podcasts)."""
     if not os.path.exists(path):
         raise HTTPException(404, "The file is gone; rescan the library")
-    max_rate = int(settings.get("max_sample_rate"))
+    cast = q == "cast"   # for a Cast speaker: lossless FLAC whenever it can't take the file as it is
+    max_rate = render.CAST_MAX_RATE if cast else int(settings.get("max_sample_rate"))
     if not render.needs_transcode(fmt, codec, sample_rate, q) and not t:
         return FileResponse(path, media_type=formats.browser_mime(fmt),
                             headers={"Cache-Control": "private, max-age=3600"})
-    target = settings.get("transcode_format") if q in ("original", "lossless", "auto") else "opus"
+    if cast:
+        target, bit_depth = "flac", min(bit_depth or 16, 24)
+    else:
+        target = settings.get("transcode_format") if q in ("original", "lossless", "auto") else "opus"
     if q == "low":
         bitrate = 96
     else:
@@ -57,7 +61,7 @@ def _pipe(cmd, mime):
 
 @router.get("/stream/{track_id}")
 def stream(track_id: int, q: str = "original", t: float = 0.0, prefetch: bool = False,
-           db: Session = Depends(get_db), user: User = Depends(current_user)):
+           db: Session = Depends(get_db), user: User = Depends(stream_user)):
     """Audio for a track. With t > 0 the response starts at that offset."""
     tr = db.get(Track, track_id)
     if tr is None:
@@ -108,6 +112,13 @@ def _render_quietly(*args):
 
 class Played(BaseModel):
     track_id: int
+
+
+@router.get("/cast/token")
+def cast_link(user: User = Depends(current_user)):
+    """A signature for a Cast speaker's audio links (valid for a day)."""
+    token, expires = cast_token(user)
+    return {"token": token, "expires": expires}
 
 
 @router.post("/plays")

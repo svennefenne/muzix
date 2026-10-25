@@ -1,3 +1,4 @@
+import type { CastState } from "../player/cast";
 import { create } from "zustand";
 import type { Book, Episode, Station, Track } from "../types";
 
@@ -20,6 +21,7 @@ export interface PlayItem {
   albumId?: number | null;
   artistId?: number | null;
   format?: string;
+  castNative?: boolean;       // a Cast speaker can take the file as it is (and seek in it)
   liked?: boolean;
   resume?: number;            // start here (seconds)
   bookId?: number;
@@ -33,7 +35,7 @@ export function fromTrack(t: Track): PlayItem {
     key: `track:${t.id}`, kind: "track", id: t.id, title: t.title,
     artist: t.artist || t.albumartist, album: t.album, art: t.art, duration: t.duration,
     src: t.stream, genre: t.genre, tags: t.tags, system: t.system, trackKind: t.kind,
-    albumId: t.album_id, artistId: t.artist_id, format: t.format, liked: t.liked,
+    albumId: t.album_id, artistId: t.artist_id, format: t.format, castNative: t.cast_native, liked: t.liked,
   };
 }
 
@@ -82,6 +84,8 @@ interface PlayerState {
   speed: number;
   liveTitle: string;          // radio "now playing"
   error: string;
+  castState: CastState;       // Google Cast speakers nearby / connected
+  castDevice: string;         // the connected speaker's name
   current: () => PlayItem | null;
   set: (p: Partial<PlayerState>) => void;
 }
@@ -108,6 +112,8 @@ export const usePlayer = create<PlayerState>((set, get) => ({
   speed: 1,
   liveTitle: "",
   error: "",
+  castState: "unavailable",
+  castDevice: "",
   current: () => {
     const { queue, index } = get();
     return index >= 0 && index < queue.length ? queue[index] : null;

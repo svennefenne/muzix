@@ -5,6 +5,7 @@ import {
   BookOpen, Gamepad2, House, Library, LogOut, MoreHorizontal, Music2, Pause, Play, Podcast, Radio, Search, Settings, Shield, SkipForward, X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { CastNote } from "../components/CastButton";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { Art } from "../components/ui";
@@ -26,6 +27,7 @@ export function MiniPlayer() {
   const live = usePlayer((s) => s.liveTitle);
   const error = usePlayer((s) => s.error);
   const frac = usePlayer((s) => (s.duration ? Math.min(1, s.position / s.duration) : 0));
+  const castOn = usePlayer((s) => s.castState === "connected");
   const hasNext = usePlayer((s) => s.index < s.queue.length - 1 || s.repeat === "all" || (s.shuffle && s.queue.length > 1));
   const open = useUi((s) => s.setNowPlayingOpen);
   if (!cur) return <div className="miniplayer-slot" />;
@@ -36,7 +38,8 @@ export function MiniPlayer() {
         <Art src={cur.art} name={cur.album || cur.title} size={96} />
         <div className="mp-text">
           <div className="mp-title ellipsis">{live || cur.title}</div>
-          <div className={`mp-sub ellipsis ${error ? "error-text" : ""}`}>{error || (live ? cur.title : cur.artist)}</div>
+          {castOn && !error ? <CastNote className="mp-sub cast-note" />
+            : <div className={`mp-sub ellipsis ${error ? "error-text" : ""}`}>{error || (live ? cur.title : cur.artist)}</div>}
         </div>
         <button className="mp-play" aria-label={playing ? "Pause" : "Play"}
                 onClick={(e) => { e.stopPropagation(); engine.toggle(); }}>

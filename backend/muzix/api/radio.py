@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from .. import __version__, settings
 from ..db import get_db
 from ..models import Station, User
-from ..security import current_user
+from ..security import current_user, stream_user
 from .proxy import check_url
 
 router = APIRouter(prefix="/api/radio", tags=["radio"])
@@ -156,7 +156,7 @@ def resolve_playlist(url: str, client: httpx.Client) -> str:
 
 
 @router.get("/play")
-def play(url: str, uuid: str = "", user: User = Depends(current_user)):
+def play(url: str, uuid: str = "", user: User = Depends(stream_user)):
     check_url(url)
     if uuid:
         try:

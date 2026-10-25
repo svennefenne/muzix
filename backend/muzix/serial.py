@@ -1,6 +1,6 @@
 """JSON shapes of library objects, shared by the API routes."""
 
-from . import formats
+from . import formats, render
 from .lengths import display_duration
 from .models import Album, Artist, Track
 
@@ -19,6 +19,8 @@ def track(t: Track, liked: set[int] | None = None, artist_tags: dict | None = No
         "duration": display_duration(t), "format": ext, "kind": t.kind,
         "family": formats.family(ext), "subsong": t.subsong,
         "sample_rate": t.sample_rate, "bit_depth": t.bit_depth, "bitrate": t.bitrate,
+        # a Cast speaker gets the file itself (and seeks in it) rather than a converted stream
+        "cast_native": not render.needs_transcode(ext, t.codec, t.sample_rate, "cast"),
         "system": (extra.get("system") or formats.system_for(ext)) if t.kind == "vgm" else "",
         "art": art_url("album", t.album_id),
         "stream": f"/api/stream/{t.id}",

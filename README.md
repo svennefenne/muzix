@@ -39,6 +39,9 @@ you choose from 98 colour schemes, each with a light and a dark version.
   saved stations, live "now playing" titles.
 - **Spotify**: your playlists, saved albums and liked songs in Muzix style,
   played inside Muzix with the Web Playback SDK (Premium), genre skins included.
+- **Cast to speakers**: send the queue to a Chromecast Audio, Nest or Home
+  speaker or a speaker group (audio only). The speaker streams straight from
+  Muzix, lossless where it can, and keeps going when your phone sleeps.
 - **Admin page**: library folders with a folder browser, scans and jobs with
   logs, users, and every setting with an explanation.
 - **Upload area**: drop files or whole folders in the browser. Music is matched
@@ -99,6 +102,17 @@ them (AdGuard: turn off protection for the site; Privacy Badger: disable it for
 the site). The browser also needs DRM: in Firefox, *Settings → General → Play
 DRM-controlled content*. The browser console (F12) shows blocked Spotify
 requests as "CORS request did not succeed".
+
+### Casting to speakers
+
+The Cast button appears in the player when a Google Cast speaker is on your
+network. It works from Chrome on Android, Windows, macOS, Linux and ChromeOS,
+on Muzix's HTTPS address (not on iPhone or iPad, and not over plain http).
+The speaker fetches the audio itself with links signed for a day, so it has to
+reach that address too: a local DNS entry pointing it at your server keeps the
+audio inside your network. Files the speaker plays as they are (MP3, AAC,
+FLAC up to 96 kHz, Ogg, WAV) are sent unchanged; everything else, chiptunes
+included, arrives as FLAC. Spotify songs are skipped on the speaker.
 
 ## Keyboard
 

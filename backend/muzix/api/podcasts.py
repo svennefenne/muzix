@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from .. import jobs, podcasts, settings
 from ..db import get_db
 from ..models import Episode, EpisodeProgress, Feed, Subscription, User
-from ..security import current_user
+from ..security import current_user, stream_user
 from .proxy import check_url, relay
 
 router = APIRouter(prefix="/api/podcasts", tags=["podcasts"])
@@ -143,7 +143,7 @@ def refresh(user: User = Depends(current_user)):
 
 @router.get("/episodes/{episode_id}/stream")
 async def episode_stream(episode_id: int, request: Request, db: Session = Depends(get_db),
-                         user: User = Depends(current_user)):
+                         user: User = Depends(stream_user)):
     e = db.get(Episode, episode_id)
     if e is None:
         raise HTTPException(404, "No such episode")

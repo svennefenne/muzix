@@ -12,6 +12,7 @@ def muzix_db():
     from muzix import db, env
     env.DATA_DIR = env.Path(d)
     env.DB_PATH = env.DATA_DIR / "muzix.db"
+    env.SECRET_FILE = env.DATA_DIR / "secret.key"
     for name in ("CACHE_DIR", "ART_DIR", "PODCAST_DIR", "UPLOAD_DIR", "BEETS_DIR"):
         setattr(env, name, env.DATA_DIR / name.lower().replace("_dir", ""))
     db.init(f"sqlite:///{env.DB_PATH}")

@@ -1,3 +1,4 @@
+import { CastButton, CastNote } from "../components/CastButton";
 import { Heart, ListMusic, Maximize2, PanelRight, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Volume1, Volume2, VolumeX } from "lucide-react";
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -66,6 +67,7 @@ export function PlayerBar() {
                 {s.liveTitle ? cur.title : cur.artistId ? <Link to={`/artist/${cur.artistId}`}>{cur.artist}</Link> : cur.artist}
                 {s.error && <span className="error-text"> · {s.error}</span>}
               </div>
+              <CastNote />
             </div>
             {cur.kind === "track" && (
               <button className={`mini ${isLiked ? "liked" : ""}`} aria-label="Like"
@@ -109,6 +111,7 @@ export function PlayerBar() {
             {[0.75, 1, 1.15, 1.25, 1.5, 1.75, 2].map((v) => <option key={v} value={v}>{v}×</option>)}
           </select>
         )}
+        <CastButton />
         <button className={`ctl np-toggle ${npPanel ? "on" : ""}`} aria-label="Now playing panel" aria-pressed={npPanel}
                 title={npPanel ? "Hide the now playing panel" : "Show the now playing panel"} onClick={() => setPref("np_panel", !npPanel)}>
           <PanelRight size={18} />

@@ -51,6 +51,7 @@ export interface Track {
   family: string | null;
   subsong: number;
   sample_rate: number;
+  cast_native?: boolean;
   bit_depth: number;
   bitrate: number;
   system: string;

@@ -1,6 +1,10 @@
 """Accounts and cookie sessions."""
 
+import base64
+import hashlib
+import hmac
 import secrets
+import time
 from datetime import datetime, timedelta, timezone
 
 from argon2 import PasswordHasher
@@ -9,6 +13,7 @@ from fastapi import Depends, HTTPException, Request, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from . import env
 from .db import get_db
 from .models import AuthSession, User
 
@@ -71,6 +76,41 @@ def current_user(user: User | None = Depends(optional_user)) -> User:
     if user is None:
         raise HTTPException(401, "Not signed in")
     return user
+
+
+# ---------------------------------------------------------------- cast links
+# A Cast speaker fetches the audio itself and has no cookie, so its links carry a signature
+# (?ct=user.expiry.mac) that only the audio streams accept.
+
+CAST_HOURS = 24
+
+
+def _cast_mac(uid: int, exp: int) -> str:
+    mac = hmac.new(env.secret_key(), f"cast:{uid}:{exp}".encode(), hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(mac[:18]).decode()
+
+
+def cast_token(user: User) -> tuple[str, int]:
+    exp = int(time.time()) + CAST_HOURS * 3600
+    return f"{user.id}.{exp}.{_cast_mac(user.id, exp)}", exp
+
+
+def stream_user(request: Request, db: Session = Depends(get_db),
+                user: User | None = Depends(optional_user)) -> User:
+    """The signed-in user, or for an audio stream, the user a valid cast link was made for."""
+    if user is not None:
+        return user
+    try:
+        uid, exp, mac = request.query_params.get("ct", "").split(".")
+        uid, exp = int(uid), int(exp)
+    except ValueError:
+        raise HTTPException(401, "Not signed in")
+    if exp < time.time() or not hmac.compare_digest(mac, _cast_mac(uid, exp)):
+        raise HTTPException(401, "This cast link has expired")
+    owner = db.get(User, uid)
+    if owner is None:
+        raise HTTPException(401, "Not signed in")
+    return owner
 
 
 def admin_user(user: User = Depends(current_user)) -> User:

@@ -1,3 +1,4 @@
+import { CastButton, CastNote } from "../components/CastButton";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, Heart, ListMusic, Pause, Play, Plus, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -22,6 +23,8 @@ export function Footer() {
     queryFn: () => api.get<{ type: string; status: string; title: string; progress: number }[]>("/api/admin/jobs", { limit: 5 }),
   });
   const running = (jobs.data || []).filter((j) => j.status === "running");
+  const castOn = usePlayer((s) => s.castState === "connected");
+  const castDevice = usePlayer((s) => s.castDevice);
   const lastScan = (jobs.data || []).find((j) => j.type === "scan");
   return (
     <footer className="footer">
@@ -31,6 +34,7 @@ export function Footer() {
       {home.data && <><span className="sep hide-sm">·</span><span className="hide-sm">{fmtNumber(home.data.stats.tracks)} tracks · {fmtNumber(home.data.stats.vgm_tracks)} chiptunes · {home.data.stats.hours} h</span></>}
       <span className="sep">·</span>
       <span>{theme.skin ? `Skin: ${theme.skin.name}` : "Skin: off"}</span>
+      {castOn && <><span className="sep">·</span><span>Cast: {castDevice}</span></>}
       {running[0] && <><span className="sep">·</span><Link to="/admin/jobs">{running[0].title} {Math.round(running[0].progress * 100)}%</Link></>}
       {!running[0] && lastScan?.status === "failed" && <><span className="sep">·</span><Link to="/admin/jobs" className="error-text">Last scan failed</Link></>}
       <div className="right">
@@ -150,8 +154,10 @@ function PhoneTransport() {
             <Heart size={22} fill={isLiked ? "currentColor" : "none"} />
           </button>
         ) : <span />}
+        <CastButton size={22} />
         <button className="ctl" aria-label="Queue" onClick={() => setQueueOpen(true)}><ListMusic size={22} /></button>
       </div>
+      <CastNote className="cast-note np-castnote" />
     </div>
   );
 }
@@ -188,7 +194,9 @@ export function NowPlaying() {
                 <button className="btn" onClick={() => engine.prev()}>Previous</button>
                 <button className="btn accent" onClick={() => engine.toggle()}>Play / pause</button>
                 <button className="btn" onClick={() => engine.next()}>Next</button>
+                <CastButton className="btn" size={15} label />
               </div>
+              <div className="np-desktop-actions"><CastNote /></div>
             </>
           ) : <div className="lede">Nothing is playing.</div>}
         </div>

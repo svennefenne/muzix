@@ -264,12 +264,19 @@ def transcode_args(path: str, offset: float, target: str, out_rate: int, bit_dep
     return cmd, "audio/mpeg"
 
 
+# what Google's Cast speakers (Chromecast Audio, Nest and Home speakers) play as they are
+CAST_NATIVE = {"mp3", "flac", "ogg", "oga", "opus", "m4a", "m4b", "aac", "wav"}
+CAST_MAX_RATE = 96000   # FLAC up to 96 kHz / 24-bit
+
+
 def needs_transcode(ext: str, codec: str, sample_rate: int, quality: str) -> bool:
     fam = formats.family(ext)
     if fam in formats.RENDERED:
         return False
     if fam == "decode" or codec == "alac":
         return True
+    if quality == "cast":
+        return ext not in CAST_NATIVE or bool(sample_rate and sample_rate > CAST_MAX_RATE)
     if quality in ("high", "low") and ext not in ("mp3", "ogg", "opus", "m4a", "aac", "m4b"):
         return True
     return bool(sample_rate and sample_rate > int(settings.get("max_sample_rate")))
