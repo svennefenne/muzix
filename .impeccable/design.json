@@ -1,0 +1,699 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-25T10:02:52+00:00",
+  "title": "Design System: Muzix",
+  "extensions": {
+    "colorMeta": {
+      "midnight-navy": {
+        "role": "neutral",
+        "displayName": "Midnight Navy",
+        "cssVariable": "--bg",
+        "canonical": "#0a1020",
+        "oklch": "oklch(17.6% 0.035 267.3)",
+        "tonalRamp": [
+          "#090b0f",
+          "#21252d",
+          "#3c424f",
+          "#596173",
+          "#7a8296",
+          "#9ea5b5",
+          "#c4c9d4",
+          "#eceef5"
+        ]
+      },
+      "deep-navy": {
+        "role": "neutral",
+        "displayName": "Deep Navy",
+        "cssVariable": "--bg-deep",
+        "canonical": "#060a15",
+        "oklch": "oklch(14.6% 0.025 266.1)",
+        "tonalRamp": [
+          "#0a0b0e",
+          "#22252b",
+          "#3e424c",
+          "#5b616f",
+          "#7c8290",
+          "#a0a5b0",
+          "#c5c9d1",
+          "#eceef3"
+        ]
+      },
+      "navy-panel": {
+        "role": "neutral",
+        "displayName": "Navy Panel",
+        "cssVariable": "--surface",
+        "canonical": "#121b2e",
+        "oklch": "oklch(22.4% 0.040 264.2)",
+        "tonalRamp": [
+          "#090b10",
+          "#20252f",
+          "#3b4251",
+          "#576176",
+          "#788398",
+          "#9ca5b7",
+          "#c3c9d6",
+          "#ebeff6"
+        ]
+      },
+      "navy-panel-raised": {
+        "role": "neutral",
+        "displayName": "Navy Panel Raised",
+        "cssVariable": "--surface-2",
+        "canonical": "#1f2738",
+        "oklch": "oklch(27.3% 0.034 264.8)",
+        "tonalRamp": [
+          "#090b0f",
+          "#21252d",
+          "#3c424f",
+          "#596173",
+          "#798295",
+          "#9ea5b4",
+          "#c4c9d4",
+          "#ebeef5"
+        ]
+      },
+      "navy-panel-high": {
+        "role": "neutral",
+        "displayName": "Navy Panel High",
+        "cssVariable": "--surface-3",
+        "canonical": "#2d3341",
+        "oklch": "oklch(32.1% 0.026 266.8)",
+        "tonalRamp": [
+          "#0a0b0e",
+          "#22252b",
+          "#3e424c",
+          "#5b616f",
+          "#7c8291",
+          "#a0a5b1",
+          "#c5c9d2",
+          "#eceef3"
+        ]
+      },
+      "bone": {
+        "role": "neutral",
+        "displayName": "Bone",
+        "cssVariable": "--text",
+        "canonical": "#f1e7d0",
+        "oklch": "oklch(93.0% 0.032 87.3)",
+        "tonalRamp": [
+          "#0d0b07",
+          "#28251d",
+          "#474135",
+          "#68604f",
+          "#8a826f",
+          "#aba496",
+          "#cdc9be",
+          "#f1eee8"
+        ]
+      },
+      "bone-dim": {
+        "role": "neutral",
+        "displayName": "Bone Dim",
+        "cssVariable": "--text-dim",
+        "canonical": "#aca79b",
+        "oklch": "oklch(72.9% 0.018 88.0)",
+        "tonalRamp": [
+          "#0c0b09",
+          "#272520",
+          "#45423b",
+          "#656157",
+          "#868278",
+          "#a8a59c",
+          "#cbc9c3",
+          "#f0eeeb"
+        ]
+      },
+      "bone-faint": {
+        "role": "neutral",
+        "displayName": "Bone Faint",
+        "cssVariable": "--text-faint",
+        "canonical": "#87847f",
+        "oklch": "oklch(61.4% 0.008 80.7)",
+        "tonalRamp": [
+          "#0c0b0a",
+          "#262523",
+          "#43423f",
+          "#63615d",
+          "#85827d",
+          "#a7a5a1",
+          "#cac9c6",
+          "#efeeed"
+        ]
+      },
+      "marigold": {
+        "role": "primary",
+        "displayName": "Marigold",
+        "cssVariable": "--primary",
+        "canonical": "#f2a93b",
+        "oklch": "oklch(78.7% 0.147 73.0)",
+        "tonalRamp": [
+          "#150800",
+          "#391e00",
+          "#613700",
+          "#8d5200",
+          "#b17300",
+          "#cc9b5a",
+          "#e6c396",
+          "#ffebd2"
+        ]
+      },
+      "on-marigold": {
+        "role": "primary",
+        "displayName": "On Marigold",
+        "cssVariable": "--on-primary",
+        "canonical": "#0b0b0f",
+        "oklch": "oklch(15.2% 0.009 285.3)",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#252527",
+          "#414245",
+          "#616165",
+          "#828287",
+          "#a4a4a9",
+          "#c9c9cc",
+          "#eeeef0"
+        ]
+      },
+      "vermilion": {
+        "role": "secondary",
+        "displayName": "Vermilion",
+        "cssVariable": "--secondary",
+        "canonical": "#e4572e",
+        "oklch": "oklch(63.7% 0.184 36.5)",
+        "tonalRamp": [
+          "#1c0300",
+          "#460e01",
+          "#761f02",
+          "#aa3003",
+          "#d25632",
+          "#e8876b",
+          "#fdb5a1",
+          "#ffe4d7"
+        ]
+      },
+      "on-vermilion": {
+        "role": "secondary",
+        "displayName": "On Vermilion",
+        "cssVariable": "--on-secondary",
+        "canonical": "#0b0b0f",
+        "oklch": "oklch(15.2% 0.009 285.3)",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#252527",
+          "#414245",
+          "#616165",
+          "#828287",
+          "#a4a4a9",
+          "#c9c9cc",
+          "#eeeef0"
+        ]
+      },
+      "coral-red": {
+        "role": "tertiary",
+        "displayName": "Coral Red",
+        "cssVariable": "--error",
+        "canonical": "#ef5350",
+        "oklch": "oklch(65.4% 0.193 25.1)",
+        "tonalRamp": [
+          "#1c0202",
+          "#480a0b",
+          "#79171a",
+          "#ae2529",
+          "#d64e4a",
+          "#ed827a",
+          "#ffb2ab",
+          "#ffe2dd"
+        ]
+      },
+      "saffron": {
+        "role": "tertiary",
+        "displayName": "Saffron",
+        "cssVariable": "--warning",
+        "canonical": "#f2c14e",
+        "oklch": "oklch(83.4% 0.141 85.4)",
+        "tonalRamp": [
+          "#120900",
+          "#342100",
+          "#593c00",
+          "#815900",
+          "#a47b00",
+          "#c1a15a",
+          "#ddc797",
+          "#faedd2"
+        ]
+      },
+      "jade": {
+        "role": "tertiary",
+        "displayName": "Jade",
+        "cssVariable": "--success",
+        "canonical": "#4fb286",
+        "oklch": "oklch(69.2% 0.115 161.9)",
+        "tonalRamp": [
+          "#010f07",
+          "#032d1d",
+          "#094f35",
+          "#11734f",
+          "#3f956f",
+          "#77b596",
+          "#aad5be",
+          "#ddf5e8"
+        ]
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "cssVariable": "--border",
+        "canonical": "#1c263b",
+        "oklch": "oklch(27.0% 0.042 264.3)",
+        "tonalRamp": [
+          "#090b10",
+          "#20252f",
+          "#3a4252",
+          "#576177",
+          "#77839a",
+          "#9ca5b8",
+          "#c3c9d7",
+          "#ebeff6"
+        ]
+      },
+      "hairline-strong": {
+        "role": "neutral",
+        "displayName": "Hairline Strong",
+        "cssVariable": "--border-strong",
+        "canonical": "#29344d",
+        "oklch": "oklch(32.7% 0.047 265.7)",
+        "tonalRamp": [
+          "#090b11",
+          "#202530",
+          "#3a4254",
+          "#56617a",
+          "#76829c",
+          "#9ba5ba",
+          "#c2c9d8",
+          "#eaeef7"
+        ]
+      },
+      "frame-line": {
+        "role": "neutral",
+        "displayName": "Frame Line",
+        "cssVariable": "--frame",
+        "canonical": "#212a41",
+        "oklch": "oklch(28.8% 0.044 267.3)",
+        "tonalRamp": [
+          "#090b10",
+          "#202530",
+          "#3b4253",
+          "#576178",
+          "#78829b",
+          "#9ca5b9",
+          "#c3c9d8",
+          "#ebeef7"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "cssVariable": "--bg (light scheme)",
+        "canonical": "#f6efe1",
+        "oklch": "oklch(95.4% 0.020 84.6)",
+        "tonalRamp": [
+          "#0c0b09",
+          "#272520",
+          "#45423a",
+          "#666156",
+          "#878276",
+          "#a9a49c",
+          "#ccc9c2",
+          "#f0eeea"
+        ]
+      },
+      "paper-white": {
+        "role": "neutral",
+        "displayName": "Paper White",
+        "cssVariable": "--surface (light scheme)",
+        "canonical": "#fffaf0",
+        "oklch": "oklch(98.6% 0.014 84.6)",
+        "tonalRamp": [
+          "#0c0b09",
+          "#272521",
+          "#44423c",
+          "#656159",
+          "#86827a",
+          "#a8a59e",
+          "#cbc9c4",
+          "#f0eeec"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "cssVariable": "--text (light scheme)",
+        "canonical": "#1a2238",
+        "oklch": "oklch(25.6% 0.043 268.1)",
+        "tonalRamp": [
+          "#090b10",
+          "#21252f",
+          "#3b4252",
+          "#586178",
+          "#78829a",
+          "#9da5b8",
+          "#c3c9d7",
+          "#ebeef7"
+        ]
+      },
+      "marigold-deep": {
+        "role": "primary",
+        "displayName": "Marigold Deep",
+        "cssVariable": "--primary (light scheme)",
+        "canonical": "#c9781b",
+        "oklch": "oklch(64.7% 0.140 62.5)",
+        "tonalRamp": [
+          "#160700",
+          "#3b1c00",
+          "#653400",
+          "#924d00",
+          "#b66f22",
+          "#d09764",
+          "#e9c09d",
+          "#ffead5"
+        ]
+      },
+      "vermilion-deep": {
+        "role": "secondary",
+        "displayName": "Vermilion Deep",
+        "cssVariable": "--secondary (light scheme)",
+        "canonical": "#c8431f",
+        "oklch": "oklch(56.7% 0.176 35.4)",
+        "tonalRamp": [
+          "#1b0301",
+          "#451003",
+          "#74210a",
+          "#a73413",
+          "#cf583a",
+          "#e68870",
+          "#fbb6a4",
+          "#ffe4d9"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Page titles; two lines, Bone then Marigold. Font swapped per genre skin; 34px on phones."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Section titles; 21px on phones."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Panel and card titles."
+      },
+      "panel-title": {
+        "displayName": "Panel title",
+        "purpose": "Dock headings: Your library, the album in the now playing panel."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Running text; ledes 16px Bone Dim, max 560px."
+      },
+      "button": {
+        "displayName": "Button label",
+        "purpose": "Every button label, uppercase."
+      },
+      "chip": {
+        "displayName": "Chip label",
+        "purpose": "Filter chips, uppercase."
+      },
+      "label": {
+        "displayName": "Kicker",
+        "purpose": "Mono label above page and section titles only, uppercase, segments split by a dimmed dot."
+      },
+      "status": {
+        "displayName": "Status",
+        "purpose": "Footer status line, tile kickers, captions, uppercase."
+      }
+    },
+    "shadows": [
+      {
+        "name": "sleeve",
+        "value": "0 6px 18px #0005",
+        "purpose": "Every cover in grids and rows."
+      },
+      {
+        "name": "hero-sleeve",
+        "value": "0 20px 60px #000a",
+        "purpose": "The tilted featured cover on Home; album page cover uses 0 18px 50px #000b."
+      },
+      {
+        "name": "panel-sleeve",
+        "value": "0 16px 40px #0009",
+        "purpose": "The cover in the now playing panel."
+      },
+      {
+        "name": "popover",
+        "value": "0 20px 50px #000c",
+        "purpose": "Menus; search results use 0 24px 60px #000a."
+      },
+      {
+        "name": "drawer",
+        "value": "0 30px 80px #000c",
+        "purpose": "The queue drawer."
+      },
+      {
+        "name": "modal",
+        "value": "0 40px 100px #000d",
+        "purpose": "Modals."
+      },
+      {
+        "name": "frame-line",
+        "value": "inset 0 0 0 1px color-mix(in srgb, var(--bg) 60%, transparent)",
+        "purpose": "Inner edge of the frame and docks."
+      }
+    ],
+    "motion": [
+      {
+        "name": "theme-fade",
+        "value": "background-color .7s ease, color .7s ease, border-color .7s ease",
+        "purpose": "The whole app crossfades when the skin or colour scheme changes."
+      },
+      {
+        "name": "control",
+        "value": ".15s",
+        "purpose": "Hover colour and border changes on buttons, chips, rows."
+      },
+      {
+        "name": "press",
+        "value": "transform .1s; translateY(1px) for buttons, scale(.94) for icon buttons",
+        "purpose": "Press feedback."
+      },
+      {
+        "name": "tile-lift",
+        "value": "transform .2s; translateY(-2px)",
+        "purpose": "Bento tile hover."
+      },
+      {
+        "name": "drawer-slide",
+        "value": ".2s ease; from opacity 0 and translateX(16px)",
+        "purpose": "Queue drawer entrance."
+      },
+      {
+        "name": "sheet-rise",
+        "value": ".22s ease; from translateY(48px)",
+        "purpose": "Phone bottom sheet."
+      },
+      {
+        "name": "eq",
+        "value": "1s ease-in-out infinite",
+        "purpose": "The three-bar equaliser on the playing row; pauses with playback."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "trim",
+        "value": "1500px",
+        "purpose": "Fullscreen button hides."
+      },
+      {
+        "name": "docks-narrow",
+        "value": "1440px",
+        "purpose": "Library 272px, now playing 300px."
+      },
+      {
+        "name": "ticker",
+        "value": "1280px",
+        "purpose": "Ticker hides."
+      },
+      {
+        "name": "now-playing",
+        "value": "1180px",
+        "purpose": "Now playing panel hides."
+      },
+      {
+        "name": "library-fold",
+        "value": "1100px",
+        "purpose": "Library folds to a 72px strip of covers."
+      },
+      {
+        "name": "phone",
+        "value": "860px",
+        "purpose": "Phone layout: no frame, tab bar, mini player."
+      },
+      {
+        "name": "container: quick-tiles",
+        "value": "900px (frame width)",
+        "purpose": "Quick tiles four to two columns."
+      },
+      {
+        "name": "container: bento",
+        "value": "820px (frame width)",
+        "purpose": "Bento to two columns."
+      },
+      {
+        "name": "container: hero",
+        "value": "700px (frame width)",
+        "purpose": "Hero drops its featured cover."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "The default control: small, outlined, quiet until hovered.",
+      "html": "<button class=\"ds-btn\">Latest: Blazing Telecasters</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 38px; padding: 0 16px; border-radius: 6px; font: 800 12px/1 var(--font-ui, 'Saira', system-ui, sans-serif); letter-spacing: .1em; text-transform: uppercase; cursor: pointer; white-space: nowrap; transition: border-color .15s, color .15s, transform .1s, filter .15s; border: 1px solid var(--border-strong, #29344d); background: color-mix(in srgb, var(--surface, #121b2e) 85%, transparent); color: var(--text, #f1e7d0); } .ds-btn:hover { border-color: var(--primary, #f2a93b); color: var(--primary, #f2a93b); } .ds-btn:active { transform: translateY(1px); } .ds-btn:focus-visible { outline: 2px solid var(--primary, #f2a93b); outline-offset: 2px; }"
+    },
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one main action on a view, in Vermilion.",
+      "html": "<button class=\"ds-btn-primary\">Shuffle everything</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 38px; padding: 0 16px; border-radius: 6px; font: 800 12px/1 var(--font-ui, 'Saira', system-ui, sans-serif); letter-spacing: .1em; text-transform: uppercase; cursor: pointer; white-space: nowrap; transition: border-color .15s, color .15s, transform .1s, filter .15s; border: 1px solid var(--secondary, #e4572e); background: var(--secondary, #e4572e); color: var(--on-secondary, #0b0b0f); } .ds-btn-primary:hover { filter: brightness(1.1); } .ds-btn-primary:active { transform: translateY(1px); } .ds-btn-primary:focus-visible { outline: 2px solid var(--primary, #f2a93b); outline-offset: 2px; }"
+    },
+    {
+      "name": "Accent Button",
+      "kind": "button",
+      "refersTo": "button-accent",
+      "description": "Play on album pages, in Marigold.",
+      "html": "<button class=\"ds-btn-accent\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><polygon points=\"6 3 20 12 6 21 6 3\" fill=\"currentColor\"/></svg> Play</button>",
+      "css": ".ds-btn-accent { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 38px; padding: 0 16px; border-radius: 6px; font: 800 12px/1 var(--font-ui, 'Saira', system-ui, sans-serif); letter-spacing: .1em; text-transform: uppercase; cursor: pointer; white-space: nowrap; transition: border-color .15s, color .15s, transform .1s, filter .15s; border: 1px solid var(--primary, #f2a93b); background: var(--primary, #f2a93b); color: var(--on-primary, #0b0b0f); } .ds-btn-accent:hover { filter: brightness(1.08); } .ds-btn-accent:active { transform: translateY(1px); } .ds-btn-accent:focus-visible { outline: 2px solid var(--primary, #f2a93b); outline-offset: 2px; }"
+    },
+    {
+      "name": "Icon Button",
+      "kind": "button",
+      "refersTo": "icon-button",
+      "description": "Round 32px control; the home button is 40px and Marigold when you're home.",
+      "html": "<button class=\"ds-iconbtn\" aria-label=\"Home\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8\"/><path d=\"M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z\"/></svg></button><button class=\"ds-iconbtn ds-on\" aria-label=\"Home (current)\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8\"/><path d=\"M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z\"/></svg></button>",
+      "css": ".ds-iconbtn { display: inline-grid; place-items: center; width: 40px; height: 40px; margin-right: 8px; border-radius: 50%; border: 1px solid var(--border-strong, #29344d); background: color-mix(in srgb, var(--surface, #121b2e) 80%, transparent); color: var(--text, #f1e7d0); cursor: pointer; transition: border-color .15s, color .15s, transform .1s; } .ds-iconbtn:hover, .ds-iconbtn.ds-on { border-color: var(--primary, #f2a93b); color: var(--primary, #f2a93b); } .ds-iconbtn:active { transform: scale(.94); } .ds-iconbtn:focus-visible { outline: 2px solid var(--primary, #f2a93b); outline-offset: 2px; }"
+    },
+    {
+      "name": "Search",
+      "kind": "input",
+      "refersTo": "search",
+      "description": "The centred quick search in the top bar, with a / key hint.",
+      "html": "<label class=\"ds-search\"><span class=\"ds-search-icon\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"8\"/><path d=\"m21 21-4.3-4.3\"/></svg></span><input placeholder=\"Search\" aria-label=\"Search\"><span class=\"ds-key\">/</span></label>",
+      "css": ".ds-search { position: relative; display: block; width: 360px; max-width: 100%; } .ds-search input { width: 100%; height: 40px; padding: 0 34px 0 38px; border-radius: 99px; border: 1px solid var(--border-strong, #29344d); background: color-mix(in srgb, var(--surface, #121b2e) 80%, transparent); color: var(--text, #f1e7d0); font: 500 13px/1 var(--font-ui, 'Saira', system-ui, sans-serif); outline: none; } .ds-search input::placeholder { color: var(--text-faint, #87847f); } .ds-search input:focus { border-color: var(--primary, #f2a93b); } .ds-search-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-dim, #aca79b); display: grid; } .ds-key { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border: 1px solid var(--border-strong, #29344d); border-radius: 4px; background: var(--surface, #121b2e); font: 600 10px/1 var(--font-mono, 'JetBrains Mono', ui-monospace, monospace); color: var(--text-dim, #aca79b); }"
+    },
+    {
+      "name": "Filter Chips",
+      "kind": "chip",
+      "refersTo": "chip-filter",
+      "description": "The library dock's section filters; the selected one fills solid Bone.",
+      "html": "<div class=\"ds-chips\"><button class=\"ds-chip ds-on\" aria-pressed=\"true\">Playlists</button><button class=\"ds-chip\">Albums</button><button class=\"ds-chip\">VGM</button><button class=\"ds-chip\">Radio</button></div>",
+      "css": ".ds-chips { display: flex; flex-wrap: wrap; gap: 6px; } .ds-chip { height: 28px; padding: 0 11px; border-radius: 99px; border: 1px solid var(--border-strong, #29344d); background: transparent; color: var(--text-dim, #aca79b); font: 700 11px/1 var(--font-ui, 'Saira', system-ui, sans-serif); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; transition: color .15s, border-color .15s; } .ds-chip:hover { color: var(--text, #f1e7d0); border-color: var(--text-dim, #aca79b); } .ds-chip.ds-on { background: var(--text, #f1e7d0); border-color: var(--text, #f1e7d0); color: var(--bg, #0a1020); } .ds-chip:focus-visible { outline: 2px solid var(--primary, #f2a93b); outline-offset: 2px; }"
+    },
+    {
+      "name": "Library Row",
+      "kind": "nav",
+      "refersTo": "library-row",
+      "description": "A row in Your library: 48px cover, bold title, dim subtitle; the current page's row is tinted Marigold.",
+      "html": "<nav class=\"ds-lib\"><a class=\"ds-row\" href=\"#\"><span class=\"ds-art\" style=\"background: linear-gradient(135deg, hsl(222 55% 38%), hsl(272 60% 22%))\">SB</span><span class=\"ds-text\"><b>Sunday blues</b><small>Playlist</small></span></a><a class=\"ds-row ds-active\" href=\"#\" aria-current=\"page\"><span class=\"ds-art\" style=\"background: linear-gradient(135deg, hsl(330 55% 38%), hsl(20 60% 22%))\">LN</span><span class=\"ds-text\"><b>Late night jazz</b><small>Playlist · 10 songs</small></span></a></nav>",
+      "css": ".ds-lib { width: 280px; display: grid; } .ds-row { display: grid; grid-template-columns: 48px minmax(0, 1fr); align-items: center; gap: 12px; padding: 6px 8px; border-radius: 8px; color: var(--text, #f1e7d0); text-decoration: none; } .ds-row:hover { background: color-mix(in srgb, var(--text, #f1e7d0) 7%, transparent); } .ds-row.ds-active { background: color-mix(in srgb, var(--primary, #f2a93b) 16%, transparent); } .ds-row.ds-active b { color: var(--primary, #f2a93b); } .ds-row:focus-visible { outline: 2px solid var(--primary, #f2a93b); outline-offset: 2px; outline-offset: -2px; } .ds-art { width: 48px; height: 48px; border-radius: 6px; display: grid; place-items: center; font: 900 14px/1 var(--font-display, 'Saira', system-ui, sans-serif); text-transform: uppercase; color: #fffd; } .ds-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; } .ds-text b { font: 700 14px/1.2 var(--font-ui, 'Saira', system-ui, sans-serif); } .ds-text small { font: 400 12.5px/1.2 var(--font-ui, 'Saira', system-ui, sans-serif); color: var(--text-dim, #aca79b); }"
+    },
+    {
+      "name": "Kicker and Display",
+      "kind": "custom",
+      "refersTo": "typography.display",
+      "description": "The page head: a spaced mono kicker over two lines of heavy display capitals, Bone then Marigold.",
+      "html": "<header class=\"ds-head\"><div class=\"ds-kicker\">Muzix terminal<span class=\"ds-sep\">·</span>870 tracks<span class=\"ds-sep\">·</span>61 hours</div><h1 class=\"ds-display\"><span>Good morning,</span><span class=\"ds-l2\">fenne</span></h1></header>",
+      "css": ".ds-kicker { font: 500 11px/1.4 var(--font-mono, 'JetBrains Mono', ui-monospace, monospace); letter-spacing: .32em; text-transform: uppercase; color: var(--primary, #f2a93b); } .ds-sep { opacity: .5; padding: 0 .4em; } .ds-display { margin: 8px 0 0; font: 900 64px/.9 var(--font-display, 'Saira', system-ui, sans-serif); text-transform: var(--display-case, uppercase); letter-spacing: .01em; } .ds-display span { display: block; color: var(--text, #f1e7d0); } .ds-display .ds-l2 { color: var(--primary, #f2a93b); }"
+    },
+    {
+      "name": "Status Line",
+      "kind": "custom",
+      "refersTo": "typography.status",
+      "description": "The footer: the station's telemetry in tiny spaced mono capitals.",
+      "html": "<footer class=\"ds-status\"><span>Muzix</span><i>·</i><span>Node 127.0.0.1</span><i>·</i><span>870 tracks</span><i>·</i><span>42 chiptunes</span><i>·</i><span>Skin: Blues</span><a class=\"ds-schip\" href=\"#\">Go fullscreen! F11</a></footer>",
+      "css": ".ds-status { display: flex; align-items: center; gap: 14px; height: 26px; padding: 0 18px; font: 500 9.5px/1 var(--font-mono, 'JetBrains Mono', ui-monospace, monospace); letter-spacing: .12em; text-transform: uppercase; color: var(--text-faint, #87847f); white-space: nowrap; overflow: hidden; } .ds-status i { font-style: normal; opacity: .5; } .ds-schip { margin-left: auto; display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border: 1px solid var(--border-strong, #29344d); border-radius: 4px; background: var(--surface, #121b2e); font: 600 9px/1 var(--font-mono, 'JetBrains Mono', ui-monospace, monospace); letter-spacing: .1em; color: var(--text-dim, #aca79b); text-decoration: none; } .ds-schip:hover { color: var(--primary, #f2a93b); border-color: var(--primary, #f2a93b); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Late-Night Broadcast",
+    "overview": "**Creative North Star: \"The Late-Night Broadcast\"**\n\nMuzix is a station on the air after midnight, and it restyles itself for every show. The top bar is the transmitter: the striped logo, then an italic ticker that announces what's on (\"Now playing\", \"On air\", or a quote between shows). The footer is the station's status line, set in tiny spaced-out monospace: the host name, track counts, the skin on air, a fullscreen hint. Between them sits the screen itself, a thin rounded frame floating on a nebula backdrop, with the library to its left and what's playing to its right. When the music changes genre, the whole station re-dresses for the show: death metal brings bone and blood with blackletter type, a chiptune brings CRT scanlines and pixel type, jazz brings Blue Note duotones.\n\nThe house look, used when no skin is on air, is night-time warm: Bone text on Midnight Navy, Marigold for whatever is live, Vermilion for the one thing to do next, and a soft nebula of jade, marigold and vermilion glow behind everything. Headings are loud (heavy condensed capitals); everything around them is quiet. The layout follows Spotify's arrangement, so nobody has to learn where things are; the personality lives in the type, the colour, the skins and the broadcast furniture (ticker, stripes, mono labels, status line).\n\nDensity is a listener's density, not a dashboard's: generous page margins, large covers, and lists that breathe at about 60px per row. The interface is built to be left running on a screen as much as to be operated.",
+    "keyCharacteristics": [
+      "Every colour, font and corner comes from role variables that the 98 colour schemes and 25 genre skins swap out. Nothing in a component is hard-wired to the house palette.",
+      "Heavy uppercase display type for headings; tiny spaced monospace for labels and status; a plain sans for everything you read or press.",
+      "The frame: one 1px hairline panel with 14px corners, inset 8px from the window, holding the page; the side docks share its edge.",
+      "Broadcast furniture: the ticker in the top bar, the footer status line, the five-colour stripes.",
+      "Quiet, precise controls: small outlined buttons, round icon buttons, pill chips. They never outshout the headings or the cover art."
+    ],
+    "rules": [
+      {
+        "name": "The Roles-Not-Hex Rule",
+        "body": "Components take colour only from the role variables (`--bg`, `--surface`, `--text`, `--primary`, `--secondary`, their derived shades and `--stripe-1…6`). A hex code in a component breaks 122 themes at once. The one exception is the bento tiles, which keep a fixed dark plate (#10131c with #f6f1e7 text) under their duotone photos.",
+        "section": "colors"
+      },
+      {
+        "name": "The 4.5 Floor Rule",
+        "body": "Dim and faint text are the text colour faded toward the background, but only as far as still reads at 4.5:1 on both the background and the surface. Text on an accent is near-black or white, whichever reads better. When a scheme's own text is weaker than that, dim and faint text stay at the text colour.",
+        "section": "colors"
+      },
+      {
+        "name": "The On-Air Rule",
+        "body": "Marigold means \"this is live\" (playing, selected, focused, on). Vermilion means \"do this\". Neither is used as decoration on a quiet surface.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two Voices Rule",
+        "body": "The display font shouts and the monospace whispers; the UI font carries everything in between. Nothing else gets a fourth voice.",
+        "section": "typography"
+      },
+      {
+        "name": "The Kicker Placement Rule",
+        "body": "Kickers sit above page titles and section titles, as they do now. They never go on cards, rows, dialogs or controls.",
+        "section": "typography"
+      },
+      {
+        "name": "The Frame Rule",
+        "body": "On desktop, every page lives inside the frame. On phones there is no frame, by the owner's decision.",
+        "section": "layout"
+      },
+      {
+        "name": "The Flat Studio Rule",
+        "body": "Panels, rows, chips and buttons never cast shadows. If something needs to look raised, it is either a cover or a floating layer.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** take every colour, font and radius from the theme variables (`--bg`, `--surface`, `--text`, `--primary`, `--secondary`, `--font-display`, `--font-ui`, `--font-mono`, `--radius`, `--display-case`) so all 98 colour schemes and 25 genre skins work.",
+      "**Do** check new UI under the house scheme, a light skin (punk, classical, country, pop, comedy or kids) and a skin that decorates the frame (death metal's thorns, soundtrack's film strip, punk's tape).",
+      "**Do** keep pages inside the frame on desktop and edge to edge on phones.",
+      "**Do** size page content against the frame with container queries (`cqi`, `@container page`), not the window.",
+      "**Do** take dim, faint and on-accent text from the theme (`--text-dim`, `--text-faint`, `--on-primary`, `--on-secondary`); never pick a text colour for an accent by hand.",
+      "**Do** keep controls quiet: 38px buttons with 12px labels, 32px icon buttons, outlines before fills, and one Vermilion action per view.",
+      "**Do** keep the broadcast furniture on every desktop screen: the striped logo, the ticker, the footer status line."
+    ],
+    "donts": [
+      "**Don't** hard-code the house hex values in a component; the one sanctioned exception is the bento tiles' fixed dark plate.",
+      "**Don't** put a frame, border or rounded panel around the page on phones.",
+      "**Don't** add shadows to the frame, docks, rows, chips or buttons; shadows are for covers and floating layers.",
+      "**Don't** add kickers to cards, rows, dialogs or controls; they belong above page and section titles.",
+      "**Don't** use the display font or heavy capitals for body copy, or monospace for prose.",
+      "**Don't** add gradient, chrome or textured text outside a skin's headline treatment; the house display type is solid Bone and Marigold.",
+      "**Don't** let Marigold decorate quiet surfaces; it marks what is live, selected or focused."
+    ]
+  }
+}
