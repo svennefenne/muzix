@@ -95,6 +95,14 @@ export interface Artist {
   liked: boolean;
 }
 
+export interface TagDetail {
+  name: string;
+  tracks: number;
+  albums: number;
+  artists: Artist[];
+  album_list: Album[];
+}
+
 export interface ArtistDetail extends Artist {
   albums: Album[];
   top_tracks: Track[];

@@ -57,9 +57,10 @@ export function TrackList({ tracks, showArt, showAlbum = true, numbered = "index
     <div className="tracks" role="table">
       <div className={`trow head ${showAlbum ? "" : "no-album"}`} role="row">
         <div style={{ textAlign: "right" }}>#</div>
-        <div>Title</div>
-        {showAlbum && <div>Album</div>}
+        <div className="t-main">Title</div>
+        {showAlbum && <div className="t-album">Album</div>}
         <div className="t-dur"><Clock size={13} /></div>
+        <div className="t-eq" />
         <div className="t-actions" />
       </div>
       {tracks.map((t, i) => {
@@ -75,8 +76,8 @@ export function TrackList({ tracks, showArt, showAlbum = true, numbered = "index
                  onClick={rowTap(() => (isCur ? !playing && engine.toggle() : playTracks(tracks, i)))}
                  onContextMenu={(e) => { e.preventDefault(); showMenu(e, menuFor(t)); }}>
               <div className="t-num">
-                {isCur ? <span className="eq n"><i /><i /><i /></span>
-                  : <span className="n">{numbered === "track" && t.track_no ? t.track_no : i + 1}</span>}
+                {isCur && <span className="eq n"><i /><i /><i /></span>}
+                <span className="n t-n">{numbered === "track" && t.track_no ? t.track_no : i + 1}</span>
                 <button className="p" aria-label={`Play ${t.title}`} onClick={() => playTracks(tracks, i)}>
                   <Play size={15} fill="currentColor" />
                 </button>
@@ -95,6 +96,8 @@ export function TrackList({ tracks, showArt, showAlbum = true, numbered = "index
               </div>
               {showAlbum && <div className="t-album ellipsis">{t.album_id ? <Link to={`/album/${t.album_id}`}>{t.album}</Link> : t.album}</div>}
               <div className="t-dur">{fmtTime(t.duration)}</div>
+              {/* phones show the playing bars here, right of the time; desktops in place of the number */}
+              <div className="t-eq">{isCur && <span className="eq"><i /><i /><i /></span>}</div>
               <div className="t-actions">
                 <button className={`mini t-like ${on ? "liked" : ""}`} aria-label={on ? "Unlike" : "Like"} onClick={() => like(t)}>
                   <Heart size={15} fill={on ? "currentColor" : "none"} />

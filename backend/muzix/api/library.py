@@ -3,7 +3,7 @@ import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, Response
-from sqlalchemy import case, func, select, text
+from sqlalchemy import case, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from .. import art, serial
@@ -213,12 +213,15 @@ def tracks(ids: str, db: Session = Depends(get_db), user: User = Depends(current
 @router.get("/random")
 def random_tracks(db: Session = Depends(get_db), user: User = Depends(current_user),
                   kind: str = "music", genre: str | None = None, artist_id: int | None = None,
-                  album_id: int | None = None, system: str | None = None, n: int = Query(50, le=500)):
+                  album_id: int | None = None, system: str | None = None, tag: str | None = None,
+                  n: int = Query(50, le=500)):
     q = select(Track)
     if kind != "all":
         q = q.where(Track.kind == kind)
     if genre:
         q = q.where(Track.genre == genre)
+    if tag:
+        q = q.where(tagged(tag))
     if artist_id:
         q = q.where(Track.artist_id == artist_id)
     if album_id:
@@ -226,6 +229,53 @@ def random_tracks(db: Session = Depends(get_db), user: User = Depends(current_us
     if system:
         q = q.where(func.json_extract(Track.extra, "$.system") == system)
     return tracks_json(db, user, db.scalars(q.order_by(func.random()).limit(n)).all())
+
+
+# ---------------------------------------------------------------- tags
+
+def tag_artists(tag: str):
+    """Artists showing this tag: one of the (up to eight) genre tags their page shows, or their
+    genre folder. Case doesn't matter, so the folder "Electronic" and the tag "electronic" meet."""
+    return select(Artist.id).where(or_(
+        text("EXISTS (SELECT 1 FROM json_each(artists.tags) j WHERE j.key < 8 "
+             "AND casefold(json_extract(j.value, '$[0]')) = casefold(:tag))").bindparams(tag=tag),
+        func.casefold(Artist.genre) == func.casefold(tag)))
+
+
+def tagged(tag: str):
+    """Tracks carrying a tag: by an artist with it, or filed in a genre folder of that name."""
+    return or_(Track.artist_id.in_(tag_artists(tag)),
+               Track.album_id.in_(select(Album.id).where(func.casefold(Album.genre) == func.casefold(tag))))
+
+
+@router.get("/tags/{tag}")
+def tag_page(tag: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """What a tag gathers: its artists (most albums first), albums and a song count."""
+    album_ids = select(Track.album_id).where(tagged(tag), Track.album_id.is_not(None)).distinct()
+    counts = select(Album.artist_id, func.count().label("n")).where(Album.id.in_(album_ids)) \
+        .group_by(Album.artist_id).subquery()
+    artists_ = db.execute(select(Artist, counts.c.n).join(counts, counts.c.artist_id == Artist.id)
+                          .order_by(counts.c.n.desc(), func.lower(Artist.name)).limit(24)).all()
+    albums_ = db.scalars(select(Album).where(Album.id.in_(album_ids))
+                         .order_by(func.random()).limit(24)).all()
+    lk_artists, lk_albums = liked(db, user, "artist"), liked(db, user, "album")
+    return {"name": tag,
+            "tracks": db.scalar(select(func.count()).select_from(Track).where(tagged(tag))),
+            "albums": db.scalar(select(func.count()).select_from(album_ids.subquery())),
+            "artists": [serial.artist(a, lk_artists, n) for a, n in artists_],
+            "album_list": [serial.album(a, lk_albums) for a in albums_]}
+
+
+@router.get("/tags/{tag}/tracks")
+def tag_tracks(tag: str, db: Session = Depends(get_db), user: User = Depends(current_user),
+               limit: int = Query(100, le=500), offset: int = 0):
+    """A tag's songs, artist by artist and album by album."""
+    q = select(Track).where(tagged(tag))
+    total = db.scalar(select(func.count()).select_from(q.subquery()))
+    rows = db.scalars(q.outerjoin(Album, Album.id == Track.album_id)
+                      .order_by(func.lower(Track.albumartist), Album.year, func.lower(Track.album), *album_order(), Track.id)
+                      .limit(limit).offset(offset)).all()
+    return {"total": total, "items": tracks_json(db, user, rows)}
 
 
 # ---------------------------------------------------------------- search

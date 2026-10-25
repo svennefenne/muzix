@@ -2,7 +2,7 @@
  * mini-player and a bottom tab bar whose "More" sheet holds the other sections. */
 
 import {
-  BookOpen, Gamepad2, House, Library, LogOut, MoreHorizontal, Music2, Pause, Play, Podcast, Radio, Search, Settings, Shield, X,
+  BookOpen, Gamepad2, House, Library, LogOut, MoreHorizontal, Music2, Pause, Play, Podcast, Radio, Search, Settings, Shield, SkipForward, X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
@@ -26,6 +26,7 @@ export function MiniPlayer() {
   const live = usePlayer((s) => s.liveTitle);
   const error = usePlayer((s) => s.error);
   const frac = usePlayer((s) => (s.duration ? Math.min(1, s.position / s.duration) : 0));
+  const hasNext = usePlayer((s) => s.index < s.queue.length - 1 || s.repeat === "all" || (s.shuffle && s.queue.length > 1));
   const open = useUi((s) => s.setNowPlayingOpen);
   if (!cur) return <div className="miniplayer-slot" />;
   return (
@@ -40,6 +41,10 @@ export function MiniPlayer() {
         <button className="mp-play" aria-label={playing ? "Pause" : "Play"}
                 onClick={(e) => { e.stopPropagation(); engine.toggle(); }}>
           {playing ? <Pause size={22} fill="currentColor" /> : <Play size={22} fill="currentColor" />}
+        </button>
+        <button className="mp-play" aria-label="Next song" disabled={!hasNext}
+                onClick={(e) => { e.stopPropagation(); engine.next(); }}>
+          <SkipForward size={20} fill="currentColor" />
         </button>
         {cur.kind !== "radio" && <div className="mp-progress"><div style={{ width: `${frac * 100}%` }} /></div>}
       </div>

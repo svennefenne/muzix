@@ -12,7 +12,7 @@ import { AlbumCard, ArtistCard, PlaylistCard } from "../components/Cards";
 import { TrackList } from "../components/TrackList";
 import { Art, Display, Empty, Kicker, Loading, Modal, Section, useInView } from "../components/ui";
 import { useUi } from "../store/ui";
-import type { Album, AlbumDetail, Artist, ArtistDetail, Genre, LibraryView, Paged, Playlist, SearchResults, Track } from "../types";
+import type { Album, AlbumDetail, Artist, ArtistDetail, Genre, LibraryView, Paged, Playlist, SearchResults, TagDetail, Track } from "../types";
 
 function LibraryNav() {
   const { pathname } = useLocation();
@@ -263,7 +263,7 @@ export function AlbumPage() {
             {a.year > 0 && <span className="dotsep">{a.year}</span>}
             <span className="dotsep">{a.track_count} songs, {fmtLong(a.duration)}</span>
           </div>
-          {a.artist_tags.length > 0 && <div className="tags">{a.artist_tags.slice(0, 6).map((t) => <span className="tag" key={t}>{t}</span>)}</div>}
+          {a.artist_tags.length > 0 && <TagLinks tags={a.artist_tags.slice(0, 6)} />}
           <div className="row-actions">
             <button className="btn accent" onClick={() => playAlbum(a.id)}><Play size={15} fill="currentColor" /> Play</button>
             <button className="btn" onClick={() => playAlbum(a.id, { shuffle: true })}><Shuffle size={15} /> Shuffle</button>
@@ -307,7 +307,7 @@ export function ArtistPage() {
         <div>
           <Kicker parts={["Artist", a.genre, `${a.albums.length} albums`]} />
           <Display l1={a.name} small />
-          {a.tags.length > 0 && <div className="tags">{a.tags.map((t) => <span className="tag" key={t}>{t}</span>)}</div>}
+          {a.tags.length > 0 && <TagLinks tags={a.tags} />}
           <div className="row-actions">
             <button className="btn accent" onClick={() => playTracks(a.top_tracks, 0)}><Play size={15} fill="currentColor" /> Play</button>
             <button className="btn" onClick={() => playRandom({ artist_id: a.id, kind: "all" })}><Shuffle size={15} /> Shuffle</button>
@@ -339,6 +339,46 @@ export function GenrePage() {
         <Section title="Artists"><div className="scroller">{artists.data.items.map((a) => <ArtistCard key={a.id} a={a} />)}</div></Section>
       )}
       <Section title="Albums"><Infinite q={q}>{(items) => <div className="grid">{items.map((a) => <AlbumCard key={a.id} a={a} />)}</div>}</Infinite></Section>
+    </div>
+  );
+}
+
+/** Genre tags as links to everything else that carries them. */
+function TagLinks({ tags }: { tags: string[] }) {
+  return (
+    <div className="tags">
+      {tags.map((t) => <Link className="tag" key={t} to={`/tag/${encodeURIComponent(t)}`}>{t}</Link>)}
+    </div>
+  );
+}
+
+/** Everything carrying a tag: its artists, some of its albums, and every song. */
+export function TagPage() {
+  const { name = "" } = useParams();
+  const path = `/api/tags/${encodeURIComponent(name)}`;
+  const info = useQuery({ queryKey: ["tag", name], queryFn: () => api.get<TagDetail>(path) });
+  const songs = usePaged<Track>(["tag-tracks", name], `${path}/tracks`, {}, 100);
+  const loaded = songs.data?.pages.flatMap((p) => p.items) || [];
+  const d = info.data;
+  return (
+    <div className="page wide">
+      <Kicker parts={["Tag", d && `${fmtNumber(d.tracks)} songs`, d && `${fmtNumber(d.albums)} albums`]} />
+      <Display l1={name} small />
+      <div className="row-actions" style={{ marginBottom: 10 }}>
+        <button className="btn accent" disabled={!loaded.length} onClick={() => playTracks(loaded, 0)}><Play size={15} fill="currentColor" /> Play</button>
+        <button className="btn" disabled={!loaded.length} onClick={() => playRandom({ tag: name, kind: "all" })}><Shuffle size={15} /> Shuffle</button>
+      </div>
+      {d && d.artists.length > 0 && (
+        <Section title="Artists"><div className="scroller">{d.artists.map((a) => <ArtistCard key={a.id} a={a} />)}</div></Section>
+      )}
+      {d && d.album_list.length > 0 && (
+        <Section title="Albums"><div className="scroller">{d.album_list.map((a) => <AlbumCard key={a.id} a={a} />)}</div></Section>
+      )}
+      <Section title="Songs">
+        <Infinite q={songs} empty={<Empty title="No songs with this tag">Nothing in your library carries it right now.</Empty>}>
+          {(items) => <TrackList tracks={items} showArt />}
+        </Infinite>
+      </Section>
     </div>
   );
 }

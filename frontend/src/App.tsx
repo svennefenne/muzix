@@ -13,7 +13,7 @@ import { focusQuickSearch } from "./layout/QuickSearch";
 import { isTyping, TopBar } from "./layout/TopBar";
 import Home from "./pages/Home";
 import {
-  AlbumPage, ArtistPage, GenrePage, LibraryAlbums, LibraryArtistAlbums, LibraryArtists, LibraryGenreArtists, LibraryGenres,
+  AlbumPage, ArtistPage, GenrePage, TagPage, LibraryAlbums, LibraryArtistAlbums, LibraryArtists, LibraryGenreArtists, LibraryGenres,
   LibraryHome, Liked, PlaylistPage, Playlists, SearchPage,
 } from "./pages/Library";
 import { engine } from "./player/engine";
@@ -83,6 +83,7 @@ function Shell() {
               <Route path="/album/:id" element={<AlbumPage />} />
               <Route path="/artist/:id" element={<ArtistPage />} />
               <Route path="/genre/:name" element={<GenrePage />} />
+              <Route path="/tag/:name" element={<TagPage />} />
               <Route path="/playlist/:id" element={<PlaylistPage />} />
               <Route path="/search" element={<SearchPage />} />
               <Route path="/vgm/*" element={<Vgm />} />
