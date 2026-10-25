@@ -343,11 +343,12 @@ input[type="range"].range::-moz-range-thumb { width: 13px; height: 13px; border:
 .trow.no-album { grid-template-columns: 38px minmax(0, 1fr) 70px 64px; }
 .trow.head { height: 34px; font: 600 10px/1 var(--font-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--text-faint); border-bottom: 1px solid var(--border); border-radius: 0; margin-bottom: 6px; }
 .trow:not(.head):hover { background: color-mix(in srgb, var(--surface) 80%, transparent); }
+.trow { -webkit-tap-highlight-color: transparent; }
 .trow.playing .t-title { color: var(--primary); }
 .t-num { font: 500 13px/1 var(--font-mono); color: var(--text-faint); text-align: right; position: relative; }
-.trow:not(.head):hover .t-num .n { visibility: hidden; }
+@media (hover: hover) { .trow:not(.head):hover .t-num .n { visibility: hidden; } }
 .t-num .p { position: absolute; right: -2px; top: 50%; transform: translateY(-50%); display: none; cursor: pointer; color: var(--text); background: none; border: none; padding: 0; }
-.trow:not(.head):hover .t-num .p { display: block; }
+@media (hover: hover) { .trow:not(.head):hover .t-num .p { display: block; } }
 .t-main { min-width: 0; display: flex; align-items: center; gap: 12px; }
 .t-main .art { width: 38px; flex-shrink: 0; border-radius: 4px; box-shadow: none; }
 .t-title { font-weight: 600; font-size: 14px; }
@@ -357,6 +358,12 @@ input[type="range"].range::-moz-range-thumb { width: 13px; height: 13px; border:
 .t-dur { font: 500 12.5px/1 var(--font-mono); color: var(--text-dim); text-align: right; }
 .t-actions { display: flex; justify-content: flex-end; gap: 2px; opacity: 0; transition: opacity .15s; }
 .trow:hover .t-actions, .t-actions .liked { opacity: 1; }
+@media (hover: none) {   /* touch screens can't hover: the menu stays visible and a tap plays the row */
+  .t-actions { opacity: 1; }
+  .trow:not(.head) { cursor: pointer; }
+  .trow:not(.head):hover { background: none; }
+  .trow:not(.head):active { background: color-mix(in srgb, var(--text) 8%, transparent); }
+}
 .mini { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 6px; border: none; background: none; color: var(--text-dim); cursor: pointer; }
 .mini:hover { color: var(--text); background: var(--surface-3); }
 .mini.liked { color: var(--primary); }
@@ -765,8 +772,13 @@ input[type="range"].range::-moz-range-thumb { width: 13px; height: 13px; border:
   .grid { grid-template-columns: repeat(auto-fill, minmax(136px, 1fr)); gap: 14px; }
   .bento { grid-template-columns: 1fr; grid-auto-rows: 150px; }
   .tile.big, .tile.tall { grid-row: span 1; grid-column: auto; }
-  .trow { grid-template-columns: 30px minmax(0, 1fr) 54px 34px; }
-  .trow .t-album { display: none; }
+  /* track rows: number, title, then the time and the menu button against the right edge */
+  .trow, .trow.no-album { grid-template-columns: 24px minmax(0, 1fr) auto auto; height: 56px; padding: 0 0 0 4px; }
+  .trow .t-album, .trow > div:empty:not(.t-actions) { display: none; }
+  .trow .t-dur { width: 52px; }
+  .trow .t-actions { width: 32px; }
+  .t-actions .t-like { display: none; }
+  .t-actions .t-more { width: 32px; height: 40px; }
   .split { grid-template-columns: 1fr; }
   .sidenav { position: static; grid-auto-flow: column; overflow-x: auto; }
   .nowplaying-body { grid-template-columns: 1fr; padding: 20px; }

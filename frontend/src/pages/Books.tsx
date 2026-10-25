@@ -6,6 +6,7 @@ import { api, ago, fmtLong, fmtNumber, fmtTime } from "../api";
 import { queryClient } from "../actions";
 import { DisplaySwitch, Rows, SortMenu, useBrowse } from "../components/Browse";
 import { Art, Display, Empty, Kicker, Loading, Section } from "../components/ui";
+import { rowTap } from "../components/TrackList";
 import { engine } from "../player/engine";
 import { fromBook, usePlayer } from "../store/player";
 import type { Book, DisplayMode, Paged } from "../types";
@@ -130,7 +131,7 @@ export function BookPage() {
             {(b.chapters || []).map((c, i) => {
               const end = (b.chapters || [])[i + 1]?.start ?? b.duration;
               return (
-                <div key={i} className={`trow no-album ${i === chapterIdx && playingThis ? "playing" : ""}`} onDoubleClick={() => start(c.start)}>
+                <div key={i} className={`trow no-album ${i === chapterIdx && playingThis ? "playing" : ""}`} onDoubleClick={() => start(c.start)} onClick={rowTap(() => start(c.start))}>
                   <div className="t-num"><span className="n">{i + 1}</span>
                     <button className="p" aria-label={`Play ${c.title}`} onClick={() => start(c.start)}><Play size={15} fill="currentColor" /></button></div>
                   <div className="t-main"><div className="t-title ellipsis">{c.title}</div></div>

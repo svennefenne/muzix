@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Link, NavLink, Route, Routes, useParams, useSearchParams } from "react-router-dom";
 import { api, fmtTime } from "../api";
 import { Art, Display, Empty, Kicker, Loading, Section } from "../components/ui";
+import { rowTap } from "../components/TrackList";
 import { engine } from "../player/engine";
 import { sp } from "../player/spotify";
 import type { PlayItem } from "../store/player";
@@ -40,7 +41,7 @@ function SpTrackList({ tracks, album }: { tracks: SpTrack[]; album?: SpAlbum }) 
   return (
     <div className="tracks">
       {tracks.filter(Boolean).map((t, i) => (
-        <div key={`${t.id}-${i}`} className="trow" onDoubleClick={() => playSp(tracks, i, album)}>
+        <div key={`${t.id}-${i}`} className="trow" onDoubleClick={() => playSp(tracks, i, album)} onClick={rowTap(() => playSp(tracks, i, album))}>
           <div className="t-num"><span className="n">{i + 1}</span>
             <button className="p" aria-label={`Play ${t.name}`} onClick={() => playSp(tracks, i, album)}><Play size={15} fill="currentColor" /></button></div>
           <div className="t-main">
