@@ -8,6 +8,7 @@
 
 import hashlib
 import logging
+import math
 import os
 import shutil
 import struct
@@ -84,6 +85,8 @@ def render(path: str, fmt: str, subsong: int, duration: float, extra: dict | Non
                 # zxtune123 plays one pass by itself; looping is only needed for more than that
                 one = (extra or {}).get("natural") or duration
                 _zxtune(path, total if total > one + 1 else 0, wav, tmp)
+            elif fam == "uade":
+                _uade(path, subsong, total, wav)
             elif fam == "furnace":
                 # Furnace's -loops counts repeats after the first pass; ours counts passes
                 _furnace(path, subsong, loops - 1 if mode == "loops" else 50, wav)
@@ -295,6 +298,43 @@ def fix_wav_header(wav: str):
         f.seek(40)
         f.write(struct.pack("<I", data))
         f.truncate(44 + data)
+
+
+# ---------------------------------------------------------------- UADE (Amiga custom formats)
+# uade123 plays a subsong until its player says it's over, it falls silent, or the timeout. Songs
+# with sample files beside them (TFMX's mdat./smpl.) find them by name, so the real path is used.
+
+def _uade_cmd(path: str, subsong: int, seconds: float, wav: str) -> list:
+    limit = str(max(1, math.ceil(seconds)))
+    return (["uade123", "-1", "-t", limit, "-w", limit, "-f", wav] + (["-s", str(subsong)] if subsong >= 0 else [])
+            + ["--", path])
+
+
+def _uade(path: str, subsong: int, seconds: float, wav: str):
+    _run(_uade_cmd(path, subsong, seconds, wav))
+    if not os.path.exists(wav) or os.path.getsize(wav) <= 44:
+        raise RenderError("UADE couldn't play this file")
+
+
+def uade_info(path: str) -> str:
+    """uade123's description of a file: player, module name, subsongs."""
+    try:
+        r = subprocess.run(["uade123", "-g", "--", path], capture_output=True, timeout=60)
+    except FileNotFoundError:
+        raise RenderError("uade123 is not installed")
+    except subprocess.TimeoutExpired:
+        return ""
+    return r.stdout.decode("utf-8", "replace")
+
+
+def uade_seconds(path: str, subsong: int, limit: float, tmp: str) -> float:
+    """How long a subsong plays, up to `limit` seconds."""
+    wav = os.path.join(tmp, f"probe{subsong}.wav")
+    try:
+        _run(_uade_cmd(path, subsong, limit, wav))
+    except RenderError:
+        return 0.0
+    return max(0, os.path.getsize(wav) - 44) / (44100 * 4) if os.path.exists(wav) else 0.0
 
 
 def _run(cmd, env=None):

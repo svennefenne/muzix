@@ -33,6 +33,22 @@ RUN make -C /zxtune/apps/zxtune123 -j"$(nproc)" platform=linux release=1 system.
       || (grep -E ": error:|\*\*\*" /tmp/build.log | head -40; false) \
  && install -m755 /zxtune/bin/linux/release/zxtune123 /usr/local/bin/zxtune123
 
+# ---- UADE (Amiga custom formats: TFMX, Jochen Hippel, SoundMon, Delta Music...) ----
+FROM debian:trixie-slim AS uade
+ARG UADE_COMMIT=8d77cd773e10d33de44f2b6c52201bb54732b701
+ARG BENCODETOOLS_COMMIT=5fa73d33780cc5a70b8958b955a01d8d12aa7660
+ARG ZAKALWE_COMMIT=f40771d472d1a3846969678d893846a48c16b025
+RUN apt-get update && apt-get install -y --no-install-recommends gcc make git ca-certificates pkg-config libao-dev \
+ && rm -rf /var/lib/apt/lists/*
+RUN for repo in "heikkiorsila/bencodetools $BENCODETOOLS_COMMIT" "hors/libzakalwe $ZAKALWE_COMMIT" \
+                "uade-music-player/uade $UADE_COMMIT"; do \
+      set -- $repo; d="/src/${1#*/}"; git init -q "$d" && git -C "$d" fetch -q --depth 1 "https://gitlab.com/$1" "$2" \
+      && git -C "$d" checkout -q FETCH_HEAD || exit 1; \
+    done
+RUN cd /src/bencodetools && ./configure --prefix=/usr/local --without-python && make && make install \
+ && cd /src/libzakalwe && ./configure --prefix=/usr/local && make && make install \
+ && ldconfig && cd /src/uade && ./configure --prefix=/usr/local --without-write-audio && make && make install
+
 # ---- runtime ---------------------------------------------------------------
 FROM python:3.13-slim-trixie
 LABEL org.opencontainers.image.title="Muzix" \
@@ -41,10 +57,15 @@ LABEL org.opencontainers.image.title="Muzix" \
       org.opencontainers.image.licenses="MIT"
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ffmpeg libgme0 libopenmpt0t64 sidplayfp fluidsynth fluid-soundfont-gm furnace libboost-program-options1.83.0 \
+      libao4 \
       gosu tini ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=ymtool /usr/local/bin/ymtool /usr/local/bin/ymtool
 COPY --from=zxtune /usr/local/bin/zxtune123 /usr/local/bin/zxtune123
+COPY --from=uade /usr/local/bin/uade123 /usr/local/bin/uade123
+COPY --from=uade /usr/local/lib/libbencodetools.so /usr/local/lib/libzakalwe.so /usr/local/lib/
+COPY --from=uade /usr/local/lib/uade /usr/local/lib/uade
+COPY --from=uade /usr/local/share/uade /usr/local/share/uade
 WORKDIR /app
 COPY backend/pyproject.toml backend/
 COPY backend/muzix backend/muzix

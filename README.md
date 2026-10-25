@@ -26,9 +26,11 @@ you choose from 98 colour schemes, each with a light and a dark version.
   | FamiTracker | FTM, 0CC, DNM, FUR | Furnace |
   | ZX Spectrum | PT3, PT2, STC, ST3, STP, ASC, PSC, SQT, FTC, TFC, TS, PSG, VTX, DST, DMM, COP… | zxtune123 ([ZXTune](https://github.com/vitamin-caig/zxtune)) |
   | More Amiga & PC | AHX, HivelyTracker, Future Composer, Face The Music, Game Music Creator, Images Music System, ChipTracker, Quadra Composer, TCB Tracker (Atari ST), Funktracker, Liquid Tracker, Farbrausch V2 | zxtune123 |
+  | Amiga custom players | TFMX, Jochen Hippel, SoundMon, Delta Music, SidMon, Sonic Arranger, Digital Mugician, Art Of Noise, JamCracker, David Whittaker, Rob Hubbard, Ben Daglish, Jason Page… (200 or so) | [UADE](https://gitlab.com/uade-music-player/uade), which runs each song's own replay code on an emulated Amiga |
   | MIDI | MID, KAR, RMI | FluidSynth + General MIDI soundfont |
 
-  Multi-song files (NSF, GBS, SID, FamiTracker...) show every song as its own track.
+  Multi-song files (NSF, GBS, SID, FamiTracker...) show every song as its own track. Amiga songs
+  whose samples live in a second file (TFMX's `mdat.`/`smpl.`) need both side by side.
 - **Looping chiptunes**: game music usually loops forever. On the admin page,
   choose "play the loop N times" (intro + N × loop + fade, using the file's own
   loop points) or "play for a fixed time", the fade length and a cap. Tracker

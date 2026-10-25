@@ -59,5 +59,9 @@ def stream(source: str, path: str, member: str = "", sub: int = -1, q: str = "or
         row = online.find(src, path, member, sub)
     except online.OnlineError as e:
         raise HTTPException(502, str(e))
+    def learned(changes: dict):
+        row["extra"] = {**(row.get("extra") or {}), **changes}    # kept while the file stays open
+
     return audio(row["local"], row["format"], row.get("codec") or "", row.get("sample_rate") or 0,
-                 row.get("bit_depth") or 0, row["subsong"], row["duration"], row.get("extra"), q, t, prefetch)
+                 row.get("bit_depth") or 0, row["subsong"], row["duration"], row.get("extra"), q, t, prefetch,
+                 learned)

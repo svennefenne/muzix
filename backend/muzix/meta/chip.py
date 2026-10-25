@@ -412,6 +412,8 @@ def read(path: str, ext: str) -> ChipInfo:
         return read_midi(path)
     if fam == "zxtune":
         return read_zxtune(path, ext)
+    if fam == "uade":
+        return read_uade(path, ext)
     with open(path, "rb") as f:
         data = f.read(64 * 1024 * 1024)
     if ext == "ym":
@@ -465,6 +467,43 @@ def read_zxtune(path: str, ext: str) -> ChipInfo:
     return ChipInfo(title=title, artist=author, year=year, system=formats.system_for(ext) or "ZX Spectrum",
                     duration=seconds, subsongs=[Subsong(-1, title, duration=seconds, natural=seconds)],
                     extra={k: v for k, v in dict(tracker=_clean(program) or kind).items() if v})
+
+
+# ---------------------------------------------------------------- Amiga custom formats (UADE)
+
+UADE_PROBE = 30.0     # seconds of each subsong rendered while reading, to find the ones that end
+UADE_MAX_SUBSONGS = 64
+
+
+def read_uade(path: str, ext: str) -> ChipInfo:
+    """The player and subsongs from UADE. Its songs don't say how long they are, so each subsong
+    gets a short trial render (UADE runs a few hundred times faster than real time): jingles and
+    sound effects end within it and get their length, sounds under two seconds are dropped, and
+    the rest are timed when they're first played."""
+    from .. import render
+    text = render.uade_info(path)
+    player = re.search(r"^playername: *(.+)$", text, re.M)
+    if not player:
+        raise NotATune(path)
+    m = re.search(r"^subsongs: cur (-?\d+) min (-?\d+) max (-?\d+)", text, re.M)
+    lo, hi = (int(m[2]), int(m[3])) if m else (0, 0)
+    indices = list(range(lo, min(hi, lo + UADE_MAX_SUBSONGS - 1) + 1)) if hi > lo else [-1]
+    subs = []
+    with tempfile.TemporaryDirectory(dir=env.CACHE_DIR) as tmp:
+        for i in indices:
+            secs = render.uade_seconds(path, i, UADE_PROBE, tmp)
+            ended = secs < UADE_PROBE - 0.5
+            if ended and secs < 2 and (len(indices) > 1 or secs < 0.5):
+                continue                       # a sound effect, or nothing at all
+            subs.append(Subsong(i, natural=secs if ended else None, duration=secs if ended else None))
+    if not subs:
+        raise NotATune(path)
+    name = os.path.basename(path)
+    pre, _, rest = name.partition(".")
+    # "mdat.unicorn" (Amiga style) is called unicorn; "5th gear.hip" is called 5th gear
+    title = rest if rest and pre.lower() == ext and not name.lower().endswith("." + ext) else os.path.splitext(name)[0]
+    return ChipInfo(title=title, system=formats.system_for(ext) or "Amiga / PC tracker", subsongs=subs,
+                    extra={"player": player.group(1).strip()})
 
 
 MIN_EXTRA_SUBSONG = 60   # modules often hide short fragments as "subsongs"

@@ -11,6 +11,8 @@ family:
   furnace   FamiTracker/Furnace songs, rendered with Furnace's command line
   zxtune    ZX Spectrum trackers (Pro Tracker, Sound Tracker, ASC, TurboFM...) and the Amiga/PC
             formats libopenmpt doesn't play (AHX, HivelyTracker, Future Composer...), rendered with zxtune123
+  uade      Amiga custom replayers (TFMX, Jochen Hippel, SoundMon, Delta Music, David Whittaker...),
+            played by UADE, which runs each song's own replay code on an emulated Amiga
 
 Rendered families are turned into a cached FLAC file once and then served
 like any other file, so seeking works everywhere.
@@ -43,15 +45,32 @@ AMIGA = {
     "tcb", "fnk", "liq", "v2m",
 }
 ZXTUNE = ZX | AMIGA
+# The players in UADE's eagleplayer.conf, less the names other players here have and names too
+# common for other files (.md, .js, .dat, .db, .one...). "sidmon" is what sniff() calls a SidMon .sid.
+UADE = {
+    "aam", "abk", "adpcm", "adsc", "alp", "amc", "aon", "aon4", "aon8", "aps", "arp", "ash", "ast", "avp",
+    "bd", "bds", "bfc", "bp", "bp3", "bsi", "bss", "bye", "cin", "core", "cus", "cust", "custom", "dh", "dl",
+    "dlm1", "dlm2", "dln", "dm", "dm1", "dm2", "dmu", "dmu2", "dns", "doda", "dsc", "dsr", "dss", "dum", "dw",
+    "dwold", "dz", "ea", "ems", "emsv6", "fc3", "fc4", "fp", "fred", "fw", "glue", "gm", "gray", "hd", "hip",
+    "hip7", "hipc", "hn", "hot", "hst", "is", "is20", "ism", "jam", "jb", "jc", "jcb", "jcbo", "jd", "jmf",
+    "jo", "jp", "jpn", "jpnd", "jpo", "jpold", "jt", "kh", "kim", "lion", "lme", "ma", "mc", "mcmd", "mco",
+    "mcr", "mdat", "mdst", "mfp", "mg", "mk2", "mkii", "mkiio", "mm4", "mm8", "mmd0", "mmd1", "mmd2", "mmd3",
+    "mmdc", "mok", "mon", "mosh", "mso", "mth", "mtp2", "mug", "mug2", "mw", "npp", "ntp", "octamed", "okta",
+    "oldw", "osp", "oss", "pap", "pn", "powt", "prt", "ps", "psa", "pvp", "qc", "qpa", "qts", "rh", "rho",
+    "s7g", "sa", "sas", "sb", "scn", "scr", "sct", "scumm", "sdata", "sdc", "sdr", "sfx13", "sfx20", "sg",
+    "sid1", "sid2", "sidmon", "sj", "sjs", "sm1", "sm2", "sm3", "smn", "smpro", "smus", "sndmon", "sng", "snk",
+    "snx", "soc", "sog", "sonic", "sun", "syn", "synmod", "tf", "tfmx", "tfmxpro", "thm", "thn", "tits", "tme",
+    "tmk", "tpu", "trc", "tro", "tron", "tronic", "tw", "uds", "ufo", "vss", "wb", "ymst",
+}
 # Amiga style "ahx.songname" names
-PREFIXES = MODULE | {"ahx", "thx", "hvl", "fc", "fc13", "fc14", "smod", "gmc", "ims", "emod", "ftm", "667", "tcb"}
+PREFIXES = MODULE | UADE | {"ahx", "thx", "hvl", "fc", "fc13", "fc14", "smod", "gmc", "ims", "emod", "ftm", "667", "tcb"}
 
 FAMILIES = {
     "native": NATIVE, "decode": DECODE, "module": MODULE, "gme": GME,
-    "sid": SID, "midi": MIDI, "ym": YM, "furnace": FURNACE, "zxtune": ZXTUNE,
+    "sid": SID, "midi": MIDI, "ym": YM, "furnace": FURNACE, "zxtune": ZXTUNE, "uade": UADE,
 }
 _BY_EXT = {ext: fam for fam, exts in FAMILIES.items() for ext in exts}
-CHIP_FAMILIES = {"module", "gme", "sid", "midi", "ym", "furnace", "zxtune"}
+CHIP_FAMILIES = {"module", "gme", "sid", "midi", "ym", "furnace", "zxtune", "uade"}
 RENDERED = CHIP_FAMILIES
 
 # a friendly system name per chip format, for the VGM pages
@@ -65,6 +84,8 @@ SYSTEMS = {
     **{ext: "ZX Spectrum" for ext in ZX},
     **{ext: "Amiga / PC tracker" for ext in AMIGA}, "tcb": "Atari ST",
     "fnk": "PC tracker", "liq": "PC tracker", "667": "PC tracker", "v2m": "PC tracker",
+    **{ext: "Amiga / PC tracker" for ext in UADE},
+    **{ext: "Atari ST" for ext in ("hst", "sdc", "rho", "doda", "qts", "mdst", "ymst")},
 }
 
 
@@ -81,8 +102,9 @@ def ext_of(path: str) -> str:
 
 def sniff(path: str, ext: str) -> str:
     """The format of a file whose extension two formats share, from its first bytes: Face The
-    Music (Amiga) and FamiTracker both use .ftm, and ChipTracker songs are .mod files."""
-    if ext not in ("ftm", "mod"):
+    Music (Amiga) and FamiTracker both use .ftm, ChipTracker songs are .mod files, and SidMon
+    (Amiga) songs are .sid like the Commodore 64's."""
+    if ext not in ("ftm", "mod", "sid"):
         return ext
     try:
         with open(path, "rb") as f:
@@ -93,6 +115,8 @@ def sniff(path: str, ext: str) -> str:
         return "ftmn"
     if ext == "mod" and head[952:956] == b"KRIS":
         return "kris"
+    if ext == "sid" and head[:4] not in (b"PSID", b"RSID"):
+        return "sidmon"
     return ext
 
 

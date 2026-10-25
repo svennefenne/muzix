@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from .. import formats, render, settings
+from ..lengths import play_plan
 from ..db import get_db
 from ..models import PlayEvent, Track, User
 from ..security import cast_token, current_user, stream_user
@@ -62,8 +63,8 @@ def _pipe(cmd, mime):
 def audio(path: str, fmt: str, codec: str, sample_rate: int, bit_depth: int, subsong: int, duration: float,
           extra: dict, q: str = "original", t: float = 0.0, prefetch: bool = False, learned=None):
     """Audio for a file, from the library or fetched from an online archive: the file itself,
-    converted, or rendered when it's a chiptune. `learned(seconds)` hears a Furnace song's
-    real length once it has been rendered."""
+    converted, or rendered when it's a chiptune. `learned(changes)` hears what a render found out
+    about the song (its real length), to keep in its extra info."""
     fam = formats.family(fmt)
     if fam not in formats.RENDERED:
         if prefetch:
@@ -91,8 +92,11 @@ def audio(path: str, fmt: str, codec: str, sample_rate: int, bit_depth: int, sub
             path, seconds = render.render(*args)
         except render.RenderError as e:
             raise HTTPException(500, str(e))
-        if fam == "furnace" and seconds and learned:
-            learned(seconds)
+        if seconds and learned:
+            if fam == "furnace":
+                learned({"rendered": seconds})
+            elif fam == "uade" and seconds < play_plan(fam, extra, duration)[0] - 1:
+                learned({"natural": round(seconds, 2)})     # it ended before the fixed time
     if q in ("high", "low") or t:
         cmd, mime = render.transcode_args(path, t, "opus" if q in ("high", "low") else "flac", 0, 16,
                                           96 if q == "low" else 160)
@@ -108,9 +112,9 @@ def stream(track_id: int, q: str = "original", t: float = 0.0, prefetch: bool = 
     if tr is None:
         raise HTTPException(404, "No such track")
 
-    def learned(seconds: float):
-        if abs((tr.extra or {}).get("rendered", 0) - seconds) > 0.5:
-            tr.extra = {**(tr.extra or {}), "rendered": seconds}   # the real length, for display
+    def learned(changes: dict):
+        if any(abs((tr.extra or {}).get(k, 0) - v) > 0.5 for k, v in changes.items()):
+            tr.extra = {**(tr.extra or {}), **changes}   # the real length, for display
             db.commit()
 
     return audio(tr.path, tr.format, tr.codec, tr.sample_rate, tr.bit_depth, tr.subsong, tr.duration,

@@ -38,6 +38,12 @@ def play_plan(fam: str, extra: dict | None, duration: float = 0) -> tuple[float,
             return fixed_time, fade
         return min(extra.get("rendered") or fixed_time, cap), fade if extra.get("rendered") else 0.0
 
+    if fam == "uade":
+        # UADE knows when a song ends (its player says so); one that doesn't is cut at the fixed time
+        if extra.get("natural"):
+            return extra["natural"], 0.0
+        return min(fixed_time, cap), fade
+
     intro, loop = extra.get("intro"), extra.get("loop")
     own_fade = extra.get("fade")
     if mode == "time":

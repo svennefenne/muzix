@@ -48,7 +48,7 @@ class Source:
     starts: tuple[tuple[str, str], ...] = ()   # (label, path) shortcuts into the archive
 
 
-# Modland sorts by tracker; these are the ones Muzix plays (libopenmpt, libgme, sidplayfp, zxtune123)
+# Modland sorts by tracker; these are the ones Muzix plays (libopenmpt, libgme, sidplayfp, zxtune123, UADE)
 MODLAND_PLAYABLE = (
     "Composer 669", "Composer 670 (CDFM)", "Digibooster", "Digibooster Pro", "Digital Sound Interface Kit",
     "Digital Symphony", "Digital Tracker DTM", "Digital Tracker MOD", "Digitrakker", "Disorder Tracker 2",
@@ -63,6 +63,27 @@ MODLAND_PLAYABLE = (
     "AY Emul", "AHX", "HivelyTracker", "Future Composer 1.3", "Future Composer 1.4", "Game Music Creator",
     "Images Music System", "Chiptracker", "Quadra Composer", "Face The Music", "Composer 667", "TCB Tracker",
     "Funktracker", "Liquid Tracker", "V2", "SoundFX",
+    # UADE's (and a few more libopenmpt plays), each checked by playing one of its songs
+    "AM Composer", "AProSys", "Actionamics", "Activision Pro", "Anders Oland", "Arpeggiator", "Art And Magic",
+    "Art Of Noise", "Astroidea XMF", "Asylum", "Audio Sculpture", "BP SoundMon 2", "BP SoundMon 3",
+    "Beathoven Synthesizer", "Ben Daglish", "Ben Daglish SID", "Core Design", "Darius Zendeh", "Dave Lowe",
+    "Dave Lowe New", "David Hanney", "David Whittaker", "Delitracker Custom", "Delta Music", "Delta Music 2",
+    "Desire", "Digital Mugician", "Digital Mugician 2", "Digital Sonix And Chrome",
+    "Digital Sound And Music Interface", "Digital Sound Interface Kit RIFF", "Dirk Bialluch",
+    "Dynamic Studio Professional", "Dynamic Synthesizer", "EarAche", "Electronic Music System",
+    "Electronic Music System v6", "FM Tracker", "Follin Player II", "Forgotten Worlds", "Fred Gray", "FredMon",
+    "Future Composer BSI", "Future Player", "GlueMon", "Hippel", "Hippel 7V", "Hippel COSO",
+    "His Master's Noise", "Howie Davies", "InStereo!", "InStereo! 2.0", "Infogrames", "JamCracker",
+    "Janko Mrsic-Flogel", "Jason Brooke", "Jason Page", "Jason Page Old", "Jeroen Tel", "Leggless Music Editor",
+    "Lionheart", "MCMD", "Magnetic Fields Packer", "Maniacs Of Noise", "Mark Cooksey", "Mark Cooksey Old",
+    "Mark II", "Medley", "MultiMedia Sound", "Music Assembler", "MusicMaker V8", "NovoTrade Packer",
+    "OctaMED MMDC", "Octalyser", "Paul Shields", "Paul Summers", "Peter Verswyvelen", "Pretracker",
+    "Professional Sound Artists", "Protracker IFF", "RealSID", "Richard Joseph", "Rob Hubbard",
+    "Rob Hubbard ST", "Sam Coupe COP", "Sean Connolly", "SidMon 1", "SidMon 2", "Silmarils", "Sonic Arranger",
+    "Sound Images", "Sound Master II v1", "Sound Master II v3", "SoundPlayer", "Soundtracker Pro II",
+    "Special FX", "Special FX ST", "Spectrum", "Speedy A1 System", "Steve Barrett", "SunTronic", "SynTracker",
+    "Synthesis", "TFM Music Maker", "TFMX", "TFMX ST", "The Musical Enlightenment", "Thomas Hermann",
+    "Tomy Tracker", "Unique Development", "Voodoo Supreme Synthesizer", "Wally Beben", "YMST",
 )
 
 SOURCES = [
@@ -290,10 +311,10 @@ def _lock(key: str) -> threading.Lock:
         return _locks.setdefault(key, threading.Lock())
 
 
-def fetch(src: Source, path: str) -> str:
-    """The file at `path`, downloaded once into the cache."""
+def fetch(src: Source, path: str, companion: bool = False) -> str:
+    """The file at `path`, downloaded once into the cache (a `companion` is a song's sample file)."""
     names = parts(path)
-    if not names or not kind_of(names[-1]):
+    if not names or not (companion or kind_of(names[-1])):
         raise OnlineError("Muzix can't play that file")
     out = local_path(src, names)
     if os.path.exists(out):
@@ -411,6 +432,13 @@ _opened: dict[str, Opened] = {}
 def open_file(src: Source, path: str) -> Opened:
     """The tunes in a file or archive, downloading it if need be."""
     local = fetch(src, path)
+    if src.id == "modland" and formats.family(path) == "uade":
+        parent = path.rpartition("/")[0]
+        for name in companions(src, path):
+            try:
+                fetch(src, f"{parent}/{name}", companion=True)
+            except OnlineError:
+                pass                  # UADE says so if the song can't do without it
     if local in _opened:              # a downloaded file never changes
         return _opened[local]
     from . import scanner
@@ -465,6 +493,30 @@ def _label(src: Source, path: str, row: dict, title: str):
             row["artist"] = row["albumartist"] = names[1]          # Modland: format/composer/file
         elif src.id in ("asma", "sceneorg") and len(names) >= 3 and names[0].lower() in ("composers", "artists"):
             row["artist"] = row["albumartist"] = names[1].replace("_", " ")
+
+
+def companions(src: Source, path: str) -> list[str]:
+    """The files an Amiga song needs beside it, which share its name give or take a prefix or an
+    extension: TFMX's smpl.x for mdat.x, Jason Page's smp.x for jpn.x, Infogrames' x.ins for xa.dum."""
+    parent, _, name = path.rpartition("/")
+    url = remote_url(src, parts(parent), True)
+    try:
+        entries = _cached(url, lambda: parse_index(_page(src, url)))
+    except OnlineError:
+        return []
+    core = song_core(name)
+    return [n for n, folder, size in entries
+            if not folder and n != name and not kind_of(n) and size < 20 * 1024 ** 2
+            and (song_core(n) == core or (n.lower().endswith(".ins") and core.startswith(song_core(n))))][:4]
+
+
+def song_core(name: str) -> str:
+    """"mdat.unicorn" and "smpl.unicorn" → "unicorn"; "bob4a.dum" → "bob4a"."""
+    low = name.lower()
+    pre, _, rest = low.partition(".")
+    if rest and (pre in formats.PREFIXES or pre in ("smpl", "smp", "sam", "ins")):
+        return rest
+    return low.rsplit(".", 1)[0]
 
 
 def _with_playlist(path: str, rows: list[dict]) -> list[dict]:
