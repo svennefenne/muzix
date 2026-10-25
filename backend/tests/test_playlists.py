@@ -54,3 +54,15 @@ def test_playlist_files_are_read_and_matched():
     with db.session() as s:
         playlists.scan(Ctx(), [(rid, old)], [rid])
         assert [p.name for p in s.scalars(select(FilePlaylist).where(FilePlaylist.root_id == rid))] == ["Muse old"]
+
+
+def test_generic_names_take_the_folders_name():
+    n = playlists.display_name
+    assert n("/m/Other formats/Rush - 1976 - 2112/playlist.m3u") == "Rush - 1976 - 2112"
+    assert n("/m/Other formats/The Sugarhill Records Story/_Playlist.m3u") == "The Sugarhill Records Story"
+    assert n("/m/The Sugarhill Records Story/Disc 2/_Playlist.m3u") == "The Sugarhill Records Story - Disc 2"
+    assert n("/m/x/[PLAYLIST] We Are Reasonable People.m3u") == "We Are Reasonable People"
+    assert n("/m/x/[PLAYLIST] - Kid Koala - Carpal Tunnel Syndrome.m3u") == "Kid Koala - Carpal Tunnel Syndrome"
+    assert n("/m/Symphony X-[1994]-Dance Macabre-Demo/-=[PLAYLIST]=-.m3u") == "Symphony X-[1994]-Dance Macabre-Demo"
+    assert n("/m/x/Playlist for running.m3u") == "Playlist for running"
+    assert n("/m/x/soft.m3u") == "soft"

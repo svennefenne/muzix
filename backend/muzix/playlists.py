@@ -28,7 +28,23 @@ def is_playlist(path: str) -> bool:
 
 
 def norm(s: str) -> str:
-    return " ".join(re.sub(r"[^\w]+", " ", (s or "").casefold()).split())
+    return " ".join(re.sub(r"[\W_]+", " ", (s or "").casefold()).split())
+
+
+GENERIC = {"playlist", "playlists", "list", "untitled", "new playlist"}
+
+
+def display_name(path: str) -> str:
+    """The playlist's name: the file's, without a "[PLAYLIST]" tag; or, for a generic name like
+    "playlist.m3u", the folder it's in (with the album above it when that's "Disc 1" or "CD 2")."""
+    stem = os.path.splitext(os.path.basename(path))[0]
+    name = re.sub(r"(?i)^[\s=_-]*\[\s*playlist\s*\][\s=_-]*", "", stem).strip()
+    if norm(name) not in GENERIC and name:
+        return name
+    folder = os.path.basename(os.path.dirname(path))
+    if re.match(r"(?i)^(cd|disc|disk)\s*\d+$", folder):
+        folder = f"{os.path.basename(os.path.dirname(os.path.dirname(path)))} - {folder}"
+    return folder or name or stem
 
 
 # ---------------------------------------------------------------- reading
@@ -197,16 +213,17 @@ def scan(ctx, found: list[tuple[int, str]], root_ids: list[int]):
         if not entries or own_folder_only(path, entries):
             continue
         ids = [t for t in (matcher.find(path, e) for e in entries) if t]
-        if ids:
+        # a stray match or two from a compilation that isn't here isn't a playlist worth showing
+        if len(ids) >= 3 or len(ids) * 2 >= len(entries):
             kept.append((root_id, path, len(entries), ids))
-            ctx.log(f"  playlist {os.path.splitext(os.path.basename(path))[0]}: {len(ids)} of {len(entries)} songs found")
+            ctx.log(f"  playlist {display_name(path)}: {len(ids)} of {len(entries)} songs found")
     with db.session() as s:
         for root_id, path, entries, ids in kept:
             pl = s.scalar(select(FilePlaylist).where(FilePlaylist.path == path))
             if pl is None:
                 pl = FilePlaylist(path=path, root_id=root_id)
                 s.add(pl)
-            pl.name = os.path.splitext(os.path.basename(path))[0]
+            pl.name = display_name(path)
             pl.entries = entries
             s.flush()
             s.execute(delete(FilePlaylistItem).where(FilePlaylistItem.playlist_id == pl.id))
