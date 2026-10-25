@@ -5,11 +5,13 @@ import { BrowserRouter } from "react-router-dom";
 import { queryClient } from "./actions";
 import App from "./App";
 import { ErrorBoundary, reportGlobalErrors } from "./components/ErrorBoundary";
+import { note, startNavTrace } from "./navtrace";
 import "./styles/fonts";
 import "./styles/base.css";
 import "./styles/skins.css";
 
 reportGlobalErrors();
+startNavTrace();
 keepPhonesUpright();
 
 /** Installed on a phone, Muzix stays upright; tablets turn freely. The manifest asks for it
@@ -17,7 +19,7 @@ keepPhonesUpright();
 function keepPhonesUpright() {
   const o = screen.orientation as ScreenOrientation & { lock?: (o: "portrait") => Promise<void> };
   if (matchMedia("(display-mode: standalone)").matches && Math.min(screen.width, screen.height) < 600)
-    o?.lock?.("portrait").catch(() => {});
+    o?.lock?.("portrait").then(() => note("orientation lock accepted"), (e) => note(`orientation lock refused: ${e?.name}`));
 }
 
 createRoot(document.getElementById("root")!).render(
