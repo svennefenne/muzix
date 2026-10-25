@@ -182,34 +182,37 @@ class Matcher:
 # ---------------------------------------------------------------- storing
 
 def scan(ctx, found: list[tuple[int, str]], root_ids: list[int]):
-    """Stores the playlist files found under the scanned roots; returns how many were kept."""
-    kept, seen = 0, set()
+    """Stores the playlist files found under the scanned roots; returns how many were kept.
+    Reading and matching come first with nothing locked, then one short write stores the
+    lot: a job's log is written through another connection, which a long write would block."""
     with db.session() as s:
         matcher = Matcher(s)
-        for root_id, path in found:
-            try:
-                entries = read(path)
-            except OSError as e:
-                log.warning("cannot read playlist %s: %s", path, e)
-                continue
-            if not entries or own_folder_only(path, entries):
-                continue
-            ids = [t for t in (matcher.find(path, e) for e in entries) if t]
-            if not ids:
-                continue
-            seen.add(path)
+    kept = []
+    for root_id, path in found:
+        try:
+            entries = read(path)
+        except OSError as e:
+            log.warning("cannot read playlist %s: %s", path, e)
+            continue
+        if not entries or own_folder_only(path, entries):
+            continue
+        ids = [t for t in (matcher.find(path, e) for e in entries) if t]
+        if ids:
+            kept.append((root_id, path, len(entries), ids))
+            ctx.log(f"  playlist {os.path.splitext(os.path.basename(path))[0]}: {len(ids)} of {len(entries)} songs found")
+    with db.session() as s:
+        for root_id, path, entries, ids in kept:
             pl = s.scalar(select(FilePlaylist).where(FilePlaylist.path == path))
             if pl is None:
                 pl = FilePlaylist(path=path, root_id=root_id)
                 s.add(pl)
             pl.name = os.path.splitext(os.path.basename(path))[0]
-            pl.entries = len(entries)
+            pl.entries = entries
             s.flush()
             s.execute(delete(FilePlaylistItem).where(FilePlaylistItem.playlist_id == pl.id))
             s.add_all(FilePlaylistItem(playlist_id=pl.id, position=i, track_id=t) for i, t in enumerate(ids))
-            kept += 1
-            ctx.log(f"  playlist {pl.name}: {len(ids)} of {len(entries)} songs found")
+        seen = {k[1] for k in kept}
         for pl in s.scalars(select(FilePlaylist).where(FilePlaylist.root_id.in_(root_ids))):
             if pl.path not in seen:
                 s.delete(pl)
-    return kept
+    return len(kept)

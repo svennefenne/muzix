@@ -2,15 +2,18 @@
 of a path from another computer, or by artist and title once the files have been renamed."""
 import os
 import tempfile
+import time
 
 from muzix import db, playlists
-from muzix.models import FilePlaylist, FilePlaylistItem, Root, Track
+from muzix.models import FilePlaylist, FilePlaylistItem, Root, Setting, Track
 from sqlalchemy import select
 
 
 class Ctx:
-    def log(self, *_):
-        pass
+    """Logs the way a real job does: through a database connection of its own."""
+    def log(self, line):
+        with db.session() as s:
+            s.add(Setting(key=f"test-log-{time.monotonic_ns()}", value=line))
 
 
 def test_playlist_files_are_read_and_matched():
