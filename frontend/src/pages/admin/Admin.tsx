@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Activity, Folder, FolderOpen, HardDrive, Library, Plus, RefreshCw, Save, Settings2, Trash2, Upload, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { Link, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { create } from "zustand";
 import { ago, api, fmtBytes, fmtNumber } from "../../api";
 import { queryClient } from "../../actions";
 import { Display, Empty, Kicker, Loading, Modal, Switch } from "../../components/ui";
@@ -72,6 +73,7 @@ function Overview() {
           <button className="btn" onClick={() => run("/api/admin/jobs/scan_books", undefined, "Scanning audiobooks")}>Scan audiobooks</button>
           <button className="btn" onClick={() => run("/api/admin/jobs/artist_tags", undefined, "Fetching artist genres")}>Fetch artist genres</button>
           <button className="btn" onClick={() => run("/api/admin/jobs/refresh_feeds", undefined, "Refreshing podcasts")}>Refresh podcasts</button>
+          <Link className="btn" to="/admin/upload"><Upload size={15} /> Upload music</Link>
         </div>
       </section>
       <section className="panel">
@@ -214,7 +216,18 @@ function LibraryFolders() {
 interface Pending { file: File; path: string }
 interface Batch { batch: string; files: { path: string; size: number; kind: string }[]; created: string; job: { id: number; status: string; progress: number; message: string } | null }
 
-async function entriesToFiles(items: DataTransferItemList): Promise<Pending[]> {
+/** The files of a drop: folders walked through their entries, anything without one taken as
+ * a plain file. Both have to be picked up during the drop event itself. */
+function droppedFiles(dt: DataTransfer): Promise<Pending[]> {
+  const items = Array.from(dt.items).filter((i) => i.kind === "file");
+  const entries = items.map((i) => i.webkitGetAsEntry?.() ?? null);
+  const loose = items.map((i, n) => (entries[n] ? null : i.getAsFile())).filter((f): f is File => !!f);
+  if (!items.length) loose.push(...Array.from(dt.files));
+  return entriesToFiles(entries.filter((e): e is FileSystemEntry => !!e))
+    .then((walked) => [...walked, ...loose.map((file) => ({ file, path: file.name }))]);
+}
+
+async function entriesToFiles(entries: FileSystemEntry[]): Promise<Pending[]> {
   const out: Pending[] = [];
   const walk = async (entry: FileSystemEntry): Promise<void> => {
     if (entry.isFile) {
@@ -229,9 +242,48 @@ async function entriesToFiles(items: DataTransferItemList): Promise<Pending[]> {
       } while (batch.length);
     }
   };
-  const entries = Array.from(items).map((i) => i.webkitGetAsEntry()).filter((e): e is FileSystemEntry => !!e);
   for (const e of entries) await walk(e);
   return out;
+}
+
+/** An upload in progress, shared so a drop on any admin page can start one. */
+const useUpload = create<{ progress: { done: number; total: number; files: number } | null }>(() => ({ progress: null }));
+
+async function startUpload(files: Pending[]) {
+  const notify = useUi.getState().notify;
+  const setProgress = (progress: { done: number; total: number; files: number } | null) => useUpload.setState({ progress });
+  const audioish = files.filter((f) => !f.path.split("/").some((p) => p.startsWith(".")));
+  if (!audioish.length) return;
+  const { batch } = await api.post<{ batch: string }>("/api/upload/batch");
+  const total = audioish.reduce((s, f) => s + f.file.size, 0);
+  let done = 0;
+  setProgress({ done: 0, total, files: audioish.length });
+  try {
+    for (let i = 0; i < audioish.length;) {
+      const base = done;
+      const report = (loaded: number) => setProgress({ done: base + loaded, total, files: audioish.length });
+      if (audioish[i].file.size > MAX_REQUEST) {
+        const big = audioish[i++];
+        await sendParts(batch, big, report);
+        done = base + big.file.size;
+        continue;
+      }
+      const chunk: Pending[] = [];
+      let size = 0;
+      while (i < audioish.length && chunk.length < 25 && size + audioish[i].file.size <= MAX_REQUEST) {
+        size += audioish[i].file.size;
+        chunk.push(audioish[i++]);
+      }
+      await sendChunk(batch, chunk, report);
+      done = base + size;
+    }
+    notify(`Uploaded ${audioish.length} files. Press Import to tag and file them.`);
+  } catch (e) {
+    notify((e as Error).message, "error");
+  } finally {
+    setProgress(null);
+    queryClient.invalidateQueries({ queryKey: ["batches"] });
+  }
 }
 
 // Cloudflare (and some other proxies) refuse request bodies over 100 MiB, so
@@ -271,56 +323,19 @@ async function sendParts(batch: string, p: Pending, onProgress: (loaded: number)
 }
 
 function UploadArea() {
-  const [over, setOver] = useState(false);
-  const [progress, setProgress] = useState<{ done: number; total: number; files: number } | null>(null);
+  const progress = useUpload((s) => s.progress);
   const batches = useQuery({ queryKey: ["batches"], queryFn: () => api.get<Batch[]>("/api/upload/batches"), refetchInterval: 3000 });
-  const notify = useUi((s) => s.notify);
   const fileInput = useRef<HTMLInputElement>(null);
   const dirInput = useRef<HTMLInputElement>(null);
+  const upload = startUpload;
 
-  const upload = async (files: Pending[]) => {
-    const audioish = files.filter((f) => !f.path.split("/").some((p) => p.startsWith(".")));
-    if (!audioish.length) return;
-    const { batch } = await api.post<{ batch: string }>("/api/upload/batch");
-    const total = audioish.reduce((s, f) => s + f.file.size, 0);
-    let done = 0;
-    setProgress({ done: 0, total, files: audioish.length });
-    try {
-      for (let i = 0; i < audioish.length;) {
-        const base = done;
-        const report = (loaded: number) => setProgress({ done: base + loaded, total, files: audioish.length });
-        if (audioish[i].file.size > MAX_REQUEST) {
-          const big = audioish[i++];
-          await sendParts(batch, big, report);
-          done = base + big.file.size;
-          continue;
-        }
-        const chunk: Pending[] = [];
-        let size = 0;
-        while (i < audioish.length && chunk.length < 25 && size + audioish[i].file.size <= MAX_REQUEST) {
-          size += audioish[i].file.size;
-          chunk.push(audioish[i++]);
-        }
-        await sendChunk(batch, chunk, report);
-        done = base + size;
-      }
-      notify(`Uploaded ${audioish.length} files. Press Import to tag and file them.`);
-    } catch (e) {
-      notify((e as Error).message, "error");
-    } finally {
-      setProgress(null);
-      batches.refetch();
-    }
-  };
 
   return (
     <>
       <section className="panel">
         <div className="panel-head"><div><div className="kicker">Upload</div><div className="h3">Add music to the library</div></div></div>
-        <div className={`dropzone ${over ? "over" : ""}`}
-             onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
-             onDrop={async (e) => { e.preventDefault(); setOver(false); upload(await entriesToFiles(e.dataTransfer.items)); }}
-             onClick={() => fileInput.current?.click()}>
+        {/* drops are caught by the whole admin page (Admin below) */}
+        <div className="dropzone" onClick={() => fileInput.current?.click()}>
           <Upload size={34} />
           <div className="h3">Drop files or whole folders here</div>
           <div className="dim" style={{ maxWidth: 520 }}>
@@ -541,11 +556,26 @@ function AdminUsers() {
 
 export default function Admin() {
   const user = useUi((s) => s.user);
+  const [dragging, setDragging] = useState(false);
+  const go = useNavigate();
   if (!user?.is_admin) return <div className="page"><Empty title="Admins only" /></div>;
+  // files dragged over any admin page can be dropped to upload them
+  const files = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
   const nav = [["", "Overview", Activity], ["library", "Library folders", Library], ["upload", "Upload", Upload],
     ["jobs", "Jobs", RefreshCw], ["settings", "Settings", Settings2], ["users", "Users", Users]] as const;
   return (
-    <div className="page wide">
+    <div className="page wide"
+         onDragOver={(e) => { if (!files(e)) return; e.preventDefault(); setDragging(true); }}
+         onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false); }}
+         onDrop={(e) => {
+           if (!files(e)) return;
+           e.preventDefault();
+           setDragging(false);
+           const picked = droppedFiles(e.dataTransfer);
+           go("/admin/upload");
+           picked.then(startUpload);
+         }}>
+      {dragging && <div className="drop-overlay" aria-hidden><Upload size={40} /><span>Drop to upload music</span></div>}
       <Kicker parts={["Admin", "Muzix control room"]} />
       <Display l1="Control" l2="room" small />
       <div className="split">

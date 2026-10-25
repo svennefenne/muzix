@@ -43,7 +43,12 @@ export default function Podcasts() {
   const notify = useUi((s) => s.notify);
   const subs = useQuery({ queryKey: ["podcasts"], queryFn: () => api.get<Feed[]>("/api/podcasts") });
   const latest = useQuery({ queryKey: ["podcasts-latest"], queryFn: () => api.get<Episode[]>("/api/podcasts/latest") });
-  const top = useQuery({ queryKey: ["podcasts-top"], queryFn: () => api.get<PodcastHit[]>("/api/podcasts/top"), staleTime: 3600_000 });
+  const [genre, setGenre] = useState<number | null>(null);
+  const genres = useQuery({ queryKey: ["podcast-genres"], queryFn: () => api.get<{ id: number; name: string }[]>("/api/podcasts/genres"), staleTime: Infinity });
+  const top = useQuery({
+    queryKey: ["podcasts-top", genre], staleTime: 3600_000,
+    queryFn: () => api.get<PodcastHit[]>("/api/podcasts/top", genre ? { genre } : {}),
+  });
   const [term, setTerm] = useState("");
   const [hits, setHits] = useState<PodcastHit[] | null>(null);
   const [adding, setAdding] = useState(false);
@@ -57,6 +62,18 @@ export default function Podcasts() {
       const r = await api.post<{ id: number }>("/api/podcasts", { url: feedUrl });
       queryClient.invalidateQueries({ queryKey: ["podcasts"] });
       queryClient.invalidateQueries({ queryKey: ["podcasts-latest"] });
+      nav(`/podcasts/${r.id}`);
+    } catch (e) {
+      notify((e as Error).message, "error");
+    } finally {
+      setBusy("");
+    }
+  };
+  // a podcast's page without subscribing, to look and listen first
+  const open = async (feedUrl: string) => {
+    setBusy(feedUrl);
+    try {
+      const r = await api.post<{ id: number }>("/api/podcasts/open", { url: feedUrl });
       nav(`/podcasts/${r.id}`);
     } catch (e) {
       notify((e as Error).message, "error");
@@ -80,12 +97,14 @@ export default function Podcasts() {
   const HitGrid = ({ list }: { list: PodcastHit[] }) => (
     <div className="grid">
       {list.map((h) => (
-        <div key={h.url} className="card">
+        <div key={h.url} className="card" role="link" tabIndex={0} style={{ cursor: "pointer" }} aria-busy={busy === h.url}
+             onClick={() => open(h.url)} onKeyDown={(e) => e.key === "Enter" && open(h.url)}>
           <Art src={h.image} name={h.title} />
           <div className="card-title ellipsis">{h.title}</div>
-          <div className="card-sub ellipsis">{h.author}</div>
-          <button className="btn small" style={{ marginTop: 8 }} disabled={busy === h.url} onClick={() => subscribe(h.url)}>
-            <Plus size={13} /> {busy === h.url ? "Adding…" : "Subscribe"}
+          <div className="card-sub ellipsis">{busy === h.url ? "Opening…" : h.author}</div>
+          <button className="btn small" style={{ marginTop: 8 }} disabled={busy === h.url}
+                  onClick={(e) => { e.stopPropagation(); subscribe(h.url); }}>
+            <Plus size={13} /> Subscribe
           </button>
         </div>
       ))}
@@ -130,7 +149,15 @@ export default function Podcasts() {
         </Section>
       )}
 
-      {top.data && top.data.length > 0 && <Section kicker="Charts" title="Top podcasts"><HitGrid list={top.data} /></Section>}
+      <Section kicker="Charts" title="Browse">
+        <div className="subnav swipe" role="toolbar" aria-label="Categories">
+          <button className={genre === null ? "active" : ""} aria-pressed={genre === null} onClick={() => setGenre(null)}>Top</button>
+          {(genres.data || []).map((g) => (
+            <button key={g.id} className={genre === g.id ? "active" : ""} aria-pressed={genre === g.id} onClick={() => setGenre(g.id)}>{g.name}</button>
+          ))}
+        </div>
+        {top.isLoading ? <Loading /> : top.data?.length ? <HitGrid list={top.data} /> : <Empty title="Nothing in this chart right now" />}
+      </Section>
 
       {adding && (
         <Modal onClose={() => setAdding(false)}>
@@ -177,7 +204,13 @@ export function PodcastPage() {
                   nav("/podcasts");
                 }}>Unsubscribe</button>
               </>
-            ) : <button className="btn" onClick={async () => { await api.post("/api/podcasts", { url: f.url }); q.refetch(); }}>Subscribe</button>}
+            ) : (
+              <button className="btn accent" onClick={async () => {
+                await api.post("/api/podcasts", { url: f.url });
+                q.refetch();
+                for (const key of ["podcasts", "podcasts-latest", "sidebar"]) queryClient.invalidateQueries({ queryKey: [key] });
+              }}>Subscribe</button>
+            )}
           </div>
         </div>
       </div>

@@ -18,6 +18,7 @@ export interface Prefs {
   sidebar_collapsed?: boolean;           // the library panel as an icon strip
   np_panel?: boolean;                    // the "Now playing" panel on the right
   search_engine?: string;                // web search for a song: a URL with %s for the words
+  radio_buffer?: number;                 // seconds of a station gathered before it starts playing
   browse?: Record<string, BrowsePref>;   // sort and display mode per page
 }
 
@@ -119,9 +120,14 @@ export interface Genre {
 }
 
 export interface SidebarAlbum { id: number; title: string; artist: string; year: number; kind: "music" | "vgm"; art: string | null; liked: boolean }
+/** A playlist file found in the music folders (read-only, everyone's). */
+export interface FilePlaylist { id: number; name: string; tracks: number; entries: number; art: string[] }
+export interface FilePlaylistDetail { id: number; name: string; path: string; entries: number; tracks: Track[] }
+
 export interface SidebarData {
   liked_songs: number;
   playlists: { id: number; name: string; art: string | null }[];
+  file_playlists: { id: number; name: string; tracks: number; art: string | null }[];
   albums: SidebarAlbum[];
   games: SidebarAlbum[];
   artists: { id: number; name: string; art: string | null }[];

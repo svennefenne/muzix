@@ -147,6 +147,24 @@ class PlaylistItem(Base):
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class FilePlaylist(Base):
+    """A playlist file found in a library folder; everyone sees these."""
+    __tablename__ = "file_playlists"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    root_id: Mapped[int] = mapped_column(ForeignKey("roots.id", ondelete="CASCADE"), index=True)
+    path: Mapped[str] = mapped_column(String(1024), unique=True)
+    name: Mapped[str] = mapped_column(String(255), default="")
+    entries: Mapped[int] = mapped_column(Integer, default=0)   # lines in the file, found or not
+
+
+class FilePlaylistItem(Base):
+    __tablename__ = "file_playlist_items"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    playlist_id: Mapped[int] = mapped_column(ForeignKey("file_playlists.id", ondelete="CASCADE"), index=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    track_id: Mapped[int] = mapped_column(ForeignKey("tracks.id", ondelete="CASCADE"))
+
+
 class Like(Base):
     __tablename__ = "likes"
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)

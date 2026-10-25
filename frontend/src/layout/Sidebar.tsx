@@ -13,7 +13,7 @@ import { engine } from "../player/engine";
 import { sp } from "../player/spotify";
 import { fromStation } from "../store/player";
 import { useUi } from "../store/ui";
-import type { Playlist, SidebarData } from "../types";
+import type { FilePlaylistDetail, Playlist, SidebarData } from "../types";
 
 type Chip = "playlists" | "albums" | "artists" | "vgm" | "books" | "podcasts" | "radio" | "spotify";
 
@@ -54,6 +54,11 @@ async function playPlaylist(id: number) {
   if (p.tracks?.length) playTracks(p.tracks, 0);
 }
 
+async function playFilePlaylist(id: number) {
+  const p = await api.get<FilePlaylistDetail>(`/api/file-playlists/${id}`);
+  if (p.tracks.length) playTracks(p.tracks, 0);
+}
+
 export function Sidebar() {
   const { sidebarCollapsed, setPref } = useUi();
   const narrow = useMedia("(max-width: 1100px)");
@@ -81,6 +86,9 @@ export function Sidebar() {
     for (const p of d.playlists)
       rows.push({ key: `p${p.id}`, chip: "playlists", title: p.name, sub: "Playlist", art: <Art src={p.art} name={p.name} size={96} />,
                   to: `/playlist/${p.id}`, onPlay: () => playPlaylist(p.id) });
+    for (const f of d.file_playlists || [])
+      rows.push({ key: `fp${f.id}`, chip: "playlists", title: f.name, sub: `Playlist file · ${f.tracks} songs`,
+                  art: <Art src={f.art} name={f.name} size={96} />, to: `/playlist/file/${f.id}`, onPlay: () => playFilePlaylist(f.id) });
     for (const b of d.books)
       rows.push({ key: `b${b.id}`, chip: "books", title: b.title, sub: `Audiobook · ${Math.round(b.progress * 100)} %`,
                   art: <Art src={b.art} name={b.title} size={96} />, to: `/audiobooks/${b.id}` });

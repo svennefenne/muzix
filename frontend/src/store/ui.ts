@@ -19,6 +19,7 @@ interface UiState {
   sidebarCollapsed: boolean;
   npPanel: boolean;
   searchEngine: string;
+  radioBuffer: number;           // seconds of a station gathered before it starts
   queueOpen: boolean;
   nowPlayingOpen: boolean;
   toast: { text: string; kind: "info" | "error"; id: number } | null;
@@ -75,6 +76,7 @@ export const useUi = create<UiState>((set, get) => ({
   sidebarCollapsed: initial.sidebar_collapsed ?? false,
   npPanel: initial.np_panel ?? true,
   searchEngine: initial.search_engine || "https://www.google.com/search?q=%s",
+  radioBuffer: initial.radio_buffer ?? 0,
   queueOpen: false,
   nowPlayingOpen: false,
   toast: null,
@@ -93,6 +95,7 @@ export const useUi = create<UiState>((set, get) => ({
       sidebarCollapsed: p.sidebar_collapsed ?? get().sidebarCollapsed,
       npPanel: p.np_panel ?? get().npPanel,
       searchEngine: p.search_engine ?? get().searchEngine,
+      radioBuffer: p.radio_buffer ?? get().radioBuffer,
     });
   },
   setPref: (key, value) => {
@@ -100,6 +103,7 @@ export const useUi = create<UiState>((set, get) => ({
       scheme: "scheme", mode: "mode", genre_skins: "genreSkins", skin_lock: "skinLock",
       visualizer: "visualizer", quality: "quality", library_view: "libraryView",
       sidebar_collapsed: "sidebarCollapsed", np_panel: "npPanel", search_engine: "searchEngine",
+      radio_buffer: "radioBuffer",
     };
     const field = map[key];
     if (field) set({ [field]: value } as Partial<UiState>);

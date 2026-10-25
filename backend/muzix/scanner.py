@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.exc import IntegrityError
 
-from . import db, formats, jobs, settings
+from . import db, formats, jobs, playlists as file_playlists, settings
 from .meta import chip, tags
 from .models import Album, Artist, Root, Track
 
@@ -35,11 +35,15 @@ def norm(s: str) -> str:
 
 # ---------------------------------------------------------------- walking
 
-def walk(root: Root):
+def walk(root: Root, playlists: list | None = None):
+    """Audio files under a root, minus its excluded folders. Playlist files go into `playlists`,
+    from excluded folders too: a playlist there can still list songs from the library."""
     excludes = [os.path.join(root.path, e.strip("/")) for e in (root.excludes or [])]
-    stack = [root.path]
+    stack = [(root.path, False)]
     while stack:
-        d = stack.pop()
+        d, excluded = stack.pop()
+        if excluded and playlists is None:
+            continue
         try:
             entries = list(os.scandir(d))
         except OSError as e:
@@ -49,9 +53,10 @@ def walk(root: Root):
             if e.name.startswith("."):
                 continue
             if e.is_dir(follow_symlinks=True):
-                if not any(e.path == x or e.path.startswith(x + "/") for x in excludes):
-                    stack.append(e.path)
-            elif formats.is_audio(e.path):
+                stack.append((e.path, excluded or any(e.path == x or e.path.startswith(x + "/") for x in excludes)))
+            elif playlists is not None and file_playlists.is_playlist(e.name):
+                playlists.append((root.id, e.path))
+            elif not excluded and formats.is_audio(e.path):
                 try:
                     st = e.stat()
                 except OSError:
@@ -166,12 +171,15 @@ def scan_job(ctx: jobs.JobContext, root_id: int | None = None, full: bool = Fals
             q = q.where(Root.id == root_id)
         roots = [(r.id, r.path, r.kind, list(r.excludes or [])) for r in s.scalars(q)]
     totals = {"added": 0, "updated": 0, "removed": 0, "files": 0}
+    found: list[tuple[int, str]] = []
     for i, (rid, path, kind, excludes) in enumerate(roots):
         ctx.log(f"scanning {path} ({kind})")
         r = Root(id=rid, path=path, kind=kind, excludes=excludes)
-        res = scan_root(ctx, r, full, base=i / max(1, len(roots)), span=1 / max(1, len(roots)))
+        res = scan_root(ctx, r, full, base=i / max(1, len(roots)), span=1 / max(1, len(roots)), playlists=found)
         for k in totals:
             totals[k] += res[k]
+    ctx.log(f"reading {len(found)} playlist files")
+    totals["playlists"] = file_playlists.scan(ctx, found, [r[0] for r in roots])
     finish_scan(ctx)
     ctx.log(f"done: {totals}")
     if (totals["added"] or totals["updated"]) and settings.get("artist_tags") != "off":
@@ -181,7 +189,7 @@ def scan_job(ctx: jobs.JobContext, root_id: int | None = None, full: bool = Fals
     return totals
 
 
-def scan_root(ctx, root: Root, full: bool, base=0.0, span=1.0) -> dict:
+def scan_root(ctx, root: Root, full: bool, base=0.0, span=1.0, playlists: list | None = None) -> dict:
     gen = int(time.time())
     if not os.path.isdir(root.path):
         ctx.log(f"  {root.path} is not mounted / not a folder, skipped")
@@ -194,7 +202,7 @@ def scan_root(ctx, root: Root, full: bool, base=0.0, span=1.0) -> dict:
     for (p, sub), v in known.items():
         by_path.setdefault(p, []).append((sub, *v))
 
-    files = list(walk(root))
+    files = list(walk(root, playlists))
     ctx.log(f"  {len(files)} audio files")
     todo, unchanged = [], []
     for path, size, mtime in files:

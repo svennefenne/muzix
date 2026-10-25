@@ -34,18 +34,23 @@ export function ArtistCard({ a, to }: { a: Artist; to?: string }) {
   );
 }
 
-export function PlaylistCard({ p }: { p: Playlist }) {
+/** A playlist's card: four covers in a square, or one. */
+export function MosaicCard({ to, name, art, sub }: { to: string; name: string; art: string[]; sub: string }) {
   return (
-    <Link to={`/playlist/${p.id}`} className="card">
-      <div className="art" style={{ display: "grid", gridTemplateColumns: p.art.length >= 4 ? "1fr 1fr" : "1fr" }}>
-        {p.art.length >= 4
-          ? p.art.slice(0, 4).map((u) => <img key={u} src={`${u}?s=160`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />)
-          : <Art src={p.art[0]} name={p.name} />}
+    <Link to={to} className="card">
+      <div className="art" style={{ display: "grid", gridTemplateColumns: art.length >= 4 ? "1fr 1fr" : "1fr" }}>
+        {art.length >= 4
+          ? art.slice(0, 4).map((u) => <img key={u} src={`${u}?s=160`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />)
+          : <Art src={art[0]} name={name} />}
       </div>
-      <div className="card-title ellipsis">{p.name}</div>
-      <div className="card-sub ellipsis">{p.track_count} songs</div>
+      <div className="card-title ellipsis">{name}</div>
+      <div className="card-sub ellipsis">{sub}</div>
     </Link>
   );
+}
+
+export function PlaylistCard({ p }: { p: Playlist }) {
+  return <MosaicCard to={`/playlist/${p.id}`} name={p.name} art={p.art} sub={`${p.track_count} songs`} />;
 }
 
 export function GenreCard({ g, to }: { g: Genre; to?: string }) {

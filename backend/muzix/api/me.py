@@ -11,7 +11,7 @@ from ..db import get_db
 from ..models import (Album, Artist, Book, BookProgress, Feed, Like, Playlist, PlaylistItem, Station,
                       Subscription, Track, User)
 from ..security import check_password, current_user, hash_password, optional_user
-from .library import tracks_json
+from .library import file_playlists, tracks_json
 
 router = APIRouter(prefix="/api", tags=["me"])
 client_log = logging.getLogger("muzix.client")
@@ -250,6 +250,7 @@ def sidebar(db: Session = Depends(get_db), user: User = Depends(current_user)):
         "liked_songs": db.scalar(select(func.count()).select_from(Like)
                                  .where(Like.user_id == user.id, Like.item_type == "track")),
         "playlists": [{"id": p.id, "name": p.name, "art": (playlist_json(db, p)["art"] or [None])[0]} for p in lists],
+        "file_playlists": [{**f, "art": (f["art"] or [None])[0]} for f in file_playlists(db)],
         "albums": [_album_item(a, liked_ids) for a in albums],
         "games": [_album_item(a, liked_ids) for a in games],
         "artists": [{"id": a.id, "name": a.name, "art": serial.art_url("artist", a.id)} for a in artists],

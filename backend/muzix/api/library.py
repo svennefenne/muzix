@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from .. import art, serial
 from ..db import get_db
-from ..models import Album, Artist, Book, Like, PlayEvent, Track, User
+from ..models import Album, Artist, Book, FilePlaylist, FilePlaylistItem, Like, PlayEvent, Track, User
 from ..security import current_user
 
 router = APIRouter(prefix="/api", tags=["library"])
@@ -234,6 +234,36 @@ def random_tracks(db: Session = Depends(get_db), user: User = Depends(current_us
     if system:
         q = q.where(on_system(system))
     return tracks_json(db, user, db.scalars(q.order_by(func.random()).limit(n)).all())
+
+
+# ---------------------------------------------------------------- playlist files
+
+def file_playlists(db: Session) -> list[dict]:
+    """The playlist files the scan kept, with their song count and up to four covers."""
+    out = []
+    for pl in db.scalars(select(FilePlaylist).order_by(func.lower(FilePlaylist.name))):
+        albums = db.scalars(select(Track.album_id).join(FilePlaylistItem, FilePlaylistItem.track_id == Track.id)
+                            .where(FilePlaylistItem.playlist_id == pl.id, Track.album_id.is_not(None))
+                            .group_by(Track.album_id).order_by(func.min(FilePlaylistItem.position)).limit(4)).all()
+        count = db.scalar(select(func.count()).select_from(FilePlaylistItem).where(FilePlaylistItem.playlist_id == pl.id))
+        out.append({"id": pl.id, "name": pl.name, "tracks": count, "entries": pl.entries,
+                    "art": [serial.art_url("album", a) for a in albums]})
+    return out
+
+
+@router.get("/file-playlists")
+def list_file_playlists(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    return file_playlists(db)
+
+
+@router.get("/file-playlists/{playlist_id}")
+def file_playlist(playlist_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    pl = db.get(FilePlaylist, playlist_id)
+    if pl is None:
+        raise HTTPException(404, "No such playlist")
+    tracks = db.scalars(select(Track).join(FilePlaylistItem, FilePlaylistItem.track_id == Track.id)
+                        .where(FilePlaylistItem.playlist_id == pl.id).order_by(FilePlaylistItem.position)).all()
+    return {"id": pl.id, "name": pl.name, "path": pl.path, "entries": pl.entries, "tracks": tracks_json(db, user, tracks)}
 
 
 # ---------------------------------------------------------------- tags

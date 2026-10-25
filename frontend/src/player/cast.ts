@@ -179,6 +179,7 @@ class Caster {
   private url(it: PlayItem, token: string, from: number) {
     const u = new URL(it.src, location.origin);
     if (it.kind !== "radio") u.searchParams.set("q", "cast");
+    else if (useUi.getState().radioBuffer > 0) u.searchParams.set("buffer", String(useUi.getState().radioBuffer));
     if (from > 0.5) u.searchParams.set("t", from.toFixed(1));
     u.searchParams.set("ct", token);
     return u.toString();

@@ -64,6 +64,16 @@ class SubscribeBody(BaseModel):
     url: str
 
 
+@router.post("/open")
+def open_podcast(body: SubscribeBody, user: User = Depends(current_user)):
+    """A podcast's page without subscribing: its feed is read so the episodes can be played."""
+    check_url(body.url)
+    try:
+        return {"id": podcasts.open_feed(body.url.strip())}
+    except (httpx.HTTPError, ValueError) as e:
+        raise HTTPException(400, f"Couldn't read that feed: {e}")
+
+
 @router.post("")
 def subscribe(body: SubscribeBody, user: User = Depends(current_user)):
     check_url(body.url)
@@ -85,14 +95,35 @@ def search(q: str, user: User = Depends(current_user)):
             for x in r.json().get("results", []) if x.get("feedUrl")]
 
 
+# Apple Podcasts' categories, for browsing
+GENRES = [(1301, "Arts"), (1321, "Business"), (1303, "Comedy"), (1304, "Education"), (1483, "Fiction"),
+          (1511, "Government"), (1512, "Health & Fitness"), (1487, "History"), (1305, "Kids & Family"),
+          (1502, "Leisure"), (1310, "Music"), (1489, "News"), (1314, "Religion & Spirituality"), (1533, "Science"),
+          (1324, "Society & Culture"), (1545, "Sports"), (1318, "Technology"), (1488, "True Crime"), (1309, "TV & Film")]
+
+
+@router.get("/genres")
+def genres(user: User = Depends(current_user)):
+    return [{"id": i, "name": n} for i, n in GENRES]
+
+
 @router.get("/top")
-def top(user: User = Depends(current_user)):
+def top(genre: int | None = None, user: User = Depends(current_user)):
+    """The charts for this server's country: overall, or for one category."""
     country = (settings.get("radio_country") or "us").lower()
-    r = httpx.get(f"https://rss.marketingtools.apple.com/api/v2/{country}/podcasts/top/30/podcasts.json",
-                  timeout=15, follow_redirects=True)
-    if r.status_code != 200:
-        return []
-    ids = [x["id"] for x in r.json().get("feed", {}).get("results", [])]
+    if genre:
+        r = httpx.get(f"https://itunes.apple.com/{country}/rss/toppodcasts/limit=50/genre={genre}/json",
+                      timeout=15, follow_redirects=True)
+        if r.status_code != 200:
+            return []
+        entries = r.json().get("feed", {}).get("entry", [])
+        ids = [e["id"]["attributes"]["im:id"] for e in (entries if isinstance(entries, list) else [entries])]
+    else:
+        r = httpx.get(f"https://rss.marketingtools.apple.com/api/v2/{country}/podcasts/top/30/podcasts.json",
+                      timeout=15, follow_redirects=True)
+        if r.status_code != 200:
+            return []
+        ids = [x["id"] for x in r.json().get("feed", {}).get("results", [])]
     if not ids:
         return []
     look = httpx.get("https://itunes.apple.com/lookup", params={"id": ",".join(ids), "entity": "podcast"}, timeout=15)

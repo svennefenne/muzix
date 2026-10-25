@@ -15,7 +15,7 @@ import { focusQuickSearch } from "./layout/QuickSearch";
 import { isTyping, TopBar } from "./layout/TopBar";
 import Home from "./pages/Home";
 import {
-  AlbumPage, ArtistPage, GenrePage, TagPage, LibraryAlbums, LibraryArtistAlbums, LibraryArtists, LibraryGenreArtists, LibraryGenres,
+  AlbumPage, ArtistPage, FilePlaylistPage, GenrePage, TagPage, LibraryAlbums, LibraryArtistAlbums, LibraryArtists, LibraryGenreArtists, LibraryGenres,
   LibraryHome, Liked, PlaylistPage, Playlists, SearchPage,
 } from "./pages/Library";
 import { engine } from "./player/engine";
@@ -90,6 +90,7 @@ function Shell() {
               <Route path="/genre/:name" element={<GenrePage />} />
               <Route path="/tag/:name" element={<TagPage />} />
               <Route path="/playlist/:id" element={<PlaylistPage />} />
+              <Route path="/playlist/file/:id" element={<FilePlaylistPage />} />
               <Route path="/search" element={<SearchPage />} />
               <Route path="/vgm/*" element={<Vgm />} />
               <Route path="/audiobooks" element={<Books />} />

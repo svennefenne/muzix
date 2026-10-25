@@ -92,21 +92,32 @@ def fetch(feed: Feed, client: httpx.Client) -> bool:
     return bool(new)
 
 
-def subscribe(url: str, user_id: int) -> Feed:
+def open_feed(url: str, fresh: bool = True) -> int:
+    """The feed's id, reading it first if it's new (or, with `fresh`, older than six hours);
+    nobody is subscribed by this, so a podcast can be looked at before subscribing."""
     with db.session() as s:
         feed = s.scalar(select(Feed).where(Feed.url == url))
         if feed is None:
             feed = Feed(url=url)
             s.add(feed)
             s.flush()
-        feed_id = feed.id
+        feed_id, checked = feed.id, feed.last_checked
+    if checked is not None and checked.tzinfo is None:   # SQLite hands times back without their zone
+        checked = checked.replace(tzinfo=timezone.utc)
+    if checked is None or (fresh and datetime.now(timezone.utc) - checked > timedelta(hours=6)):
+        with db.session() as s:
+            feed = s.get(Feed, feed_id)
+            with httpx.Client(headers={"User-Agent": UA}, timeout=30) as client:
+                fetch(feed, client)
+    return feed_id
+
+
+def subscribe(url: str, user_id: int) -> Feed:
+    feed_id = open_feed(url)
     with db.session() as s:
-        feed = s.get(Feed, feed_id)
-        with httpx.Client(headers={"User-Agent": UA}, timeout=30) as client:
-            fetch(feed, client)
         if s.get(Subscription, (user_id, feed_id)) is None:
             s.add(Subscription(user_id=user_id, feed_id=feed_id))
-        return feed
+        return s.get(Feed, feed_id)
 
 
 def download_path(ep: Episode) -> str:

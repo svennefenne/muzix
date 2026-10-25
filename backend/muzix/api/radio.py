@@ -183,7 +183,9 @@ def history(station: str, db: Session = Depends(get_db), user: User = Depends(cu
 
 
 @router.get("/play")
-def play(url: str, uuid: str = "", user: User = Depends(stream_user)):
+def play(url: str, uuid: str = "", buffer: float = 0, user: User = Depends(stream_user)):
+    """The station's stream, relayed. With `buffer` the first that many seconds are gathered
+    before anything is sent, so the player starts with a cushion against dropouts."""
     check_url(url)
     if uuid:
         try:
@@ -250,8 +252,26 @@ def play(url: str, uuid: str = "", user: User = Depends(stream_user)):
             upstream.close()
             client.close()
 
+    def cushioned():
+        """Holds back the first `buffer` seconds, then sends them in one go and carries on."""
+        audio = body()
+        held, until = [], time.monotonic() + min(max(buffer, 0), 30)
+        try:
+            for chunk in audio:
+                if time.monotonic() >= until:
+                    if held:
+                        yield b"".join(held)
+                        held = []
+                    yield chunk
+                else:
+                    held.append(chunk)
+            if held:
+                yield b"".join(held)
+        finally:
+            audio.close()   # the listener left: let go of the station
+
     name = upstream.headers.get("icy-name", "")
-    return StreamingResponse(body(), media_type=ctype, headers={
+    return StreamingResponse(cushioned() if buffer > 0 else body(), media_type=ctype, headers={
         "Cache-Control": "no-store", "X-Station-Name": name.encode("latin-1", "replace").decode("latin-1")})
 
 

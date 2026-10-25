@@ -8,11 +8,13 @@ import {
   ALBUM_SORTS, AlbumItems, ARTIST_SORTS, ArtistItems, DisplaySwitch, GENRE_SORTS, GenreItems, Segmented, SortMenu,
   useBrowse, type Choice,
 } from "../components/Browse";
-import { AlbumCard, ArtistCard, PlaylistCard } from "../components/Cards";
+import { AlbumCard, ArtistCard, MosaicCard, PlaylistCard } from "../components/Cards";
 import { TrackList } from "../components/TrackList";
 import { Art, Display, Empty, Kicker, Loading, Modal, Section, useInView } from "../components/ui";
 import { useUi } from "../store/ui";
-import type { Album, AlbumDetail, Artist, ArtistDetail, Genre, LibraryView, Paged, Playlist, SearchResults, TagDetail, Track } from "../types";
+import type {
+  Album, AlbumDetail, Artist, ArtistDetail, FilePlaylist, FilePlaylistDetail, Genre, LibraryView, Paged, Playlist, SearchResults, TagDetail, Track,
+} from "../types";
 
 function LibraryNav() {
   const { pathname } = useLocation();
@@ -203,6 +205,7 @@ export function Liked() {
 
 export function Playlists() {
   const q = useQuery({ queryKey: ["playlists"], queryFn: () => api.get<Playlist[]>("/api/playlists") });
+  const files = useQuery({ queryKey: ["file-playlists"], queryFn: () => api.get<FilePlaylist[]>("/api/file-playlists") });
   // "+" in the library panel lands here with { create: true }
   const loc = useLocation();
   const [creating, setCreating] = useState(() => Boolean((loc.state as { create?: boolean } | null)?.create));
@@ -222,6 +225,13 @@ export function Playlists() {
       <div className="toolbar"><button className="btn accent" onClick={() => setCreating(true)}><Plus size={15} /> New playlist</button></div>
       {q.data?.length ? <div className="grid">{q.data.map((p) => <PlaylistCard key={p.id} p={p} />)}</div>
         : q.data ? <Empty title="No playlists yet">Make one, then add songs from any track's menu.</Empty> : <Loading />}
+      {files.data && files.data.length > 0 && (
+        <Section title="From your music folders">
+          <div className="grid">
+            {files.data.map((f) => <MosaicCard key={f.id} to={`/playlist/file/${f.id}`} name={f.name} art={f.art} sub={`${f.tracks} songs`} />)}
+          </div>
+        </Section>
+      )}
       {creating && (
         <Modal onClose={() => setCreating(false)}>
           <div className="h2" style={{ marginBottom: 14 }}>New playlist</div>
@@ -379,6 +389,27 @@ export function TagPage() {
           {(items) => <TrackList tracks={items} showArt />}
         </Infinite>
       </Section>
+    </div>
+  );
+}
+
+/** A playlist file from the music folders: read-only, with the songs the scan could find. */
+export function FilePlaylistPage() {
+  const { id } = useParams();
+  const q = useQuery({ queryKey: ["file-playlist", Number(id)], queryFn: () => api.get<FilePlaylistDetail>(`/api/file-playlists/${id}`) });
+  if (!q.data) return <div className="page"><Loading /></div>;
+  const p = q.data;
+  const missing = p.entries - p.tracks.length;
+  return (
+    <div className="page">
+      <Kicker parts={["Playlist file", `${p.tracks.length} songs`, missing > 0 && `${missing} not in the library`]} />
+      <Display l1={p.name} small />
+      <div className="row-actions" style={{ marginBottom: 18 }}>
+        <button className="btn accent" disabled={!p.tracks.length} onClick={() => playTracks(p.tracks, 0)}><Play size={15} fill="currentColor" /> Play</button>
+        <button className="btn" disabled={!p.tracks.length} onClick={() => playTracks(p.tracks, 0, true)}><Shuffle size={15} /> Shuffle</button>
+      </div>
+      <TrackList tracks={p.tracks} showArt />
+      <div className="faint mono" style={{ fontSize: 11, marginTop: 14, letterSpacing: ".08em" }}>{p.path}</div>
     </div>
   );
 }

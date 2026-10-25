@@ -177,9 +177,9 @@ components:
 
 **Creative North Star: "The Late-Night Broadcast"**
 
-Muzix is a station on the air after midnight, and it restyles itself for every show. The top bar is the transmitter: the striped logo, then an italic ticker that announces what's on ("Now playing", "On air", or a quote between shows). The footer is the station's status line, set in tiny spaced-out monospace: the host name, track counts, the skin on air, a fullscreen hint. Between them sits the screen itself, a thin rounded frame floating on a nebula backdrop, with the library to its left and what's playing to its right. When the music changes genre, the whole station re-dresses for the show: death metal brings bone and blood with blackletter type, a chiptune brings CRT scanlines and pixel type, jazz brings Blue Note duotones.
+Muzix is a station on the air after midnight, and it restyles itself for every show. The top bar is the station's dial: the striped logo, then the sections (Music, VGM, Audiobooks, Podcasts, Radio, Spotify) as pills to tune to. The footer is the station's status line, set in tiny spaced-out monospace: the host name, track counts, the skin on air, a fullscreen hint. Between them sits the screen itself, a thin rounded frame floating on a nebula backdrop, with the library to its left and what's playing to its right. When the music changes genre, the whole station re-dresses for the show: death metal brings bone and blood with blackletter type, a chiptune brings CRT scanlines and pixel type, jazz brings Blue Note duotones.
 
-The house look, used when no skin is on air, is night-time warm: Bone text on Midnight Navy, Marigold for whatever is live, Vermilion for the one thing to do next, and a soft nebula of jade, marigold and vermilion glow behind everything. Headings are loud (heavy condensed capitals); everything around them is quiet. The layout follows Spotify's arrangement, so nobody has to learn where things are; the personality lives in the type, the colour, the skins and the broadcast furniture (ticker, stripes, mono labels, status line).
+The house look, used when no skin is on air, is night-time warm: Bone text on Midnight Navy, Marigold for whatever is live, Vermilion for the one thing to do next, and a soft nebula of jade, marigold and vermilion glow behind everything. Headings are loud (heavy condensed capitals); everything around them is quiet. The layout follows Spotify's arrangement, so nobody has to learn where things are; the personality lives in the type, the colour, the skins and the broadcast furniture (stripes, section pills, mono labels, status line).
 
 Density is a listener's density, not a dashboard's: generous page margins, large covers, and lists that breathe at about 60px per row. The interface is built to be left running on a screen as much as to be operated.
 
@@ -187,7 +187,7 @@ Density is a listener's density, not a dashboard's: generous page margins, large
 - Every colour, font and corner comes from role variables that the 98 colour schemes and 25 genre skins swap out. Nothing in a component is hard-wired to the house palette.
 - Heavy uppercase display type for headings; tiny spaced monospace for labels and status; a plain sans for everything you read or press.
 - The frame: one 1px hairline panel with 14px corners, inset 8px from the window, holding the page; the side docks share its edge.
-- Broadcast furniture: the ticker in the top bar, the footer status line, the five-colour stripes.
+- Broadcast furniture: the section pills in the top bar, the footer status line, the five-colour stripes.
 - Quiet, precise controls: small outlined buttons, round icon buttons, pill chips. They never outshout the headings or the cover art.
 
 ## Colors
@@ -249,7 +249,7 @@ The house palette is warm light on deep night: one hot accent for what's live, o
 
 The desktop is a fixed shell of four rows: the top bar (58px), the workspace, the player bar (76px) and the footer status line (26px). Safe-area insets pad all of it.
 
-- **Top bar:** a three-column grid. Logo and ticker sit left, the home button and centred search (240–440px wide) sit middle, and your controls sit right.
+- **Top bar:** one row: the logo, the section pills (424px with their names), the home button and the search (up to 440px, giving way first when space runs short), and your controls pushed to the right.
 - **Workspace:**
   - Columns, with 8px gaps and 8px side padding: "Your library" (304px), the frame (the rest), and the now playing panel (340px, toggled from the player bar).
   - The library folds to a 72px strip of covers when you ask, or on its own below 1100px.
@@ -264,7 +264,7 @@ The desktop is a fixed shell of four rows: the top bar (58px), the workspace, th
 Breakpoints give up the least useful parts first:
 - Below 1500px the fullscreen button goes.
 - Below 1440px the docks narrow (272px and 300px).
-- Below 1280px the ticker goes.
+- Below about 1280px the section pills drop their names for icons (with the names as tooltips); below 1000px the logo shrinks to its stripes.
 - Below 1180px the now playing panel goes.
 - Below 1100px the library folds.
 - At 860px and under, the phone layout takes over:
@@ -341,7 +341,7 @@ Small, outlined and exact; they recede until you need them.
 - **Switches and ranges:** a 40×22px track that fills Marigold when on. Range sliders have 4px tracks and a 13px Bone thumb; seek bars turn Marigold on hover and show a striped Coral Red fill when the stream is live.
 
 ### Navigation
-- **Top bar:** striped logo (links Home), the ticker in 12.5px italic Bone Dim with the album name in Marigold, a round home button (Marigold when you're home) beside the search, and on the right a now-playing button with a progress ring, the light/dark toggle, fullscreen and the account pill (avatar plus name; Settings, Admin and Sign out live in its menu).
+- **Top bar:** striped logo (links Home), the section pills (13px semibold on Bone at 10%, the current section solid Marigold), a round home button (Marigold when you're home) beside the search, and on the right a now-playing button with a progress ring, the light/dark toggle, fullscreen and the account pill (avatar plus name; Settings, Admin and Sign out live in its menu).
 - **Your library (left dock):**
   - Header row with a panel title and a "+" for a new playlist, then filter chips, then rows.
   - Each row is a 48px cover with a 14px bold title and a 12.5px dim subtitle ("Playlist · 12 songs").
@@ -358,8 +358,8 @@ The right dock is the broadcast's on-air card. The big cover opens the full-scre
 
 With nothing playing, it invites a shuffle.
 
-### Ticker and Status Line (signature)
-The top bar's ticker reads like a broadcast announcement: a leading dash and italic text, with the album or attribution set in Marigold. The footer status line runs in 9.5px mono capitals in Bone Faint: "MUZIX · NODE · USER · 870 TRACKS · 42 CHIPTUNES · 61 H · SKIN: BLUES", with a fullscreen hint and an appearance link on the right. They are what makes Muzix feel like a station rather than a file browser, and they stay on every desktop screen.
+### Status Line (signature)
+The footer status line runs in 9.5px mono capitals in Bone Faint: "MUZIX · NODE · USER · 870 TRACKS · 42 CHIPTUNES · 61 H · SKIN: BLUES", with a fullscreen hint and an appearance link on the right. It is what makes Muzix feel like a station rather than a file browser, and it stays on every desktop screen.
 
 ## Do's and Don'ts
 
@@ -370,7 +370,7 @@ The top bar's ticker reads like a broadcast announcement: a leading dash and ita
 - **Do** size page content against the frame with container queries (`cqi`, `@container page`), not the window.
 - **Do** take dim, faint, on-accent and error text from the theme (`--text-dim`, `--text-faint`, `--on-primary`, `--on-secondary`, `--error-text`, and `--on-error` on `--error-solid`); never pick a text colour for an accent by hand.
 - **Do** keep controls quiet: 38px buttons with 12px labels, 32px icon buttons, outlines before fills, and one Vermilion action per view.
-- **Do** keep the broadcast furniture on every desktop screen: the striped logo, the ticker, the footer status line.
+- **Do** keep the broadcast furniture on every desktop screen: the striped logo, the section pills, the footer status line.
 
 ### Don't:
 - **Don't** hard-code the house hex values in a component; the one sanctioned exception is the bento tiles' fixed dark plate.

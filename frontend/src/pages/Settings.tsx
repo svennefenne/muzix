@@ -105,6 +105,15 @@ export default function Settings() {
             <span className="dim">Skin backgrounds and the now-playing view move with the music.</span></div>
         </div>
         <div className="field">
+          <label>Radio buffer</label>
+          <select className="select" style={{ maxWidth: 360 }} aria-label="Radio buffer" value={ui.radioBuffer}
+                  onChange={(e) => ui.setPref("radio_buffer", Number(e.target.value))}>
+            <option value={0}>Start at once</option>
+            {[3, 8, 15, 30].map((s) => <option key={s} value={s}>{s} seconds</option>)}
+          </select>
+          <div className="help">A station waits this long before it starts, then plays through dropouts in your connection this long, a little behind live. A station that still stalls reconnects by itself.</div>
+        </div>
+        <div className="field">
           <label>Searching for a song</label>
           <select className="select" style={{ maxWidth: 360 }} aria-label="Search engine"
                   value={SEARCH_ENGINES.some(([, u]) => u === ui.searchEngine) ? ui.searchEngine : "custom"}

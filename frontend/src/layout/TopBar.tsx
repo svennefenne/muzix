@@ -1,5 +1,7 @@
-import { Activity, House, Monitor, Moon, Search, Settings, Shield, Sun, SunMoon, LogOut } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import {
+  Activity, BookOpen, Disc3, Gamepad2, House, LogOut, Monitor, Moon, Music2, Podcast, Radio, Search, Settings, Shield, Sun, SunMoon,
+} from "lucide-react";
+import { useEffect } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { Logo } from "../components/Logo";
@@ -18,30 +20,26 @@ export const TABS = [
   { to: "/spotify", label: "Spotify" },
 ];
 
-const QUOTES: [string, string, string][] = [
-  ["Without music, life would be a mistake.", "Friedrich Nietzsche", "Twilight of the Idols"],
-  ["If music be the food of love, play on.", "William Shakespeare", "Twelfth Night"],
-  ["Where words fail, music speaks.", "Hans Christian Andersen", "What the Moon Saw"],
-  ["After silence, that which comes nearest to expressing the inexpressible is music.", "Aldous Huxley", "Music at Night"],
-  ["Music is the space between the notes.", "Claude Debussy", "attributed"],
-  ["Music expresses that which cannot be said.", "Victor Hugo", "William Shakespeare"],
-  ["One good thing about music, when it hits you, you feel no pain.", "Bob Marley", "Trenchtown Rock"],
-  ["It's dangerous to go alone! Take this.", "Old Man", "The Legend of Zelda"],
-  ["Do a barrel roll!", "Peppy Hare", "Star Fox 64"],
-  ["Insert coin to continue.", "Every arcade cabinet", "1978 onwards"],
-  ["The only truth is music.", "Jack Kerouac", "Mexico City Blues"],
-  ["Music is the wine that fills the cup of silence.", "Robert Fripp", "attributed"],
+/** The sections, as pills in the top bar on desktops (phones have them on Home). */
+const SECTIONS = [
+  { to: "/library", label: "Music", icon: Disc3 },
+  { to: "/vgm", label: "VGM", icon: Gamepad2 },
+  { to: "/audiobooks", label: "Audiobooks", icon: BookOpen },
+  { to: "/podcasts", label: "Podcasts", icon: Podcast },
+  { to: "/radio", label: "Radio", icon: Radio },
+  { to: "/spotify", label: "Spotify", icon: Music2 },
 ];
 
-function Ticker() {
-  const cur = usePlayer((s) => (s.index >= 0 ? s.queue[s.index] : null));
-  const live = usePlayer((s) => s.liveTitle);
-  const quote = useMemo(() => QUOTES[Math.floor(Math.random() * QUOTES.length)], []);
-  if (cur?.kind === "radio")
-    return <div className="ticker">- On air: {live || "…"}, <em>{cur.title}</em></div>;
-  if (cur)
-    return <div className="ticker">- Now playing: {cur.title}, {cur.artist} {cur.album && <em>({cur.album})</em>}</div>;
-  return <div className="ticker">- {quote[0]} <em>{quote[1]} ({quote[2]})</em></div>;
+function SectionPills() {
+  return (
+    <nav className="topnav" aria-label="Sections">
+      {SECTIONS.map(({ to, label, icon: Icon }) => (
+        <NavLink key={to} to={to} className="topnav-pill" title={label} aria-label={label}>
+          <Icon size={16} /><span>{label}</span>
+        </NavLink>
+      ))}
+    </nav>
+  );
 }
 
 function LevelRing() {
@@ -92,12 +90,10 @@ export function TopBar() {
 
   return (
     <header className="topbar">
-      <div className="topbar-left">
-        <NavLink to="/" className="logo" aria-label="Home">
-          <Logo name={siteName || "Muzix"} />
-        </NavLink>
-        <Ticker />
-      </div>
+      <NavLink to="/" className="logo" aria-label="Home">
+        <Logo name={siteName || "Muzix"} />
+      </NavLink>
+      <SectionPills />
       <div className="topbar-center">
         <NavLink to="/" end className={`iconbtn homebtn ${atHome ? "on" : ""}`} title="Home" aria-label="Home"><House size={17} /></NavLink>
         <QuickSearch />

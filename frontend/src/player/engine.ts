@@ -18,6 +18,9 @@ class Engine {
   private prefetched = "";
   private lastSave = 0;
   private radioTimer: number | undefined;
+  private stallTimer: number | undefined;   // a station that stops delivering
+  private radioRetries = 0;
+  private steadyTimer: number | undefined;
   private freq: Uint8Array<ArrayBuffer> | null = null;
 
   constructor() {
@@ -25,9 +28,23 @@ class Engine {
     this.el.preload = "auto";
     const el = this.el;
     el.addEventListener("timeupdate", () => this.onTime());
-    el.addEventListener("playing", () => usePlayer.getState().set({ playing: true, buffering: false, error: "" }));
+    el.addEventListener("playing", () => {
+      usePlayer.getState().set({ playing: true, buffering: false, error: "" });
+      window.clearTimeout(this.stallTimer);
+      // a minute of steady radio earns the reconnects back
+      window.clearTimeout(this.steadyTimer);
+      this.steadyTimer = window.setTimeout(() => (this.radioRetries = 0), 60_000);
+    });
     el.addEventListener("pause", () => usePlayer.getState().set({ playing: false }));
-    el.addEventListener("waiting", () => usePlayer.getState().set({ buffering: true }));
+    el.addEventListener("waiting", () => {
+      usePlayer.getState().set({ buffering: true });
+      window.clearTimeout(this.steadyTimer);
+      // radio that stalls this long gets a fresh connection
+      if (usePlayer.getState().current()?.kind === "radio" && !caster.active) {
+        window.clearTimeout(this.stallTimer);
+        this.stallTimer = window.setTimeout(() => this.reconnectRadio(), 12_000);
+      }
+    });
     el.addEventListener("canplay", () => usePlayer.getState().set({ buffering: false }));
     el.addEventListener("ended", () => this.onEnded());
     el.addEventListener("error", () => this.onError());
@@ -166,6 +183,7 @@ class Engine {
   }
 
   stop() {
+    window.clearTimeout(this.stallTimer);
     this.el.pause();
     this.el.removeAttribute("src");
     this.el.load();
@@ -179,6 +197,8 @@ class Engine {
     const q = useUi.getState().quality;
     const params = new URLSearchParams();
     if (q !== "original" && item.kind !== "radio") params.set("q", q);
+    const cushion = useUi.getState().radioBuffer;
+    if (item.kind === "radio" && cushion > 0) params.set("buffer", String(cushion));
     if (at > 0.5) params.set("t", at.toFixed(1));
     const s = params.toString();
     return s ? item.src + (item.src.includes("?") ? "&" : "?") + s : item.src;
@@ -192,6 +212,8 @@ class Engine {
     this.saveProgress();
     this.scrobbled = false;
     this.prefetched = "";
+    this.radioRetries = 0;
+    window.clearTimeout(this.stallTimer);
     s.set({ position: at ?? item.resume ?? 0, duration: item.duration, liveTitle: "", error: "", buffering: autoplay });
     if (item.kind === "spotify") {
       this.el.pause();
@@ -279,10 +301,22 @@ class Engine {
     this.next(true);
   }
 
+  /** A dropped or stalled station: connect again, a few times, before giving up. */
+  private reconnectRadio(): boolean {
+    const item = usePlayer.getState().current();
+    if (!item || item.kind !== "radio" || this.radioRetries >= 3) return false;
+    this.radioRetries++;
+    usePlayer.getState().set({ buffering: true, error: "" });
+    this.el.src = this.srcFor(item, 0);
+    this.el.play().catch(() => {});
+    return true;
+  }
+
   private onError() {
     if (caster.active) return;
     const item = usePlayer.getState().current();
     if (!item || !this.el.getAttribute("src")) return;
+    if (item.kind === "radio" && this.reconnectRadio()) return;
     const msg = item.kind === "radio" ? "The station isn't answering" : `Couldn't play ${item.title}`;
     usePlayer.getState().set({ error: msg, playing: false, buffering: false });
     useUi.getState().notify(msg, "error");
