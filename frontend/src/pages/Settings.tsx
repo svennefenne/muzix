@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { api } from "../api";
+import { castStatus } from "../components/CastButton";
 import { Display, Kicker, Switch } from "../components/ui";
+import { usePlayer } from "../store/player";
 import { useUi } from "../store/ui";
 import { PALETTES, type Palette } from "../theme/palettes";
 import { SKINS } from "../theme/skins";
@@ -45,6 +47,7 @@ export function SchemePicker({ value, onChange, dark }: { value: string; onChang
 
 export default function Settings() {
   const ui = useUi();
+  const cast = usePlayer(castStatus);
   const dark = ui.mode === "dark" || (ui.mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
   const [pw, setPw] = useState({ current: "", next: "" });
   const [pwMsg, setPwMsg] = useState("");
@@ -99,6 +102,10 @@ export default function Settings() {
           <label>Visualizer & reactive backgrounds</label>
           <div className="row-actions"><Switch checked={ui.visualizer} onChange={(v) => ui.setPref("visualizer", v)} label="Visualizer" />
             <span className="dim">Skin backgrounds and the now-playing view move with the music.</span></div>
+        </div>
+        <div className="field">
+          <label>Cast to speakers</label>
+          <span className="dim">{cast}</span>
         </div>
       </section>
 

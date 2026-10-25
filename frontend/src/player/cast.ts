@@ -66,13 +66,21 @@ class Caster {
     this.hooks = hooks;
   }
 
-  /** Loads Google's sender library where casting can work: Chrome-based browsers, https pages. */
+  /** Loads Google's sender library where casting can work (Chrome, https pages), and says why not elsewhere. */
   load() {
-    if (!window.isSecureContext || !/Chrome\//.test(navigator.userAgent)) return;
-    window.__onGCastApiAvailable = (ok) => ok && this.init();
+    const set = usePlayer.getState().set;
+    const no = (castWhy: string) => set({ castSupport: "unsupported", castWhy });
+    if (!window.isSecureContext) return no("Casting needs Muzix's https address.");
+    if (!/Chrome\//.test(navigator.userAgent) || /SamsungBrowser/.test(navigator.userAgent))
+      return no("Casting needs Google Chrome, on Android or a computer.");
+    window.__onGCastApiAvailable = (ok, reason) => {
+      if (ok) this.init();
+      else no(`Google Cast isn't available in this browser${reason ? ` (${reason})` : ""}.`);
+    };
     const s = document.createElement("script");
     s.src = SDK;
     s.async = true;
+    s.onerror = () => no("Google's Cast library couldn't load. Is an ad or tracker blocker stopping www.gstatic.com?");
     document.head.appendChild(s);
   }
 
@@ -88,6 +96,7 @@ class Caster {
     this.ctl = new cast.framework.RemotePlayerController(this.player);
     this.ctl.addEventListener(cast.framework.RemotePlayerEventType.ANY_CHANGE, (e) => this.onChange(e.field));
     this.setState(ctx.getCastState());
+    usePlayer.getState().set({ castSupport: "ready" });
     usePlayer.subscribe((s, prev) => {
       if (!this.active) return;
       if (s.repeat !== prev.repeat) this.setRepeat();
@@ -100,7 +109,12 @@ class Caster {
 
   /** Opens the browser's speaker picker (it also offers "Stop casting" while connected). */
   choose() {
-    cast.framework.CastContext.getInstance().requestSession().catch(() => {});
+    const failed = (e: unknown) => {
+      if (!e || e === "cancel") return;
+      useUi.getState().notify(e === "receiver_unavailable" ? "No speakers found on this network"
+        : `Couldn't connect to the speaker (${String(e)})`, "error");
+    };
+    cast.framework.CastContext.getInstance().requestSession().then(failed, failed);
   }
 
   private session() {
