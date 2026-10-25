@@ -10,6 +10,7 @@ import hashlib
 import logging
 import os
 import shutil
+import struct
 import subprocess
 import tempfile
 import threading
@@ -55,7 +56,7 @@ def render(path: str, fmt: str, subsong: int, duration: float, extra: dict | Non
     loops = int(settings.get("chip_loops"))
     mode = settings.get("chip_loop_mode")
     extra_key = {"midi": settings.get("soundfont"), "furnace": f"{mode}{loops}",
-                 "module": settings.get("module_repeats")}.get(fam, "")
+                 "module": settings.get("module_repeats"), "zx": settings.get("module_repeats")}.get(fam, "")
     # Furnace's length is only known after rendering; key its cache on the loop settings alone
     out = cache_path(path, subsong, (0.0, 0.0) if fam == "furnace" else (total, fade), str(extra_key))
     if os.path.exists(out):
@@ -79,6 +80,10 @@ def render(path: str, fmt: str, subsong: int, duration: float, extra: dict | Non
                 _run(["fluidsynth", "-ni", "-q", "-g", "0.6", "-r", "44100", "-F", wav, font, path])
             elif fam == "ym":
                 _run(["ymtool", "render", path, wav, f"{total:.2f}"])
+            elif fam == "zx":
+                # zxtune123 plays one pass by itself; looping is only needed for more than that
+                one = (extra or {}).get("natural") or duration
+                _zxtune(path, total if total > one + 1 else 0, wav, tmp)
             elif fam == "furnace":
                 # Furnace's -loops counts repeats after the first pass; ours counts passes
                 _furnace(path, subsong, loops - 1 if mode == "loops" else 50, wav)
@@ -227,6 +232,69 @@ def _furnace(path, subsong, loops, wav):
     if subsong >= 0:
         cmd += ["-subsong", str(subsong)]
     _run(cmd + [path], env={**os.environ, "SDL_AUDIODRIVER": "dummy", "SDL_VIDEODRIVER": "dummy"})
+
+
+# ---------------------------------------------------------------- ZX Spectrum (zxtune123)
+# zxtune123 renders a few hundred times faster than real time, but only into files, and when
+# asked to loop it never stops. A looped render is stopped once the file is long enough, and the
+# WAV header (which zxtune123 fills in at the end) is fixed here.
+
+def zx_input(path: str, tmp: str) -> str:
+    """The file under a plain name: zxtune123 reads a "?" in a path as the start of a sub-path."""
+    link = os.path.join(tmp, "tune." + (formats.ext_of(path) or "zx"))
+    if not os.path.exists(link):
+        os.symlink(os.path.abspath(path), link)
+    return link
+
+
+def _zxtune(path: str, seconds: float, wav: str, tmp: str):
+    """One pass (`seconds` 0), or looped until `seconds` of audio are written."""
+    cmd = ["zxtune123", "--silent", "--frequency", "44100", "--wav", f"filename={wav}", zx_input(path, tmp)]
+    if not seconds:
+        _run(cmd)
+    else:
+        need = 44 + int(seconds * 44100) * 4
+        try:
+            p = subprocess.Popen(cmd[:1] + ["--loop"] + cmd[1:], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except FileNotFoundError:
+            raise RenderError("zxtune123 is not installed")
+        deadline = time.time() + RENDER_TIMEOUT
+        try:
+            while p.poll() is None and time.time() < deadline:
+                if os.path.exists(wav) and os.path.getsize(wav) >= need:
+                    break
+                time.sleep(0.02)
+        finally:
+            p.kill()
+            p.wait()
+        if os.path.exists(wav):
+            fix_wav_header(wav)
+    # zxtune123 exits happily when it can't play a file; the missing audio says so
+    if not os.path.exists(wav) or os.path.getsize(wav) <= 44:
+        raise RenderError("zxtune123 couldn't play this file")
+
+
+def zx_length(path: str, tmp: str) -> float:
+    """Seconds in one pass, from a quick render at a low sample rate."""
+    wav = os.path.join(tmp, "length.wav")
+    _run(["zxtune123", "--silent", "--frequency", "8000", "--wav", f"filename={wav}", zx_input(path, tmp)])
+    return max(0, os.path.getsize(wav) - 44) / (8000 * 4) if os.path.exists(wav) else 0.0
+
+
+def fix_wav_header(wav: str):
+    """Sizes for a 44-byte-header PCM WAV whose writer was stopped before it filled them in."""
+    size = os.path.getsize(wav)
+    with open(wav, "r+b") as f:
+        head = f.read(44)
+        if len(head) < 44 or head[:4] != b"RIFF" or head[36:40] != b"data":
+            return
+        block = struct.unpack_from("<H", head, 32)[0] or 4
+        data = (size - 44) // block * block
+        f.seek(4)
+        f.write(struct.pack("<I", 36 + data))
+        f.seek(40)
+        f.write(struct.pack("<I", data))
+        f.truncate(44 + data)
 
 
 def _run(cmd, env=None):

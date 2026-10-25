@@ -277,7 +277,7 @@ class Engine {
     const pos = this.offset + this.el.currentTime;
     this.progress(pos, isFinite(this.el.duration) ? this.el.duration : 0);
     // chip renders are cut to length; a stream that runs over the planned time stops here
-    if (item.kind === "track" && item.duration && pos > item.duration + 1.5) this.onEnded();
+    if ((item.kind === "track" || item.kind === "online") && item.duration && pos > item.duration + 1.5) this.onEnded();
   }
 
   /** Bookkeeping as playback moves on, here or on a Cast speaker: plays, resume points, prefetch. */
@@ -320,7 +320,7 @@ class Engine {
     const msg = item.kind === "radio" ? "The station isn't answering" : `Couldn't play ${item.title}`;
     usePlayer.getState().set({ error: msg, playing: false, buffering: false });
     useUi.getState().notify(msg, "error");
-    if (item.kind === "track") window.setTimeout(() => {
+    if (item.kind === "track" || item.kind === "online") window.setTimeout(() => {
       if (usePlayer.getState().current()?.key === item.key) this.next(true);
     }, 2500);
   }
@@ -328,10 +328,10 @@ class Engine {
   private prefetchNext() {
     const s = usePlayer.getState();
     const next = s.queue[s.index + 1];
-    if (!next || next.kind !== "track" || this.prefetched === next.key) return;
+    if (!next || (next.kind !== "track" && next.kind !== "online") || this.prefetched === next.key) return;
     this.prefetched = next.key;
-    // starts the render of chiptunes/trackers so the next song starts at once
-    fetch(next.src + "?prefetch=1", { credentials: "same-origin" }).catch(() => {});
+    // starts the render of chiptunes/trackers (and an online tune's download) so the next song starts at once
+    fetch(next.src + (next.src.includes("?") ? "&" : "?") + "prefetch=1", { credentials: "same-origin" }).catch(() => {});
   }
 
   saveProgress(finished = false) {

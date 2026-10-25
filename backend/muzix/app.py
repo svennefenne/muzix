@@ -42,11 +42,12 @@ def create_app() -> FastAPI:
     from . import books, enrich, maintenance, podcasts, scanner  # noqa: F401
     from .organize import importer  # noqa: F401
     from .api import admin, auth, books as books_api, library, me, podcasts as podcasts_api
-    from .api import radio, spotify, stream, themes, upload
+    from .api import online, radio, spotify, stream, themes, upload
 
     app = FastAPI(title="Muzix", version=__version__, docs_url="/api/docs", openapi_url="/api/openapi.json")
     app.add_middleware(NoProxyBuffering)
-    for mod in (auth, library, stream, me, admin, books_api, podcasts_api, radio, spotify, themes, upload):
+    for mod in (auth, library, stream, me, admin, books_api, podcasts_api, radio, spotify, themes, upload,
+                online):
         app.include_router(mod.router)
         if hasattr(mod, "art_router"):
             app.include_router(mod.art_router)

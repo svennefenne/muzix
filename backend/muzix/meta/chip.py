@@ -6,14 +6,17 @@ Durations are None when the format doesn't say (the player then uses the
 configured default length).
 """
 
+import csv
 import gzip
 import hashlib
+import os
 import re
 import struct
 import subprocess
+import tempfile
 from dataclasses import dataclass, field
 
-from .. import formats
+from .. import env, formats
 
 
 @dataclass
@@ -407,6 +410,8 @@ def read(path: str, ext: str) -> ChipInfo:
     fam = formats.family(ext)
     if fam == "midi":
         return read_midi(path)
+    if fam == "zx":
+        return read_zx(path)
     with open(path, "rb") as f:
         data = f.read(64 * 1024 * 1024)
     if ext == "ym":
@@ -422,6 +427,42 @@ def read(path: str, ext: str) -> ChipInfo:
     if not info.subsongs:
         info.subsongs = [Subsong(0, info.title)]
     return info
+
+
+# ---------------------------------------------------------------- ZX Spectrum
+
+ZX_NAME = re.compile(r"^(?P<artist>.+?) - (?P<title>.+?)(?: \((?P<year>(?:19|20)\d\d)\))?(?: \([^)]*\))*$")
+
+
+class NotATune(ValueError):
+    """zxtune123 doesn't recognise the file (a .ts video, say)."""
+
+
+def read_zx(path: str) -> ChipInfo:
+    """Title, author and tracker from zxtune123's index; the length of one pass from a quick render."""
+    from .. import render
+    with tempfile.TemporaryDirectory(dir=env.CACHE_DIR) as tmp:
+        src = render.zx_input(path, tmp)
+        index = os.path.join(tmp, "index.csv")
+        render._run(["zxtune123", "--silent", "--index", f"filename={index},csv=[Type]|[Title]|[Author]|[Program]|[Date]", src])
+        try:
+            with open(index, encoding="utf-8", errors="replace", newline="") as f:
+                rows = list(csv.reader(f, delimiter="|"))[1:]   # the first line repeats the template
+        except OSError:
+            rows = []
+        if not rows:
+            raise NotATune(path)
+        kind, title, author, program, date = (rows[0] + [""] * 5)[:5]
+        seconds = render.zx_length(path, tmp) or None
+    title, author, year = _clean(title), _clean(author), _year(date)
+    # tunes often say nothing about themselves; archives name them "Author - Title (1996)"
+    m = ZX_NAME.match(os.path.splitext(os.path.basename(path))[0])
+    if m and not (title and author):
+        title, author = title or m["title"], author or m["artist"]
+        year = year or int(m["year"] or 0)
+    return ChipInfo(title=title, artist=author, year=year, system="ZX Spectrum",
+                    duration=seconds, subsongs=[Subsong(-1, title, duration=seconds, natural=seconds)],
+                    extra={k: v for k, v in dict(tracker=_clean(program) or kind).items() if v})
 
 
 MIN_EXTRA_SUBSONG = 60   # modules often hide short fragments as "subsongs"

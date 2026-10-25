@@ -122,6 +122,7 @@ export const SYSTEM_ACCENTS: Record<string, Partial<Colors>> = {
   "Sega Mega Drive / Genesis": { primary: "#2b6cff", secondary: "#ff3b3b" },
   "Amiga / PC tracker": { bg: "#0055aa", surface: "#1a6ac0", text: "#ffffff", primary: "#ff8800", secondary: "#ffffff", border: "#80b0ff" },
   "Atari ST": { primary: "#9be564", secondary: "#e4e4e4" },
+  "ZX Spectrum": { primary: "#00d7d7", secondary: "#d7d700" },
 };
 
 // ---------------------------------------------------------------- choosing a skin

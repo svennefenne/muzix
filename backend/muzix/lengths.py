@@ -24,7 +24,7 @@ def play_plan(fam: str, extra: dict | None, duration: float = 0) -> tuple[float,
 
     if fam == "midi":
         return (extra.get("natural") or duration or fixed_time), 0.0
-    if fam == "module":
+    if fam in ("module", "zx"):          # ZX Spectrum tunes are tracker songs too
         one = extra.get("natural") or duration
         repeats = int(settings.get("module_repeats"))
         if not one:

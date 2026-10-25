@@ -92,6 +92,8 @@ def read_file(path: str, root_kind: str) -> list[dict]:
         )]
     try:
         info = chip.read(path, ext)
+    except chip.NotATune:
+        return []                    # .ts and .psg name other things too; only list what plays
     except Exception as e:
         log.info("unreadable %s: %s", path, e)
         info = chip.ChipInfo(system=formats.system_for(ext), subsongs=[chip.Subsong(0)])

@@ -32,7 +32,7 @@ export function useActiveTheme(): ActiveTheme {
     let skin: Skin | null = null;
     if (skinLock && SKIN_BY_ID.has(skinLock)) skin = SKIN_BY_ID.get(skinLock)!;
     else if (genreSkins && current) {
-      const kind = current.kind === "track" ? current.trackKind : current.kind;
+      const kind = current.kind === "track" || current.kind === "online" ? current.trackKind : current.kind;
       const id = pickSkin({ kind, genre: current.genre, tags: current.tags, system: current.system }, skinRules);
       skin = id ? SKIN_BY_ID.get(id) || null : null;
     }

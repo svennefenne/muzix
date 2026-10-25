@@ -24,6 +24,7 @@ you choose from 98 colour schemes, each with a light and a dark version.
   | Commodore 64 | SID | sidplayfp |
   | Atari ST | YM | StSound (`ymtool`) |
   | FamiTracker | FTM, 0CC, DNM, FUR | Furnace |
+  | ZX Spectrum | PT3, PT2, STC, ST3, STP, ASC, PSC, SQT, FTC, TFC, TS, PSG, VTX, DST, DMM, COP… | zxtune123 ([ZXTune](https://github.com/vitamin-caig/zxtune)) |
   | MIDI | MID, KAR, RMI | FluidSynth + General MIDI soundfont |
 
   Multi-song files (NSF, GBS, SID, FamiTracker...) show every song as its own track.
@@ -31,6 +32,14 @@ you choose from 98 colour schemes, each with a light and a dark version.
   choose "play the loop N times" (intro + N × loop + fade, using the file's own
   loop points) or "play for a fixed time", the fade length and a cap. Tracker
   modules have their own repeat count.
+- **Online chiptune archives** (VGM → Online archives): browse and play
+  straight from HVSC (C64), Modland (trackers), ASMA (Atari 8-bit), Joshw's
+  NES, Game Boy, SNES, PC Engine and MSX rips, ZXArt (ZX Spectrum) and
+  scene.org. Muzix fetches a
+  folder when you open it and a tune when you play it (game sets come as .7z or
+  .zip and are unpacked for you, with song names and lengths from their
+  playlists), and keeps up to 5 GB of recent downloads. It never crawls the
+  archives in the background.
 - **Audiobooks**: .m4b with chapters or folders of files, resume position,
   speed control, finished/unfinished.
 - **Podcasts**: subscribe by URL or from the Apple Podcasts directory, top

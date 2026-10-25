@@ -253,3 +253,23 @@ export interface Paged<T> {
   total: number;
   items: T[];
 }
+
+export interface OnlineSource {
+  id: string; name: string; label: string; about: string; system: string; home: string;
+  starts: { name: string; path: string }[];
+}
+export interface OnlineFile {
+  name: string; path: string; kind: "tune" | "archive"; size: number; format: string; chip: boolean;
+  title?: string; artist?: string; year?: number; duration?: number;   // archives that say (ZXArt)
+}
+export interface OnlineListing {
+  source: string; path: string; name: string; system: string;
+  crumbs: { name: string; path: string }[];
+  dirs: { name: string; path: string }[];
+  files: OnlineFile[];
+  other: number;                 // files Muzix can't play
+}
+export interface OnlineTrack {
+  key: string; title: string; artist: string; album: string; duration: number; format: string;
+  kind: "music" | "vgm"; system: string; year: number; stream: string; cast_native: boolean;
+}

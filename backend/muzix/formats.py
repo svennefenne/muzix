@@ -9,6 +9,7 @@ family:
   midi      General MIDI, rendered with FluidSynth
   ym        Atari ST YM register dumps, rendered with ymtool (StSound)
   furnace   FamiTracker/Furnace songs, rendered with Furnace's command line
+  zx        ZX Spectrum trackers (Pro Tracker, Sound Tracker, ASC, TurboFM...), rendered with zxtune123
 
 Rendered families are turned into a cached FLAC file once and then served
 like any other file, so seeking works everywhere.
@@ -27,13 +28,20 @@ SID = {"sid", "psid", "rsid"}
 MIDI = {"mid", "midi", "kar", "rmi", "smf"}
 YM = {"ym"}
 FURNACE = {"ftm", "0cc", "dnm", "fur"}
+# libgme plays .ay already. "zx" marks a downloaded tune whose own name doesn't say what it is
+# (ZXArt keeps names like "song.$m" and "tune.c"); zxtune123 goes by the contents anyway.
+ZX = {
+    "pt3", "pt2", "pt1", "stc", "st1", "st3", "stp", "asc", "as0", "psc", "sqt", "ftc", "gtr", "chi",
+    "dmm", "dst", "et1", "pdt", "sqd", "tfc", "tfd", "tfe", "ts", "psg", "vtx", "cop", "etc", "mtc",
+    "mt3", "zx",
+}
 
 FAMILIES = {
     "native": NATIVE, "decode": DECODE, "module": MODULE, "gme": GME,
-    "sid": SID, "midi": MIDI, "ym": YM, "furnace": FURNACE,
+    "sid": SID, "midi": MIDI, "ym": YM, "furnace": FURNACE, "zx": ZX,
 }
 _BY_EXT = {ext: fam for fam, exts in FAMILIES.items() for ext in exts}
-CHIP_FAMILIES = {"module", "gme", "sid", "midi", "ym", "furnace"}
+CHIP_FAMILIES = {"module", "gme", "sid", "midi", "ym", "furnace", "zx"}
 RENDERED = CHIP_FAMILIES
 
 # a friendly system name per chip format, for the VGM pages
@@ -44,6 +52,7 @@ SYSTEMS = {
     "ay": "ZX Spectrum / CPC", "sap": "Atari 8-bit", "sid": "Commodore 64", "psid": "Commodore 64",
     "rsid": "Commodore 64", "ym": "Atari ST", "mid": "MIDI", "midi": "MIDI", "kar": "MIDI",
     "rmi": "MIDI", "smf": "MIDI", "fur": "Furnace",
+    **{ext: "ZX Spectrum" for ext in ZX},
 }
 
 

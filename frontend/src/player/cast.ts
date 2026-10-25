@@ -189,7 +189,7 @@ class Caster {
   private queueItem(it: PlayItem, token: string, from = 0, startTime = 0) {
     const live = it.kind === "radio";
     const info = new chrome.cast.media.MediaInfo(this.url(it, token, from),
-      it.kind === "track" ? MIME[it.format || ""] || "audio/flac" : "audio/mpeg");
+      it.kind === "track" || it.kind === "online" ? MIME[it.format || ""] || "audio/flac" : "audio/mpeg");
     info.streamType = live ? chrome.cast.media.StreamType.LIVE : chrome.cast.media.StreamType.BUFFERED;
     if (it.duration && !from) info.duration = it.duration;
     // words only: the speaker never gets a picture

@@ -1,13 +1,14 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Shuffle } from "lucide-react";
 import { useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
+import { NavLink, Route, Routes, useMatch, useSearchParams } from "react-router-dom";
 import { api, fmtNumber } from "../api";
 import { playRandom } from "../actions";
 import { AlbumItems, DisplaySwitch, SortMenu, useBrowse } from "../components/Browse";
 import { Display, Empty, Kicker, Loading, Section, Stripes, useInView } from "../components/ui";
 import { SYSTEM_ACCENTS } from "../theme/skins";
 import type { Album, Paged } from "../types";
+import { OnlineBrowser, OnlineHome } from "./VgmOnline";
 
 interface SystemRow { system: string; tracks: number; albums: number }
 
@@ -17,6 +18,31 @@ const VGM_SORTS: [string, string][] = [
 ];
 
 export default function Vgm() {
+  const deep = useMatch("/vgm/online/:source/*");
+  const online = useMatch("/vgm/online");
+  const systems = useQuery({ queryKey: ["vgm-systems"], queryFn: () => api.get<SystemRow[]>("/api/vgm/systems") });
+  const total = (systems.data || []).reduce((s, x) => s + x.tracks, 0);
+  return (
+    <div className="page wide">
+      {!deep && <>
+        <Kicker parts={online ? ["Video game music", "Online archives"]
+          : ["Video game music", total && `${fmtNumber(total)} tunes`, systems.data && `${systems.data.length} systems`]} />
+        <Display l1="Press" l2="start" />
+      </>}
+      <nav className="subnav" aria-label="Video game music">
+        <NavLink to="/vgm" end className={({ isActive }) => (isActive ? "active" : "")}>Your collection</NavLink>
+        <NavLink to="/vgm/online" className={({ isActive }) => (isActive ? "active" : "")}>Online archives</NavLink>
+      </nav>
+      <Routes>
+        <Route index element={<Collection />} />
+        <Route path="online" element={<OnlineHome />} />
+        <Route path="online/:source/*" element={<OnlineBrowser />} />
+      </Routes>
+    </div>
+  );
+}
+
+function Collection() {
   const [params, setParams] = useSearchParams();
   const system = params.get("system") || "";
   const b = useBrowse("vgm", VGM_SORTS, "name");
@@ -32,14 +58,11 @@ export default function Vgm() {
   });
   const more = useCallback(() => { if (albums.hasNextPage && !albums.isFetchingNextPage) albums.fetchNextPage(); }, [albums]);
   const sentinel = useInView(more, !!albums.hasNextPage);
-  const total = (systems.data || []).reduce((s, x) => s + x.tracks, 0);
   const items = albums.data?.pages.flatMap((p) => p.items) || [];
 
   return (
-    <div className="page wide">
-      <Kicker parts={["Video game music", total && `${fmtNumber(total)} tunes`, systems.data && `${systems.data.length} systems`]} />
-      <Display l1="Press" l2="start" />
-      <p className="lede">Chiptunes and tracker music, played by the real chip emulators: NES, Game Boy, SNES, Mega Drive, C64, Atari ST, Amiga MODs and PC trackers. Looping songs follow the loop settings on the admin page.</p>
+    <>
+      <p className="lede">Chiptunes and tracker music, played by the real chip emulators: NES, Game Boy, SNES, Mega Drive, C64, ZX Spectrum, Atari ST, Amiga MODs and PC trackers. Looping songs follow the loop settings on the admin page.</p>
       <div className="row-actions" style={{ marginBottom: 26 }}>
         <button className="btn primary" onClick={() => playRandom({ kind: "vgm", system: system || undefined })}><Shuffle size={15} /> Shuffle {system || "all VGM"}</button>
       </div>
@@ -80,6 +103,6 @@ export default function Vgm() {
           </>
         ) : <Empty title="No VGM yet">Add a folder with chiptunes or tracker modules as a "VGM" folder on the admin page.</Empty>}
       </Section>
-    </div>
+    </>
   );
 }

@@ -3,7 +3,7 @@
 import os
 import time
 
-from . import env, jobs
+from . import env, jobs, online
 from .scanner import finish_scan
 
 RENDER_CACHE_LIMIT = 20 * 1024**3   # rendered chiptunes are small; this is a safety net
@@ -16,7 +16,7 @@ def cleanup(ctx: jobs.JobContext):
 
 @jobs.job("prune_cache")
 def prune_cache(ctx: jobs.JobContext):
-    """Drop the least recently used renders once the cache passes its limit."""
+    """Drop the least recently used renders and online downloads once each cache passes its limit."""
     files = []
     for r, _, fs in os.walk(env.CACHE_DIR / "render"):
         for f in fs:
@@ -38,4 +38,6 @@ def prune_cache(ctx: jobs.JobContext):
         total -= size
         removed += 1
     ctx.log(f"render cache: {len(files)} files, removed {removed}")
-    return {"removed": removed}
+    kept, dropped = online.prune()
+    ctx.log(f"online downloads: {kept} files, removed {dropped}")
+    return {"removed": removed, "online_removed": dropped}

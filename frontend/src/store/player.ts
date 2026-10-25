@@ -1,8 +1,8 @@
 import { create } from "zustand";
 import type { CastState } from "../player/cast";
-import type { Book, Episode, Station, Track } from "../types";
+import type { Book, Episode, OnlineTrack, Station, Track } from "../types";
 
-export type ItemKind = "track" | "book" | "episode" | "radio" | "spotify";
+export type ItemKind = "track" | "book" | "episode" | "radio" | "spotify" | "online";
 
 export interface PlayItem {
   key: string;
@@ -36,6 +36,14 @@ export function fromTrack(t: Track): PlayItem {
     artist: t.artist || t.albumartist, album: t.album, art: t.art, duration: t.duration,
     src: t.stream, genre: t.genre, tags: t.tags, system: t.system, trackKind: t.kind,
     albumId: t.album_id, artistId: t.artist_id, format: t.format, castNative: t.cast_native, liked: t.liked,
+  };
+}
+
+/** A tune from an online archive: plays like a library track, but nothing is kept about it. */
+export function fromOnline(t: OnlineTrack): PlayItem {
+  return {
+    key: t.key, kind: "online", id: t.key, title: t.title, artist: t.artist, album: t.album, duration: t.duration,
+    src: t.stream, system: t.system, trackKind: t.kind, format: t.format, castNative: t.cast_native,
   };
 }
 
