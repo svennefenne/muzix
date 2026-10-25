@@ -22,6 +22,7 @@ ALBUM_SORTS = {
     "tracks": (Album.track_count.desc(), func.lower(Album.title)),
 }
 GENRE_SORTS = {"albums": "n DESC", "name": "lower(genre)", "artists": "a DESC, n DESC"}
+NO_SYSTEM = "Game soundtracks"   # VGM without a chip system: ordinary soundtrack albums
 
 
 def plays_by(column, user: User):
@@ -47,6 +48,11 @@ def tracks_json(db: Session, user: User, tracks: list[Track]) -> list[dict]:
     lk = liked(db, user, "track")
     tags = artist_tags(db, (t.artist_id for t in tracks))
     return [serial.track(t, lk, tags) for t in tracks]
+
+
+def on_system(system: str):
+    """Tracks from one VGM system; NO_SYSTEM stands for those without one."""
+    return func.coalesce(func.json_extract(Track.extra, "$.system"), "") == ("" if system == NO_SYSTEM else system)
 
 
 def album_order():
@@ -117,8 +123,7 @@ def albums(db: Session = Depends(get_db), user: User = Depends(current_user),
     if artist_id:
         q = q.where(Album.artist_id == artist_id)
     if system:
-        q = q.where(Album.id.in_(select(Track.album_id).where(
-            func.json_extract(Track.extra, "$.system") == system)))
+        q = q.where(Album.id.in_(select(Track.album_id).where(on_system(system))))
     if liked_only:
         q = q.where(Album.id.in_(select(Like.item_id).where(Like.user_id == user.id, Like.item_type == "album")))
     total = db.scalar(select(func.count()).select_from(q.subquery()))
@@ -227,7 +232,7 @@ def random_tracks(db: Session = Depends(get_db), user: User = Depends(current_us
     if album_id:
         q = q.where(Track.album_id == album_id)
     if system:
-        q = q.where(func.json_extract(Track.extra, "$.system") == system)
+        q = q.where(on_system(system))
     return tracks_json(db, user, db.scalars(q.order_by(func.random()).limit(n)).all())
 
 
@@ -317,7 +322,7 @@ def vgm_systems(db: Session = Depends(get_db), user: User = Depends(current_user
     rows = db.execute(text(
         "SELECT coalesce(json_extract(extra, '$.system'), ''), count(*), count(DISTINCT album_id) "
         "FROM tracks WHERE kind = 'vgm' GROUP BY 1 ORDER BY 2 DESC")).all()
-    return [{"system": s or "Game soundtracks", "tracks": n, "albums": a} for s, n, a in rows]
+    return [{"system": s or NO_SYSTEM, "tracks": n, "albums": a} for s, n, a in rows]
 
 
 # ---------------------------------------------------------------- art
