@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-25T10:37:18+00:00",
+  "generatedAt": "2026-10-25T10:39:54+00:00",
   "title": "Design System: Muzix",
   "extensions": {
     "colorMeta": {
@@ -665,7 +665,7 @@
       },
       {
         "name": "The 4.5 Floor Rule",
-        "body": "Dim and faint text are the text colour faded toward the background, but only as far as still reads at 4.5:1 on both the background and the surface. Text on an accent is near-black or white, whichever reads better. Red error text moves toward white (or black, on light schemes) until it reads at 4.5:1, and a red notice's colour is nudged until its text does. When a scheme's own text is weaker than that, dim and faint text stay at the text colour.",
+        "body": "Dim and faint text are the text colour faded toward the background, but only as far as still reads at 4.5:1 on both the background and the surface. Text on an accent is near-black or white, whichever reads better. Red error text moves toward white (or black, on light schemes) until it reads at 4.5:1, and a red notice's colour is nudged until its text does. A scheme whose own text falls below 4.5:1 has it lifted to 7:1, so dim and faint text can still step down from it.",
         "section": "colors"
       },
       {

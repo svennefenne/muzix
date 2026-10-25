@@ -219,7 +219,7 @@ The house palette is warm light on deep night: one hot accent for what's live, o
 ### Named Rules
 **The Roles-Not-Hex Rule.** Components take colour only from the role variables (`--bg`, `--surface`, `--text`, `--primary`, `--secondary`, their derived shades and `--stripe-1…6`). A hex code in a component breaks 122 themes at once. The one exception is the bento tiles, which keep a fixed dark plate (#10131c with #f6f1e7 text) under their duotone photos.
 
-**The 4.5 Floor Rule.** Dim and faint text are the text colour faded toward the background, but only as far as still reads at 4.5:1 on both the background and the surface. Text on an accent is near-black or white, whichever reads better. Red error text moves toward white (or black, on light schemes) until it reads at 4.5:1, and a red notice's colour is nudged until its text does. When a scheme's own text is weaker than that, dim and faint text stay at the text colour.
+**The 4.5 Floor Rule.** Dim and faint text are the text colour faded toward the background, but only as far as still reads at 4.5:1 on both the background and the surface. Text on an accent is near-black or white, whichever reads better. Red error text moves toward white (or black, on light schemes) until it reads at 4.5:1, and a red notice's colour is nudged until its text does. A scheme whose own text falls below 4.5:1 has it lifted to 7:1, so dim and faint text can still step down from it.
 
 **The On-Air Rule.** Marigold means "this is live" (playing, selected, focused, on). Vermilion means "do this". Neither is used as decoration on a quiet surface.
 
