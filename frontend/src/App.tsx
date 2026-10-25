@@ -1,8 +1,8 @@
-import { ErrorBoundary } from "./components/ErrorBoundary";
 import { useQuery } from "@tanstack/react-query";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { api } from "./api";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Logo } from "./components/Logo";
 import { Display, Kicker, Loading, MenuHost } from "./components/ui";
 import { MiniPlayer, TabBar } from "./layout/Mobile";
@@ -59,7 +59,9 @@ function Shell() {
   const loc = useLocation();
   const npPanel = useUi((s) => s.npPanel);
   const scroll = useRef<HTMLDivElement>(null);
-  useEffect(() => scroll.current?.scrollTo({ top: 0 }), [loc.pathname]);
+  useEffect(() => {
+    scroll.current?.scrollTo({ top: 0 });   // (newer Chrome returns a Promise here; an effect mustn't)
+  }, [loc.pathname]);
   return (
     <div className="shell">
       <ThemeApplier />

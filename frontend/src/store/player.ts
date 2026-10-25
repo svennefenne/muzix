@@ -1,5 +1,5 @@
-import type { CastState } from "../player/cast";
 import { create } from "zustand";
+import type { CastState } from "../player/cast";
 import type { Book, Episode, Station, Track } from "../types";
 
 export type ItemKind = "track" | "book" | "episode" | "radio" | "spotify";

@@ -5,9 +5,9 @@ import {
   BookOpen, Gamepad2, House, Library, LogOut, MoreHorizontal, Music2, Pause, Play, Podcast, Radio, Search, Settings, Shield, SkipForward, X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { CastNote } from "../components/CastButton";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
+import { CastNote } from "../components/CastButton";
 import { Art } from "../components/ui";
 import { engine } from "../player/engine";
 import { usePlayer } from "../store/player";
@@ -59,7 +59,9 @@ export function TabBar() {
   const [more, setMore] = useState(false);
   const { pathname } = useLocation();
   const inMore = ["/vgm", "/audiobooks", "/podcasts", "/radio", "/spotify", "/settings", "/admin"].some((p) => pathname.startsWith(p));
-  useEffect(() => setMore(false), [pathname]);
+  useEffect(() => {
+    setMore(false);
+  }, [pathname]);
   const tab = ({ isActive }: { isActive: boolean }) => `tb-item ${isActive ? "on" : ""}`;
   return (
     <>

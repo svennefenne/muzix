@@ -79,7 +79,9 @@ export function QuickSearch() {
     ];
   }, [res.data, nav]);
 
-  useEffect(() => setActive(0), [q]);
+  useEffect(() => {
+    setActive(0);
+  }, [q]);
   useEffect(() => {
     document.getElementById(`qs-${active}`)?.scrollIntoView({ block: "nearest" });
   }, [active]);

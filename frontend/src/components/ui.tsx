@@ -6,7 +6,9 @@ export function Art({ src, name, size = 300, round, className = "", onClick }: {
   src?: string | null; name?: string; size?: number; round?: boolean; className?: string; onClick?: () => void;
 }) {
   const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [src]);
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
   const pixel = document.documentElement.dataset.artfx === "pixel";
   const url = src && src.startsWith("/api/art/") ? `${src}${src.includes("?") ? "&" : "?"}s=${pixel ? 64 : size}` : src;
   const hue = hashHue(name || "");
