@@ -48,7 +48,7 @@ class Source:
     starts: tuple[tuple[str, str], ...] = ()   # (label, path) shortcuts into the archive
 
 
-# Modland sorts by tracker; these are the ones Muzix plays (libopenmpt, libgme, sidplayfp)
+# Modland sorts by tracker; these are the ones Muzix plays (libopenmpt, libgme, sidplayfp, zxtune123)
 MODLAND_PLAYABLE = (
     "Composer 669", "Composer 670 (CDFM)", "Digibooster", "Digibooster Pro", "Digital Sound Interface Kit",
     "Digital Symphony", "Digital Tracker DTM", "Digital Tracker MOD", "Digitrakker", "Disorder Tracker 2",
@@ -60,7 +60,9 @@ MODLAND_PLAYABLE = (
     "Protracker", "Pumatracker", "Real Tracker", "Screamtracker 2", "Screamtracker 3",
     "Slight Atari Player", "Soundtracker", "Soundtracker 2.6", "Startrekker AM", "Startrekker FLT8",
     "Symphonie", "Ultratracker", "Unis 669", "Velvet Studio", "Video Game Music", "X-Tracker", "YM",
-    "AY Emul",
+    "AY Emul", "AHX", "HivelyTracker", "Future Composer 1.3", "Future Composer 1.4", "Game Music Creator",
+    "Images Music System", "Chiptracker", "Quadra Composer", "Face The Music", "Composer 667", "TCB Tracker",
+    "Funktracker", "Liquid Tracker", "V2", "SoundFX",
 )
 
 SOURCES = [
@@ -459,7 +461,7 @@ def _label(src: Source, path: str, row: dict, title: str):
         row["year"] = row.get("year") or int(m.group(2))
     if not row.get("artist"):
         names = parts(path)
-        if src.id == "modland" and len(names) >= 3:
+        if src.id == "modland" and len(names) >= 3 and names[1].strip("_- ").lower() != "unknown":
             row["artist"] = row["albumartist"] = names[1]          # Modland: format/composer/file
         elif src.id in ("asma", "sceneorg") and len(names) >= 3 and names[0].lower() in ("composers", "artists"):
             row["artist"] = row["albumartist"] = names[1].replace("_", " ")

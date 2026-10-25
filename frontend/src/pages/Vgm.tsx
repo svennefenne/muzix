@@ -62,7 +62,7 @@ function Collection() {
 
   return (
     <>
-      <p className="lede">Chiptunes and tracker music, played by the real chip emulators: NES, Game Boy, SNES, Mega Drive, C64, ZX Spectrum, Atari ST, Amiga MODs and PC trackers. Looping songs follow the loop settings on the admin page.</p>
+      <p className="lede">Chiptunes and tracker music, played by the real chip emulators: NES, Game Boy, SNES, Mega Drive, C64, ZX Spectrum, Atari ST, Amiga MODs, AHX and PC trackers. Looping songs follow the loop settings on the admin page.</p>
       <div className="row-actions" style={{ marginBottom: 26 }}>
         <button className="btn primary" onClick={() => playRandom({ kind: "vgm", system: system || undefined })}><Shuffle size={15} /> Shuffle {system || "all VGM"}</button>
       </div>

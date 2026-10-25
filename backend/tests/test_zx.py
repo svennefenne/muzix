@@ -31,15 +31,15 @@ TOP = """<?xml version="1.0" encoding="UTF-8"?><response><responseStatus>success
 
 def test_zx_formats():
     for name in ("song.pt3", "song.stc", "song.asc", "song.tfc", "song.sqt", "SONG.PT2", "x.$m.zx"):
-        assert formats.family(name) == "zx", name
+        assert formats.family(name) == "zxtune", name
     assert formats.system_for("pt3") == "ZX Spectrum"
     assert formats.family("song.ay") == "gme"              # libgme keeps .ay
-    assert "zx" in formats.RENDERED
+    assert "zxtune" in formats.RENDERED
     # like tracker modules: once through, unless the repeat count says more
     settings.set_many({"module_repeats": 1})
-    assert play_plan("zx", {"natural": 100.0}, 100.0) == (100.0, 0.0)
+    assert play_plan("zxtune", {"natural": 100.0}, 100.0) == (100.0, 0.0)
     settings.set_many({"module_repeats": 2, "chip_fade": 8})
-    assert play_plan("zx", {"natural": 100.0}, 100.0) == (208.0, 8.0)
+    assert play_plan("zxtune", {"natural": 100.0}, 100.0) == (208.0, 8.0)
     settings.set_many({"module_repeats": 1})
 
 
@@ -50,6 +50,25 @@ def test_file_names_fill_in_for_silent_tunes():
     m = ZX_NAME.match("X-agon - Warhawk-Atari800(Rob-Hubbard)")
     assert (m["artist"], m["title"], m["year"]) == ("X-agon", "Warhawk-Atari800(Rob-Hubbard)", None)
     assert ZX_NAME.match("ICECLIM6") is None
+
+
+def test_amiga_formats():
+    for name in ("aces high.ahx", "hexplosion.hvl", "c-pack.smod", "znt01.fc", "amos.gmc", "beast.ims",
+                 "whittaker.emod", "sunset.667", "cannonfodder.tcb", "battleship.fnk", "background.liq",
+                 "banjo man.v2m", "AHX.Song", "FC14.tune"):
+        assert formats.family(name) == "zxtune", name
+    assert formats.system_for("ahx") == "Amiga / PC tracker" and formats.system_for("tcb") == "Atari ST"
+    assert formats.ext_of("FTM.A_WALK_IN_THE_DARK") == "ftm"
+    d = tempfile.mkdtemp(prefix="muzix-amiga-")
+    face, fami, kris, mod = (os.path.join(d, n) for n in ("FTM.ROCK", "song.ftm", "title.mod", "plain.mod"))
+    open(face, "wb").write(b"FTMN\x03\x10" + b"\0" * 100)
+    open(fami, "wb").write(b"FamiTracker Module" + b"\0" * 100)
+    open(kris, "wb").write(b"\0" * 952 + b"KRIS" + b"\0" * 100)
+    open(mod, "wb").write(b"\0" * 1080 + b"M.K.")
+    assert formats.sniff(face, formats.ext_of(face)) == "ftmn" and formats.family("ftmn") == "zxtune"
+    assert formats.sniff(fami, "ftm") == "ftm" and formats.family("ftm") == "furnace"
+    assert formats.sniff(kris, "mod") == "kris" and formats.family("kris") == "zxtune"
+    assert formats.sniff(mod, "mod") == "mod"
 
 
 def test_zxart_names_its_files_so_they_play():
@@ -120,4 +139,4 @@ def test_zxtune_renders_and_measures():
     junk = os.path.join(d, "clip.ts")
     open(junk, "wb").write(b"\x47" * 4096)
     with pytest.raises(chip.NotATune):
-        chip.read_zx(junk)
+        chip.read_zxtune(junk, "ts")

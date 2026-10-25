@@ -68,7 +68,7 @@ def walk(root: Root, playlists: list | None = None):
 
 def read_file(path: str, root_kind: str) -> list[dict]:
     """Track rows (as dicts) for one file."""
-    ext = formats.ext_of(path)
+    ext = formats.sniff(path, formats.ext_of(path))
     fam = formats.family(ext)
     folder = os.path.basename(os.path.dirname(path))
     stem = os.path.splitext(os.path.basename(path))[0]

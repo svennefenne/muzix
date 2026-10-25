@@ -56,7 +56,7 @@ def render(path: str, fmt: str, subsong: int, duration: float, extra: dict | Non
     loops = int(settings.get("chip_loops"))
     mode = settings.get("chip_loop_mode")
     extra_key = {"midi": settings.get("soundfont"), "furnace": f"{mode}{loops}",
-                 "module": settings.get("module_repeats"), "zx": settings.get("module_repeats")}.get(fam, "")
+                 "module": settings.get("module_repeats"), "zxtune": settings.get("module_repeats")}.get(fam, "")
     # Furnace's length is only known after rendering; key its cache on the loop settings alone
     out = cache_path(path, subsong, (0.0, 0.0) if fam == "furnace" else (total, fade), str(extra_key))
     if os.path.exists(out):
@@ -80,7 +80,7 @@ def render(path: str, fmt: str, subsong: int, duration: float, extra: dict | Non
                 _run(["fluidsynth", "-ni", "-q", "-g", "0.6", "-r", "44100", "-F", wav, font, path])
             elif fam == "ym":
                 _run(["ymtool", "render", path, wav, f"{total:.2f}"])
-            elif fam == "zx":
+            elif fam == "zxtune":
                 # zxtune123 plays one pass by itself; looping is only needed for more than that
                 one = (extra or {}).get("natural") or duration
                 _zxtune(path, total if total > one + 1 else 0, wav, tmp)
@@ -234,7 +234,7 @@ def _furnace(path, subsong, loops, wav):
     _run(cmd + [path], env={**os.environ, "SDL_AUDIODRIVER": "dummy", "SDL_VIDEODRIVER": "dummy"})
 
 
-# ---------------------------------------------------------------- ZX Spectrum (zxtune123)
+# ---------------------------------------------------------------- zxtune123 (ZX Spectrum, AHX and more)
 # zxtune123 renders a few hundred times faster than real time, but only into files, and when
 # asked to loop it never stops. A looped render is stopped once the file is long enough, and the
 # WAV header (which zxtune123 fills in at the end) is fixed here.

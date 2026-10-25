@@ -9,7 +9,8 @@ family:
   midi      General MIDI, rendered with FluidSynth
   ym        Atari ST YM register dumps, rendered with ymtool (StSound)
   furnace   FamiTracker/Furnace songs, rendered with Furnace's command line
-  zx        ZX Spectrum trackers (Pro Tracker, Sound Tracker, ASC, TurboFM...), rendered with zxtune123
+  zxtune    ZX Spectrum trackers (Pro Tracker, Sound Tracker, ASC, TurboFM...) and the Amiga/PC
+            formats libopenmpt doesn't play (AHX, HivelyTracker, Future Composer...), rendered with zxtune123
 
 Rendered families are turned into a cached FLAC file once and then served
 like any other file, so seeking works everywhere.
@@ -35,13 +36,22 @@ ZX = {
     "dmm", "dst", "et1", "pdt", "sqd", "tfc", "tfd", "tfe", "ts", "psg", "vtx", "cop", "etc", "mtc",
     "mt3", "zx",
 }
+# Amiga (and a few PC/Atari ST) trackers zxtune123 plays. "ftmn" and "kris" are what sniff() calls
+# Face The Music and ChipTracker files, which come as .ftm (FamiTracker's) and .mod.
+AMIGA = {
+    "ahx", "thx", "hvl", "fc", "fc13", "fc14", "smod", "gmc", "ims", "emod", "ftmn", "kris", "667",
+    "tcb", "fnk", "liq", "v2m",
+}
+ZXTUNE = ZX | AMIGA
+# Amiga style "ahx.songname" names
+PREFIXES = MODULE | {"ahx", "thx", "hvl", "fc", "fc13", "fc14", "smod", "gmc", "ims", "emod", "ftm", "667", "tcb"}
 
 FAMILIES = {
     "native": NATIVE, "decode": DECODE, "module": MODULE, "gme": GME,
-    "sid": SID, "midi": MIDI, "ym": YM, "furnace": FURNACE, "zx": ZX,
+    "sid": SID, "midi": MIDI, "ym": YM, "furnace": FURNACE, "zxtune": ZXTUNE,
 }
 _BY_EXT = {ext: fam for fam, exts in FAMILIES.items() for ext in exts}
-CHIP_FAMILIES = {"module", "gme", "sid", "midi", "ym", "furnace", "zx"}
+CHIP_FAMILIES = {"module", "gme", "sid", "midi", "ym", "furnace", "zxtune"}
 RENDERED = CHIP_FAMILIES
 
 # a friendly system name per chip format, for the VGM pages
@@ -53,6 +63,8 @@ SYSTEMS = {
     "rsid": "Commodore 64", "ym": "Atari ST", "mid": "MIDI", "midi": "MIDI", "kar": "MIDI",
     "rmi": "MIDI", "smf": "MIDI", "fur": "Furnace",
     **{ext: "ZX Spectrum" for ext in ZX},
+    **{ext: "Amiga / PC tracker" for ext in AMIGA}, "tcb": "Atari ST",
+    "fnk": "PC tracker", "liq": "PC tracker", "667": "PC tracker", "v2m": "PC tracker",
 }
 
 
@@ -64,7 +76,24 @@ def ext_of(path: str) -> str:
     if ext in _BY_EXT:
         return ext
     pre = base.split(".", 1)[0]   # Amiga style "mod.songname"
-    return pre if pre in MODULE else ext
+    return pre if pre in PREFIXES else ext
+
+
+def sniff(path: str, ext: str) -> str:
+    """The format of a file whose extension two formats share, from its first bytes: Face The
+    Music (Amiga) and FamiTracker both use .ftm, and ChipTracker songs are .mod files."""
+    if ext not in ("ftm", "mod"):
+        return ext
+    try:
+        with open(path, "rb") as f:
+            head = f.read(956)
+    except OSError:
+        return ext
+    if ext == "ftm" and head[:4] == b"FTMN":
+        return "ftmn"
+    if ext == "mod" and head[952:956] == b"KRIS":
+        return "kris"
+    return ext
 
 
 def family(path_or_ext: str) -> str | None:
