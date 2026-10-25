@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-25T10:02:52+00:00",
+  "generatedAt": "2026-10-25T10:37:18+00:00",
   "title": "Design System: Muzix",
   "extensions": {
     "colorMeta": {
@@ -223,6 +223,23 @@
           "#ed827a",
           "#ffb2ab",
           "#ffe2dd"
+        ]
+      },
+      "on-coral-red": {
+        "role": "tertiary",
+        "displayName": "On Coral Red",
+        "cssVariable": "--on-error",
+        "canonical": "#0b0b0f",
+        "oklch": "oklch(15.2% 0.009 285.3)",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#252527",
+          "#414245",
+          "#616165",
+          "#828287",
+          "#a4a4a9",
+          "#c9c9cc",
+          "#eeeef0"
         ]
       },
       "saffron": {
@@ -648,7 +665,7 @@
       },
       {
         "name": "The 4.5 Floor Rule",
-        "body": "Dim and faint text are the text colour faded toward the background, but only as far as still reads at 4.5:1 on both the background and the surface. Text on an accent is near-black or white, whichever reads better. When a scheme's own text is weaker than that, dim and faint text stay at the text colour.",
+        "body": "Dim and faint text are the text colour faded toward the background, but only as far as still reads at 4.5:1 on both the background and the surface. Text on an accent is near-black or white, whichever reads better. Red error text moves toward white (or black, on light schemes) until it reads at 4.5:1, and a red notice's colour is nudged until its text does. When a scheme's own text is weaker than that, dim and faint text stay at the text colour.",
         "section": "colors"
       },
       {
@@ -682,7 +699,7 @@
       "**Do** check new UI under the house scheme, a light skin (punk, classical, country, pop, comedy or kids) and a skin that decorates the frame (death metal's thorns, soundtrack's film strip, punk's tape).",
       "**Do** keep pages inside the frame on desktop and edge to edge on phones.",
       "**Do** size page content against the frame with container queries (`cqi`, `@container page`), not the window.",
-      "**Do** take dim, faint and on-accent text from the theme (`--text-dim`, `--text-faint`, `--on-primary`, `--on-secondary`); never pick a text colour for an accent by hand.",
+      "**Do** take dim, faint, on-accent and error text from the theme (`--text-dim`, `--text-faint`, `--on-primary`, `--on-secondary`, `--error-text`, and `--on-error` on `--error-solid`); never pick a text colour for an accent by hand.",
       "**Do** keep controls quiet: 38px buttons with 12px labels, 32px icon buttons, outlines before fills, and one Vermilion action per view.",
       "**Do** keep the broadcast furniture on every desktop screen: the striped logo, the ticker, the footer status line."
     ],

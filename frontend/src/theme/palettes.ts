@@ -93,9 +93,19 @@ function fade(c: Colors, t: number) {
   return c.text;
 }
 
+/** `hex` moved toward `to` just far enough to read at 4.5:1 on each colour in `on`. */
+function legible(hex: string, to: string, on: string[]) {
+  for (let t = 0; t <= 1; t += 0.02) {
+    const c = mix(hex, to, t);
+    if (on.every((b) => contrast(c, b) >= 4.5)) return c;
+  }
+  return to;
+}
+
 /** CSS custom properties for a set of colours. */
 export function cssVars(c: Colors): Record<string, string> {
   const dark = isDark(c.bg);
+  const onError = onColor(c.error);
   return {
     "--bg": c.bg,
     "--bg-deep": mix(c.bg, dark ? "#000000" : "#ffffff", dark ? 0.35 : 0.5),
@@ -110,6 +120,9 @@ export function cssVars(c: Colors): Record<string, string> {
     "--secondary": c.secondary,
     "--on-secondary": onColor(c.secondary),
     "--error": c.error,
+    "--error-text": legible(c.error, onColor(c.bg) === "#ffffff" ? "#ffffff" : "#000000", [c.bg, c.surface]),   // red words on the page
+    "--error-solid": legible(c.error, onError === "#ffffff" ? "#000000" : "#ffffff", [onError]),   // a red notice
+    "--on-error": onError,
     "--warning": c.warning,
     "--success": c.success,
     "--border": mix(c.border, c.bg, dark ? 0.55 : 0.35),

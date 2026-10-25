@@ -5,7 +5,7 @@
   --bg: #0a1020; --bg-deep: #050913; --surface: #121b2e; --surface-2: #18223a; --surface-3: #1e2944;
   --text: #f1e7d0; --text-dim: #aca69b; --text-faint: #87847f;
   --primary: #f2a93b; --on-primary: #0b0b0f; --secondary: #e4572e; --on-secondary: #0b0b0f;
-  --error: #ef5350; --warning: #f2c14e; --success: #4fb286;
+  --error: #ef5350; --error-text: #ef5350; --error-solid: #ef5350; --on-error: #0b0b0f; --warning: #f2c14e; --success: #4fb286;
   --border: #253048; --border-strong: #36456a; --frame: #2a3550; --glow: #f2a93b55;
   --stripe-1: #f1e7d0; --stripe-2: #f2c14e; --stripe-3: #f2a93b; --stripe-4: #ef5350; --stripe-5: #4fb286; --stripe-6: #e4572e;
   --font-ui: "Saira", system-ui, sans-serif;
@@ -199,7 +199,7 @@ img { display: block; }
 .btn.accent:hover { filter: brightness(1.08); color: var(--on-primary); }
 .btn.ghost { background: transparent; border-color: transparent; }
 .btn.ghost:hover { border-color: var(--border-strong); }
-.btn.danger:hover { border-color: var(--error); color: var(--error); }
+.btn.danger:hover { border-color: var(--error); color: var(--error-text); }
 .btn.small { height: 30px; padding: 0 11px; font-size: 11px; }
 .btn.round { width: 52px; height: 52px; padding: 0; border-radius: 50%; }
 .row-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
@@ -235,7 +235,7 @@ input[type="range"].range::-moz-range-thumb { width: 13px; height: 13px; border:
   border: 1px dashed var(--border-strong); border-radius: var(--radius);
 }
 .empty .h3 { color: var(--text); margin-bottom: 6px; }
-.error-text { color: var(--error); font-size: 13px; }
+.error-text { color: var(--error-text); font-size: 13px; }
 
 /* ---------------------------------------------------------------- hero & tiles */
 
@@ -561,7 +561,7 @@ input[type="range"].range::-moz-range-thumb { width: 13px; height: 13px; border:
   padding: 11px 18px; border-radius: 8px; background: var(--text); color: var(--bg); font-weight: 600; font-size: 13.5px;
   box-shadow: 0 16px 40px #000a; animation: rise .2s ease; max-width: calc(100vw - 40px);
 }
-.toast.error { background: var(--error); color: #fff; }
+.toast.error { background: var(--error-solid); color: var(--on-error); }
 @keyframes rise { from { opacity: 0; transform: translate(-50%, 10px); } }
 
 /* now playing view */

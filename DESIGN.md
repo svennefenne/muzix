@@ -15,6 +15,7 @@ colors:
   vermilion: "#e4572e"
   on-vermilion: "#0b0b0f"
   coral-red: "#ef5350"
+  on-coral-red: "#0b0b0f"
   saffron: "#f2c14e"
   jade: "#4fb286"
   hairline: "#1c263b"
@@ -202,7 +203,7 @@ The house palette is warm light on deep night: one hot accent for what's live, o
 ### Tertiary
 - **Jade** (#4fb286): success and the "ready" dot; also the cool corner of the nebula glow.
 - **Saffron** (#f2c14e): warnings, and the second logo stripe.
-- **Coral Red** (#ef5350): errors, destructive hovers, and the fourth logo stripe.
+- **Coral Red** (#ef5350): errors, destructive hovers, and the fourth logo stripe. Error notices carry near-black **On Coral Red** (#0b0b0f) text.
 
 ### Neutral
 - **Midnight Navy** (#0a1020): the page background, under the nebula.
@@ -218,7 +219,7 @@ The house palette is warm light on deep night: one hot accent for what's live, o
 ### Named Rules
 **The Roles-Not-Hex Rule.** Components take colour only from the role variables (`--bg`, `--surface`, `--text`, `--primary`, `--secondary`, their derived shades and `--stripe-1…6`). A hex code in a component breaks 122 themes at once. The one exception is the bento tiles, which keep a fixed dark plate (#10131c with #f6f1e7 text) under their duotone photos.
 
-**The 4.5 Floor Rule.** Dim and faint text are the text colour faded toward the background, but only as far as still reads at 4.5:1 on both the background and the surface. Text on an accent is near-black or white, whichever reads better. When a scheme's own text is weaker than that, dim and faint text stay at the text colour.
+**The 4.5 Floor Rule.** Dim and faint text are the text colour faded toward the background, but only as far as still reads at 4.5:1 on both the background and the surface. Text on an accent is near-black or white, whichever reads better. Red error text moves toward white (or black, on light schemes) until it reads at 4.5:1, and a red notice's colour is nudged until its text does. When a scheme's own text is weaker than that, dim and faint text stay at the text colour.
 
 **The On-Air Rule.** Marigold means "this is live" (playing, selected, focused, on). Vermilion means "do this". Neither is used as decoration on a quiet surface.
 
@@ -367,7 +368,7 @@ The top bar's ticker reads like a broadcast announcement: a leading dash and ita
 - **Do** check new UI under the house scheme, a light skin (punk, classical, country, pop, comedy or kids) and a skin that decorates the frame (death metal's thorns, soundtrack's film strip, punk's tape).
 - **Do** keep pages inside the frame on desktop and edge to edge on phones.
 - **Do** size page content against the frame with container queries (`cqi`, `@container page`), not the window.
-- **Do** take dim, faint and on-accent text from the theme (`--text-dim`, `--text-faint`, `--on-primary`, `--on-secondary`); never pick a text colour for an accent by hand.
+- **Do** take dim, faint, on-accent and error text from the theme (`--text-dim`, `--text-faint`, `--on-primary`, `--on-secondary`, `--error-text`, and `--on-error` on `--error-solid`); never pick a text colour for an accent by hand.
 - **Do** keep controls quiet: 38px buttons with 12px labels, 32px icon buttons, outlines before fills, and one Vermilion action per view.
 - **Do** keep the broadcast furniture on every desktop screen: the striped logo, the ticker, the footer status line.
 
