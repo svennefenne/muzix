@@ -3,8 +3,8 @@
 
 :root {
   --bg: #0a1020; --bg-deep: #050913; --surface: #121b2e; --surface-2: #18223a; --surface-3: #1e2944;
-  --text: #f1e7d0; --text-dim: #b9b2a2; --text-faint: #7d7a72;
-  --primary: #f2a93b; --on-primary: #0b0b0f; --secondary: #e4572e; --on-secondary: #fff;
+  --text: #f1e7d0; --text-dim: #aca69b; --text-faint: #87847f;
+  --primary: #f2a93b; --on-primary: #0b0b0f; --secondary: #e4572e; --on-secondary: #0b0b0f;
   --error: #ef5350; --warning: #f2c14e; --success: #4fb286;
   --border: #253048; --border-strong: #36456a; --frame: #2a3550; --glow: #f2a93b55;
   --stripe-1: #f1e7d0; --stripe-2: #f2c14e; --stripe-3: #f2a93b; --stripe-4: #ef5350; --stripe-5: #4fb286; --stripe-6: #e4572e;

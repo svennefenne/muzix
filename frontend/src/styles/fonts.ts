@@ -5,6 +5,7 @@ import "@fontsource/saira/700.css";
 import "@fontsource/saira/800.css";
 import "@fontsource/saira/900.css";
 import "@fontsource/jetbrains-mono/400.css";
+import "@fontsource/jetbrains-mono/500.css";
 import "@fontsource/jetbrains-mono/600.css";
 import "@fontsource/pirata-one/400.css";
 import "@fontsource/unifrakturcook/700.css";

@@ -65,9 +65,15 @@ export function isDark(hex: string) {
   return lum(hexToRgb(hex)) < 0.25;
 }
 
+/** WCAG contrast ratio between two colours (1 to 21). */
+export function contrast(a: string, b: string) {
+  const [x, y] = [lum(hexToRgb(a)), lum(hexToRgb(b))].sort((p, q) => q - p);
+  return (x + 0.05) / (y + 0.05);
+}
+
 /** Black or white, whichever reads better on `hex`. */
 export function onColor(hex: string) {
-  return lum(hexToRgb(hex)) > 0.35 ? "#0b0b0f" : "#ffffff";
+  return contrast("#0b0b0f", hex) >= contrast("#ffffff", hex) ? "#0b0b0f" : "#ffffff";
 }
 
 export function mix(a: string, b: string, t: number) {
@@ -75,6 +81,16 @@ export function mix(a: string, b: string, t: number) {
   const y = hexToRgb(b);
   const c = x.map((v, i) => Math.round(v + (y[i] - v) * t));
   return "#" + c.map((v) => v.toString(16).padStart(2, "0")).join("");
+}
+
+/** The text colour faded `t` of the way to the background, but no further than still
+ * reads at 4.5:1 on both the background and the surface (some schemes start out low). */
+function fade(c: Colors, t: number) {
+  for (; t > 0; t -= 0.01) {
+    const f = mix(c.text, c.bg, t);
+    if (Math.min(contrast(f, c.bg), contrast(f, c.surface)) >= 4.5) return f;
+  }
+  return c.text;
 }
 
 /** CSS custom properties for a set of colours. */
@@ -87,8 +103,8 @@ export function cssVars(c: Colors): Record<string, string> {
     "--surface-2": mix(c.surface, c.text, dark ? 0.06 : 0.04),
     "--surface-3": mix(c.surface, c.text, dark ? 0.12 : 0.08),
     "--text": c.text,
-    "--text-dim": mix(c.text, c.bg, 0.3),
-    "--text-faint": mix(c.text, c.bg, 0.55),
+    "--text-dim": fade(c, 0.3),
+    "--text-faint": fade(c, 0.55),
     "--primary": c.primary,
     "--on-primary": onColor(c.primary),
     "--secondary": c.secondary,
