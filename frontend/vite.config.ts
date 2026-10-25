@@ -8,5 +8,6 @@ export default defineConfig({
     port: 5173,
     proxy: { "/api": { target: "http://127.0.0.1:18080", changeOrigin: false } },
   },
-  build: { outDir: "dist", sourcemap: false, chunkSizeWarningLimit: 1500 },
+  // source maps let crash reports from browsers (POST /api/client-errors) be read back to the source
+  build: { outDir: "dist", sourcemap: true, chunkSizeWarningLimit: 1500 },
 });

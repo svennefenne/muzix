@@ -618,6 +618,14 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
 .status-dot.failed, .status-dot.bad { background: var(--error); }
 @keyframes pulse { 50% { opacity: .35; } }
 
+/* a crashed page */
+.crash { max-width: 720px; }
+.crash .h2 { margin-bottom: 10px; }
+.crash-detail {
+  margin: 0 0 20px; padding: 12px 14px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--bg-deep);
+  font: 500 12.5px/1.5 var(--font-mono); color: var(--error-text); white-space: pre-wrap; overflow-wrap: anywhere;
+}
+
 /* auth screens */
 .auth { min-height: 100dvh; display: grid; place-items: center; padding: 24px; }
 .auth-card { width: min(420px, 100%); }

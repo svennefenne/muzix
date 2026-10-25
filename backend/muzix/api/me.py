@@ -1,6 +1,7 @@
+import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.orm import Session
@@ -9,10 +10,27 @@ from .. import serial
 from ..db import get_db
 from ..models import (Album, Artist, Book, BookProgress, Feed, Like, Playlist, PlaylistItem, Station,
                       Subscription, Track, User)
-from ..security import check_password, current_user, hash_password
+from ..security import check_password, current_user, hash_password, optional_user
 from .library import tracks_json
 
 router = APIRouter(prefix="/api", tags=["me"])
+client_log = logging.getLogger("muzix.client")
+
+
+class ClientError(BaseModel):
+    kind: str = Field("error", max_length=20)
+    message: str = Field("", max_length=1000)
+    stack: str = Field("", max_length=6000)
+    url: str = Field("", max_length=500)
+
+
+@router.post("/client-errors")
+def client_error(body: ClientError, request: Request, user: User | None = Depends(optional_user)):
+    """Errors from the web interface, written to the log so they can be looked into."""
+    if user is not None:
+        client_log.warning("%s in the browser (%s, %s, %s): %s\n%s", body.kind, user.username, body.url,
+                           request.headers.get("user-agent", "")[:200], body.message, body.stack)
+    return {"ok": True}
 LIKE_TYPES = {"track": Track, "album": Album, "artist": Artist}
 
 

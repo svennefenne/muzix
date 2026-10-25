@@ -1,3 +1,4 @@
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { useQuery } from "@tanstack/react-query";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
@@ -68,6 +69,7 @@ function Shell() {
       <Sidebar />
       <main className="frame">
         <div className="frame-scroll" ref={scroll}>
+          <ErrorBoundary resetKey={loc.pathname}>
           <Suspense fallback={<div className="page"><Loading /></div>}>
             <Routes>
               <Route path="/" element={<Home />} />
@@ -98,6 +100,7 @@ function Shell() {
               <Route path="*" element={<div className="page"><Display l1="Lost" l2="in space" /><p className="lede">That page doesn't exist.</p></div>} />
             </Routes>
           </Suspense>
+          </ErrorBoundary>
         </div>
       </main>
       {npPanel && <NowPanel />}
