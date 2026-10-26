@@ -3,6 +3,7 @@
  * positions, media keys, prefetching the next song's render). */
 
 import { api } from "../api";
+import { report } from "../components/ErrorBoundary";
 import { usePlayer, type PlayItem } from "../store/player";
 import { useUi } from "../store/ui";
 import { caster } from "./cast";
@@ -22,14 +23,26 @@ class Engine {
   private radioRetries = 0;
   private steadyTimer: number | undefined;
   private freq: Uint8Array<ArrayBuffer> | null = null;
+  private copy: MediaStream | null = null;          // the element's sound, copied for the analyser
+  private copyTrack = "";
+  private copySource: MediaStreamAudioSourceNode | null = null;
+  private hiddenAt = 0;          // while the page is hidden (the screen off): since when, and what playback did
+  private trace: string[] = [];
+  private stalled = false;
+  private lastEnd = 0;
+  private lastTick = 0;
 
   constructor() {
     this.el = new Audio();
     this.el.preload = "auto";
     const el = this.el;
+    // first, so they see the song that ended rather than the next one
+    for (const ev of ["playing", "waiting", "stalled", "pause", "ended", "error"]) el.addEventListener(ev, () => this.note(ev));
+    document.addEventListener("visibilitychange", () => this.onVisibility());
     el.addEventListener("timeupdate", () => this.onTime());
     el.addEventListener("playing", () => {
       usePlayer.getState().set({ playing: true, buffering: false, error: "" });
+      this.listen();
       window.clearTimeout(this.stallTimer);
       // a minute of steady radio earns the reconnects back
       window.clearTimeout(this.steadyTimer);
@@ -238,7 +251,15 @@ class Engine {
     }
     if (autoplay) {
       this.ensureAudioGraph();
-      this.el.play().catch(() => usePlayer.getState().set({ playing: false, buffering: false }));
+      this.el.play().catch((e) => {
+        usePlayer.getState().set({ playing: false, buffering: false });
+        // a phone may refuse to start the next song while the screen is off
+        if (e?.name === "NotAllowedError") {
+          this.stalled = true;
+          this.note("refused to start");
+          report("media", `The browser wouldn't start ${item.title}: ${e.message}`);
+        }
+      });
     }
     if (item.kind === "radio") this.pollRadio(item);
     this.updateMediaSession(item);
@@ -275,6 +296,12 @@ class Engine {
     const item = usePlayer.getState().current();
     if (!item || item.kind === "spotify") return;
     const pos = this.offset + this.el.currentTime;
+    const now = Date.now();
+    if (this.hiddenAt && this.lastTick && now - this.lastTick > 10_000 && !this.el.paused) {
+      this.stalled = true;
+      this.note(`no progress for ${Math.round((now - this.lastTick) / 1000)}s`);
+    }
+    this.lastTick = now;
     this.progress(pos, isFinite(this.el.duration) ? this.el.duration : 0);
     // chip renders are cut to length; a stream that runs over the planned time stops here
     if ((item.kind === "track" || item.kind === "online") && item.duration && pos > item.duration + 1.5) this.onEnded();
@@ -320,6 +347,8 @@ class Engine {
     const msg = item.kind === "radio" ? "The station isn't answering" : `Couldn't play ${item.title}`;
     usePlayer.getState().set({ error: msg, playing: false, buffering: false });
     useUi.getState().notify(msg, "error");
+    const err = this.el.error;
+    report("media", `${msg}: media error ${err?.code ?? "?"} ${err?.message || ""}`, `\n${this.el.currentSrc}`);
     if (item.kind === "track" || item.kind === "online") window.setTimeout(() => {
       if (usePlayer.getState().current()?.key === item.key) this.next(true);
     }, 2500);
@@ -360,25 +389,91 @@ class Engine {
     this.radioTimer = window.setInterval(poll, 15000);
   }
 
+  // ------------------------------------------------------------ while the screen is off
+
+  /** Playback while the page is hidden is traced; a stall in it goes to the server's log. */
+  private onVisibility() {
+    if (document.hidden) {
+      this.hiddenAt = Date.now();
+      this.trace = [];
+      this.stalled = false;
+      this.lastEnd = 0;
+      return;
+    }
+    // a song ended and the next never started, or playback stopped moving
+    if (this.hiddenAt && (this.stalled || (this.lastEnd && !this.el.ended))) {
+      const away = Math.round((Date.now() - this.hiddenAt) / 1000);
+      report("background", `Playback stalled while the page was hidden (${away}s)`, `\n${this.trace.join("\n")}`);
+    }
+    this.hiddenAt = 0;
+  }
+
+  private note(what: string) {
+    if (!this.hiddenAt) return;
+    const now = Date.now();
+    if (what === "ended") this.lastEnd = now;
+    if (what === "playing") {
+      if (this.lastEnd && now - this.lastEnd > 5000) this.stalled = true;
+      this.lastEnd = 0;
+      this.lastTick = now;
+    }
+    if (this.trace.length < 40) {
+      const item = usePlayer.getState().current();
+      this.trace.push(`+${Math.round((now - this.hiddenAt) / 1000)}s ${what}: ${item?.title ?? "?"} at ${Math.round(this.offset + this.el.currentTime)}s`);
+    }
+  }
+
   // ------------------------------------------------------------ audio graph & levels
 
+  /** The analyser behind the visualizer. Where the browser can copy the element's sound
+   * (captureStream), the analyser listens to the copy and the element plays to the speakers
+   * itself: a phone that pauses Web Audio with the screen off then doesn't stop the music.
+   * Elsewhere the element plays through the audio graph. */
   ensureAudioGraph() {
     if (this.ctx) {
-      if (this.ctx.state === "suspended") this.ctx.resume();
+      if (this.ctx.state === "suspended") this.ctx.resume().catch(() => {});
       return;
     }
     try {
-      this.ctx = new AudioContext();
-      const src = this.ctx.createMediaElementSource(this.el);
-      this.analyser = this.ctx.createAnalyser();
+      const ctx = new AudioContext();
+      this.ctx = ctx;
+      this.analyser = ctx.createAnalyser();
       this.analyser.fftSize = 512;
       this.analyser.smoothingTimeConstant = 0.78;
-      src.connect(this.analyser);
-      this.analyser.connect(this.ctx.destination);
       this.freq = new Uint8Array(this.analyser.frequencyBinCount);
+      ctx.addEventListener("statechange", () => this.note(`audio graph ${ctx.state}`));
+      const el = this.el as HTMLAudioElement & { captureStream?: () => MediaStream };
+      if (typeof el.captureStream === "function") {
+        this.copy = el.captureStream();
+        this.copy.addEventListener("addtrack", () => this.listen());
+        const silent = ctx.createGain();
+        silent.gain.value = 0;
+        this.analyser.connect(silent).connect(ctx.destination);   // keeps the analyser running
+        this.listen();
+      } else {
+        ctx.createMediaElementSource(this.el).connect(this.analyser);
+        this.analyser.connect(ctx.destination);
+      }
     } catch {
       this.ctx = null;
     }
+  }
+
+  /** Points the analyser at the copy's newest audio track: every song brings one, and Chrome
+   * leaves the old ones in the stream, silent. */
+  private listen() {
+    if (!this.ctx || !this.copy || !this.analyser) return;
+    const tracks = this.copy.getAudioTracks();
+    const track = tracks.at(-1);
+    for (const old of tracks.slice(0, -1)) {
+      this.copy.removeTrack(old);
+      old.stop();
+    }
+    if (!track || track.id === this.copyTrack) return;
+    this.copySource?.disconnect();
+    this.copyTrack = track.id;
+    this.copySource = this.ctx.createMediaStreamSource(new MediaStream([track]));
+    this.copySource.connect(this.analyser);
   }
 
   /** Frequency data (0..255 per bin), or null when nothing is analysable. */

@@ -8,9 +8,10 @@ let sent = 0;
 export function report(kind: string, error: unknown, extra = "") {
   if (sent++ > 20) return;   // one bad loop shouldn't flood the log
   const e = error instanceof Error ? error : new Error(String(error));
+  const stack = error instanceof Error ? e.stack || "" : "";     // a message's own stack would only point here
   fetch("/api/client-errors", {
     method: "POST", credentials: "same-origin", keepalive: true, headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ kind, message: e.message, stack: `${e.stack || ""}${extra}`.slice(0, 6000), url: location.href }),
+    body: JSON.stringify({ kind, message: e.message, stack: `${stack}${extra}`.slice(0, 6000), url: location.href }),
   }).catch(() => {});
 }
 
