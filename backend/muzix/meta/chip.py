@@ -133,6 +133,66 @@ def read_gbs(data: bytes) -> ChipInfo:
     return info
 
 
+# ---------------------------------------------------------------- Sega 8-bit
+
+SGC_SYSTEMS = {0: "Master System", 1: "Game Gear", 2: "ColecoVision"}
+
+
+def read_sgc(data: bytes) -> ChipInfo:
+    if data[:4] != b"SGC\x1a":
+        raise ValueError("not an SGC")
+    info = ChipInfo(title=_clean(_cstr(data[0x40:0x60])), artist=_clean(_cstr(data[0x60:0x80])),
+                    copyright=_clean(_cstr(data[0x80:0xA0])), system=SGC_SYSTEMS.get(data[0x28], "Master System"))
+    info.album = info.title
+    info.year = _year(info.copyright)
+    info.subsongs = [Subsong(i) for i in range(max(1, data[0x25]))]
+    return info
+
+
+# ---------------------------------------------------------------- Atari 8-bit
+
+SAP_LIBGME = ("B", "C")     # the SAP player types libgme plays; ASAP (in zxtune123) plays them all
+
+
+def sap_header(data: bytes) -> dict:
+    """The tags of a SAP file's text header, with TIME as a list (one per song)."""
+    tags = {"TIME": []}
+    for line in data.split(b"\xff\xff", 1)[0].decode("latin-1").splitlines()[1:]:
+        key, _, value = line.strip().partition(" ")
+        if key == "TIME":
+            tags["TIME"].append(value.strip())
+        elif key:
+            tags.setdefault(key, value.strip().strip('"'))
+    return tags
+
+
+def _clock(s: str) -> float | None:
+    try:
+        secs = 0.0
+        for p in s.split(":"):
+            secs = secs * 60 + float(p)
+        return secs or None
+    except ValueError:
+        return None
+
+
+def read_sap(data: bytes) -> ChipInfo:
+    """Names, songs and each song's TIME: one pass, then the song either ends or (LOOP) starts over."""
+    if not data.startswith(b"SAP"):
+        raise ValueError("not a SAP")
+    tags = sap_header(data)
+    info = ChipInfo(title=_clean(tags.get("NAME", "")), artist=_clean(tags.get("AUTHOR", "")),
+                    year=_year(tags.get("DATE", "")), system="Atari 8-bit")
+    songs = int(tags["SONGS"]) if tags.get("SONGS", "").isdigit() else 1
+    for i in range(max(1, songs)):
+        time = tags["TIME"][i].split() if i < len(tags["TIME"]) else []
+        secs = _clock(time[0]) if time else None
+        looped = "LOOP" in (w.upper() for w in time[1:])
+        info.subsongs.append(Subsong(i, duration=secs, loop=secs if looped else None,
+                                     natural=None if looped else secs))
+    return info
+
+
 # ---------------------------------------------------------------- SNES
 
 def read_spc(data: bytes) -> ChipInfo:
@@ -402,7 +462,7 @@ def read_module_title(data: bytes, ext: str) -> str:
 READERS = {
     "nsf": read_nsf, "nsfe": read_nsfe, "gbs": read_gbs, "spc": read_spc,
     "sid": read_sid, "psid": read_sid, "rsid": read_sid, "vgm": read_vgm, "vgz": read_vgm,
-    "ftm": read_ftm,
+    "ftm": read_ftm, "sgc": read_sgc, "sap": read_sap,
 }
 
 
@@ -535,7 +595,7 @@ def _module(path: str, data: bytes, ext: str, info: ChipInfo) -> ChipInfo:
 def _gme_times(path: str, info: ChipInfo):
     """libgme knows loop points for some formats (and reads them from .m3u files)."""
     from . import gme
-    if not gme.available():
+    if not gme.available(path):
         return
     try:
         times = gme.track_times(path)

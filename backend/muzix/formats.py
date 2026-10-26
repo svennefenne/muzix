@@ -26,7 +26,7 @@ MODULE = {
     "mo3", "mtm", "mus", "nst", "okt", "plm", "psm", "pt36", "ptm", "sfx", "sfx2", "st26", "stk",
     "stm", "stp", "symmod", "ult", "umx", "wow", "xmf", "gt2", "gtk", "puma", "rtm", "cba", "etx",
 }
-GME = {"nsf", "nsfe", "gbs", "spc", "vgm", "vgz", "gym", "hes", "kss", "ay", "sap"}
+GME = {"nsf", "nsfe", "gbs", "spc", "vgm", "vgz", "gym", "hes", "kss", "sgc", "ay", "sap"}
 SID = {"sid", "psid", "rsid"}
 MIDI = {"mid", "midi", "kar", "rmi", "smf"}
 YM = {"ym"}
@@ -78,8 +78,8 @@ SYSTEMS = {
     "nsf": "NES / Famicom", "nsfe": "NES / Famicom", "ftm": "NES / Famicom", "0cc": "NES / Famicom",
     "dnm": "NES / Famicom", "gbs": "Game Boy", "spc": "Super Nintendo", "vgm": "Sega / arcade",
     "vgz": "Sega / arcade", "gym": "Sega Mega Drive", "hes": "PC Engine", "kss": "MSX",
-    "ay": "ZX Spectrum / CPC", "sap": "Atari 8-bit", "sid": "Commodore 64", "psid": "Commodore 64",
-    "rsid": "Commodore 64", "ym": "Atari ST", "mid": "MIDI", "midi": "MIDI", "kar": "MIDI",
+    "sgc": "Master System", "ay": "ZX Spectrum / CPC", "sap": "Atari 8-bit", "sid": "Commodore 64",
+    "psid": "Commodore 64", "rsid": "Commodore 64", "ym": "Atari ST", "mid": "MIDI", "midi": "MIDI", "kar": "MIDI",
     "rmi": "MIDI", "smf": "MIDI", "fur": "Furnace",
     **{ext: "ZX Spectrum" for ext in ZX},
     **{ext: "Amiga / PC tracker" for ext in AMIGA}, "tcb": "Atari ST",

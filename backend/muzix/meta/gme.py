@@ -1,15 +1,19 @@
 """Game_Music_Emu (libgme) through ctypes: track info with loop points, and rendering.
 
-Used for NSF/NSFe, GBS, SPC, VGM/VGZ, GYM, HES, KSS, AY and SAP.
+Used for NSF/NSFe, GBS, SPC, VGM/VGZ, GYM, HES, KSS, AY and SAP. SGC (Master System, Game Gear)
+plays through libgme-sgc, a build of the Game_Music_Emu 0.6 beta's SGC player, which the
+released libgme never got; it has the same C interface.
 """
 
 import ctypes
 import ctypes.util
+import os
 import threading
 import wave
 from dataclasses import dataclass
 
-_lib = None
+SGC_LIB = "/usr/local/lib/libgme-sgc.so"
+_libs: dict[str, ctypes.CDLL | None] = {}
 _lib_lock = threading.Lock()
 
 
@@ -23,15 +27,19 @@ class _Info(ctypes.Structure):
                 + [(f"s{n}", ctypes.c_char_p) for n in range(7, 16)])
 
 
-def lib():
-    global _lib
+def lib(path: str = ""):
+    """The library that plays `path`: libgme, or libgme-sgc for an SGC file."""
+    kind = "sgc" if path.lower().endswith(".sgc") else ""
     with _lib_lock:
-        if _lib is None:
-            name = ctypes.util.find_library("gme") or "libgme.so.0"
+        if kind not in _libs:
+            if kind:
+                name = SGC_LIB if os.path.exists(SGC_LIB) else "libgme-sgc.so"
+            else:
+                name = ctypes.util.find_library("gme") or "libgme.so.0"
             try:
                 L = ctypes.CDLL(name)
             except OSError:
-                _lib = False
+                _libs[kind] = None
                 return None
             L.gme_open_file.argtypes = [ctypes.c_char_p, ctypes.POINTER(ctypes.c_void_p), ctypes.c_int]
             L.gme_open_file.restype = ctypes.c_char_p
@@ -47,12 +55,12 @@ def lib():
             L.gme_delete.argtypes = [ctypes.c_void_p]
             if hasattr(L, "gme_set_autoload_playback_limit"):
                 L.gme_set_autoload_playback_limit.argtypes = [ctypes.c_void_p, ctypes.c_int]
-            _lib = L
-        return _lib or None
+            _libs[kind] = L
+        return _libs[kind]
 
 
-def available() -> bool:
-    return lib() is not None
+def available(path: str = "") -> bool:
+    return lib(path) is not None
 
 
 @dataclass
@@ -73,9 +81,9 @@ def _sec(ms: int) -> float | None:
 
 
 def _open(path: str, rate: int):
-    L = lib()
+    L = lib(path)
     if L is None:
-        raise RuntimeError("libgme is not installed")
+        raise RuntimeError("libgme-sgc is not installed" if path.lower().endswith(".sgc") else "libgme is not installed")
     emu = ctypes.c_void_p()
     err = L.gme_open_file(path.encode(), ctypes.byref(emu), rate)
     if err:

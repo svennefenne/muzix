@@ -263,6 +263,7 @@ def _folder_sizes(force=False):
 def status(db: Session = Depends(get_db)):
     tools = {name: render.have(name) for name in ("ffmpeg", "ffprobe", "sidplayfp", "fluidsynth", "ymtool", "furnace", "zxtune123", "uade123", "beet")}
     tools["libgme"] = gme.available()
+    tools["libgme-sgc"] = gme.available("x.sgc")
     tools["libopenmpt"] = openmpt.available()
     count = lambda m, *w: db.scalar(select(func.count()).select_from(m).where(*w))
     disk = shutil.disk_usage(env.DATA_DIR)

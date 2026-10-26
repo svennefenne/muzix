@@ -21,6 +21,24 @@ def test_gbs():
     assert (i.title, i.artist, i.year, len(i.subsongs)) == ("Tetris", "Hirokazu Tanaka", 1989, 5)
 
 
+def test_sgc():
+    data = (b"SGC\x1a\x01" + b"\0" * 0x1F + bytes([0, 9, 0, 0, 1])).ljust(0x40, b"\0")
+    data += pad("Home Alone", 32) + pad("<?>", 32) + pad("1992 Sega", 32)
+    i = chip.read_sgc(data)
+    assert (i.title, i.artist, i.year, i.system, len(i.subsongs)) == ("Home Alone", "", 1992, "Game Gear", 9)
+
+
+def test_sap_times():
+    """TIME gives each song's length: one that ends by itself, or (LOOP) one pass of a looping song."""
+    head = ('SAP\r\nAUTHOR "Michael Hedley"\r\nNAME "Mediator"\r\nDATE "1985"\r\nSONGS 3\r\nDEFSONG 1\r\n'
+            'TYPE D\r\nINIT AF22\r\nPLAYER 5897\r\nTIME 00:28.88 LOOP\r\nTIME 01:02.50\r\n')
+    i = chip.read_sap(head.encode() + b"\xff\xff\x00\x10TIME 9:99")
+    assert (i.title, i.artist, i.year, i.system) == ("Mediator", "Michael Hedley", 1985, "Atari 8-bit")
+    assert [(s.index, s.duration, s.loop, s.natural) for s in i.subsongs] == [
+        (0, 28.88, 28.88, None), (1, 62.5, None, 62.5), (2, None, None, None)]
+    assert chip.sap_header(head.encode())["TYPE"] not in chip.SAP_LIBGME   # digitized: ASAP plays it
+
+
 def test_sid():
     data = b"PSID" + struct.pack(">HHHHHHHI", 2, 0x7C, 0, 0, 0, 3, 1, 0) + pad("Commando", 32) + pad("Rob Hubbard", 32) + pad("1985 Elite", 32)
     data = data.ljust(0x7C, b"\0")
@@ -61,3 +79,13 @@ def test_famitracker_song_list():
     i = chip.read_ftm(data)
     assert (i.title, i.artist, i.year) == ("Spring OST", "Aeitia", 2017)
     assert [s.title for s in i.subsongs] == ["Level 1", "Boss"]
+
+
+def test_a_sap_copy_names_the_song_asap_should_play(tmp_path):
+    from muzix import render
+    src = tmp_path / "x.sap"
+    src.write_bytes(b"SAP\r\nSONGS 8\r\nDEFSONG 6\r\nTYPE D\r\nTIME 00:28.88 LOOP\r\n\xff\xff\x00\x10DEFSONG 6")
+    out = render.sap_song(str(src), 3, str(tmp_path))
+    data = open(out, "rb").read()
+    assert data == b"SAP\r\nSONGS 8\r\nDEFSONG 3\r\nTYPE D\r\nTIME 00:28.88 LOOP\r\n\xff\xff\x00\x10DEFSONG 6"
+    assert chip.sap_header(data)["DEFSONG"] == "3"

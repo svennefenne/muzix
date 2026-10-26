@@ -74,8 +74,36 @@ def test_archives_unpack_only_their_tunes_and_only_inside():
         f.writestr("game.m3u", b"x")
     out = online.unpack(z)
     found = sorted(os.path.relpath(os.path.join(r, n), out) for r, _, fs in os.walk(out) for n in fs)
-    assert found == ["disk/song.mod", "game.m3u"]
+    assert found == [".muzix-unpacked", "disk/song.mod", "game.m3u"]
     assert not os.path.exists(os.path.join(d, "evil.mod"))
+
+
+def test_archives_unpacked_before_muzix_knew_a_format_are_unpacked_again():
+    d = tempfile.mkdtemp(prefix="muzix-online-")
+    z = os.path.join(d, "Home Alone [GG].zip")
+    with zipfile.ZipFile(z, "w") as f:
+        f.writestr("2410.sgc", b"SGC")
+        f.writestr("01 BGM.m3u", b"x")
+    os.makedirs(z + ".d")
+    open(os.path.join(z + ".d", "01 BGM.m3u"), "wb").write(b"x")    # unpacked when .sgc didn't play
+    out = online.unpack(z)
+    assert sorted(os.listdir(out)) == [".muzix-unpacked", "01 BGM.m3u", "2410.sgc"]
+    assert online.unpack(z) == out
+
+
+def test_sgc_playlists_count_from_zero_and_sega_sets_name_their_system():
+    d = tempfile.mkdtemp(prefix="muzix-online-")
+    sgc = os.path.join(d, "2410.sgc")
+    open(sgc, "wb").write(b"SGC")
+    with open(os.path.join(d, "01 BGM #01.m3u"), "w") as f:
+        f.write("2410.sgc::KSS,0,BGM #01,1:07,,10\n2410.sgc::KSS,1,Jingle #01,0:03,,1\n")
+    rows = [{"subsong": i, "title": f"#{i + 1}", "duration": 0, "extra": {}} for i in range(9)]
+    assert [(r["subsong"], r["title"]) for r in online._with_playlist(sgc, rows)] == [(0, "BGM #01"), (1, "Jingle #01")]
+    src = online.source("kss")
+    row = {"title": "Stage 1", "member": "G-3384.kss", "format": "kss", "kind": "vgm", "album": "", "artist": "",
+           "extra": {"system": "MSX"}}
+    online._label(src, "Game Gear/p/Panzer Dragoon Mini (1996-11-22)(-)(Sega)[GG].7z", row, "Panzer Dragoon Mini")
+    assert row["extra"]["system"] == "Game Gear"
 
 
 def test_nezplug_playlists_name_and_time_the_songs():

@@ -21,6 +21,8 @@ you choose from 98 colour schemes, each with a light and a dark version.
   |---|---|---|
   | Trackers | MOD, XM, IT, S3M, MT2 (MadTracker 2), MTM, MED, 669… | libopenmpt |
   | Consoles | NSF/NSFe (NES), GBS (Game Boy), SPC (SNES), GYM, HES, KSS, AY, SAP | Game_Music_Emu |
+  | Master System & Game Gear | SGC | Game_Music_Emu 0.6 beta's SGC player (built from [DeaDBeeF's copy](https://github.com/DeaDBeeF-Player/deadbeef/tree/master/plugins/gme)) |
+  | Atari 8-bit, digitized | SAP types D, S and R (libgme plays B and C) | ASAP (in zxtune123) |
   | Sound chip logs | VGM/VGZ, from any of the hundred-odd chips VGM logs (arcade, PC-98, X68000, Mega Drive…) | libvgm (in zxtune123) |
   | Commodore 64 | SID | sidplayfp |
   | Atari ST | YM | StSound (`ymtool`) |

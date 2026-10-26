@@ -16,7 +16,7 @@ interface SettingSpec { key: string; type: string; default: unknown; group: stri
 
 const TOOL_INFO: Record<string, string> = {
   ffmpeg: "Transcoding and FLAC encoding", ffprobe: "Chapters and lengths", libopenmpt: "Tracker modules (MOD/XM/IT/S3M/MT2)",
-  libgme: "NES, Game Boy, SNES, Sega, PC Engine…", sidplayfp: "Commodore 64 SID", fluidsynth: "MIDI", ymtool: "Atari ST YM",
+  libgme: "NES, Game Boy, SNES, Sega, PC Engine…", "libgme-sgc": "Master System and Game Gear (SGC)", sidplayfp: "Commodore 64 SID", fluidsynth: "MIDI", ymtool: "Atari ST YM",
   furnace: "FamiTracker / Furnace", beet: "Upload tagging (beets)",
 };
 

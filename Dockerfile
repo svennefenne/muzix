@@ -49,6 +49,26 @@ RUN cd /src/bencodetools && ./configure --prefix=/usr/local --without-python && 
  && cd /src/libzakalwe && ./configure --prefix=/usr/local && make && make install \
  && ldconfig && cd /src/uade && ./configure --prefix=/usr/local --without-write-audio && make && make install
 
+# ---- libgme-sgc (Master System / Game Gear SGC rips) ----
+# The Game_Music_Emu 0.6 beta, as DeaDBeeF keeps it, has an SGC player the released libgme never got.
+# Only that player is built: libgme itself (Debian's) plays everything else.
+FROM debian:trixie-slim AS gmesgc
+ARG DEADBEEF_COMMIT=3dfff8cd62550ccb472e784f036affbbb1474e86
+RUN apt-get update && apt-get install -y --no-install-recommends g++ git ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+RUN git init -q /deadbeef && cd /deadbeef && git remote add origin https://github.com/DeaDBeeF-Player/deadbeef \
+ && git fetch -q --depth 1 --filter=blob:none origin "$DEADBEEF_COMMIT" \
+ && git sparse-checkout set plugins/gme/game-music-emu-0.6pre && git checkout -q FETCH_HEAD
+WORKDIR /deadbeef/plugins/gme/game-music-emu-0.6pre/gme
+# the Master System's FM unit (YM2413) comes from VGMPlay's C chips
+RUN gcc -O2 -fPIC -w -I.. -c ../vgmplay/VGMPlay/chips/emu2413.c ../vgmplay/VGMPlay/chips/panning.c \
+ && g++ -O2 -fPIC -shared -w -I.. -I. -DGME_VERSION_055 -DHAVE_STDINT_H -DGME_TYPE_LIST=gme_sgc_type \
+      -fno-exceptions -fno-rtti -Wl,--no-undefined -Wl,-soname,libgme-sgc.so -o /usr/local/lib/libgme-sgc.so \
+      gme.cpp Music_Emu.cpp Gme_File.cpp Gme_Loader.cpp Data_Reader.cpp Track_Filter.cpp M3u_Playlist.cpp \
+      Rom_Data.cpp blargg_common.cpp blargg_errors.cpp Blip_Buffer.cpp Multi_Buffer.cpp Effects_Buffer.cpp \
+      Classic_Emu.cpp Sgc_Emu.cpp Sgc_Core.cpp Sgc_Impl.cpp Sgc_Cpu.cpp Sms_Apu.cpp Sms_Fm_Apu.cpp \
+      Ym2413_Emu.cpp Z80_Cpu.cpp emu2413.o panning.o -lm
+
 # ---- runtime ---------------------------------------------------------------
 FROM python:3.13-slim-trixie
 LABEL org.opencontainers.image.title="Muzix" \
@@ -66,6 +86,7 @@ COPY --from=uade /usr/local/bin/uade123 /usr/local/bin/uade123
 COPY --from=uade /usr/local/lib/libbencodetools.so /usr/local/lib/libzakalwe.so /usr/local/lib/
 COPY --from=uade /usr/local/lib/uade /usr/local/lib/uade
 COPY --from=uade /usr/local/share/uade /usr/local/share/uade
+COPY --from=gmesgc /usr/local/lib/libgme-sgc.so /usr/local/lib/
 WORKDIR /app
 COPY backend/pyproject.toml backend/
 COPY backend/muzix backend/muzix

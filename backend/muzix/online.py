@@ -451,13 +451,16 @@ def _wanted(name: str) -> bool:
     return kind_of(low) == "tune" or low.endswith(".m3u")
 
 
+UNPACKED = "2"     # raised when Muzix learns more formats: archives unpacked before then miss them
+
+
 def unpack(archive: str) -> str:
     """The playable files of a zip or 7z, unpacked next to it (once)."""
     dest = archive + ".d"
-    if os.path.isdir(dest):
+    if _unpacked(dest):
         return dest
     with _lock(dest):
-        if os.path.isdir(dest):
+        if _unpacked(dest):
             return dest
         tmp = dest + ".part"
         shutil.rmtree(tmp, ignore_errors=True)
@@ -467,6 +470,9 @@ def unpack(archive: str) -> str:
                 _unzip(archive, tmp)
             else:
                 _un7z(archive, tmp)
+            with open(os.path.join(tmp, ".muzix-unpacked"), "w") as f:
+                f.write(UNPACKED)
+            shutil.rmtree(dest, ignore_errors=True)      # an older unpacking
             os.replace(tmp, dest)
         except (OSError, zipfile.BadZipFile, ValueError) as e:
             log.info("unpacking %s failed: %s", archive, e)
@@ -477,6 +483,14 @@ def unpack(archive: str) -> str:
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
     return dest
+
+
+def _unpacked(dest: str) -> bool:
+    try:
+        with open(os.path.join(dest, ".muzix-unpacked")) as f:
+            return f.read() == UNPACKED
+    except OSError:
+        return False
 
 
 def _unzip(archive: str, into: str):
@@ -570,6 +584,9 @@ def _label(src: Source, path: str, row: dict, title: str):
         row["title"] = f"Track {int(cd.group(1))}"     # a CD rip's audio track, named TGXCD1048_03
     if "_" in row["title"] and " " not in row["title"]:   # a file name: 5_Title_Tunes
         row["title"] = row["title"].replace("_", " ")
+    top = (parts(path) or [""])[0]
+    if src.id == "kss" and top in src.top and row["format"] == "kss":
+        extra = row["extra"] = {**extra, "system": top}       # KSS rips of Master System and Game Gear games
     if src.system and not extra.get("system"):
         row["extra"] = {**extra, "system": src.system}
     if src.id == "sceneorg" and formats.family(row["format"]) not in formats.RENDERED:
@@ -660,7 +677,7 @@ def _time(s: str) -> float | None:
 
 def read_nezplug(m3u: str, ext: str) -> list[tuple[str, int, str, float | None, float | None]]:
     """(file, track index for libgme, title, play time, fade) per line of a NEZplug .m3u:
-    "file.nsf::NSF,3,Title,1:23,-,10". Decimal numbers count from 1 (from 0 for KSS),
+    "file.nsf::NSF,3,Title,1:23,-,10". Decimal numbers count from 1 (from 0 for KSS and SGC),
     $hex numbers from 0, as libgme reads them."""
     raw = open(m3u, "rb").read()
     try:
@@ -676,7 +693,7 @@ def read_nezplug(m3u: str, ext: str) -> list[tuple[str, int, str, float | None, 
             continue
         num = fields[1].strip()
         try:
-            index = int(num[1:], 16) if num.startswith("$") else int(num) - (0 if ext == "kss" else 1)
+            index = int(num[1:], 16) if num.startswith("$") else int(num) - (0 if ext in ("kss", "sgc") else 1)
         except ValueError:
             continue
         if index < 0:

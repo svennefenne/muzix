@@ -50,7 +50,7 @@ def cache_path(path: str, subsong: int, plan: tuple[float, float], extra_key: st
 def render(path: str, fmt: str, subsong: int, duration: float, extra: dict | None) -> tuple[str, float]:
     """(path of a cached FLAC rendition, its length in seconds), rendering if needed."""
     from .lengths import play_plan
-    from .meta import gme, openmpt
+    from .meta import chip, gme, openmpt
 
     fam = formats.family(fmt)
     total, fade = play_plan(fam, extra, duration)
@@ -61,6 +61,9 @@ def render(path: str, fmt: str, subsong: int, duration: float, extra: dict | Non
     vgm_by_libvgm = fam == "gme" and fmt in ("vgm", "vgz") and have("zxtune123")
     if vgm_by_libvgm:
         extra_key = "libvgm"
+    sap_by_asap = fam == "gme" and fmt == "sap" and have("zxtune123") and _sap_type(path) not in chip.SAP_LIBGME
+    if sap_by_asap:
+        extra_key = "asap"
     # Furnace's length is only known after rendering; key its cache on the loop settings alone
     out = cache_path(path, subsong, (0.0, 0.0) if fam == "furnace" else (total, fade), str(extra_key))
     if os.path.exists(out):
@@ -80,6 +83,9 @@ def render(path: str, fmt: str, subsong: int, duration: float, extra: dict | Non
                 ex = extra or {}
                 one = (ex.get("intro") or 0) + (ex.get("loop") or 0) or ex.get("length") or 0
                 _zxtune(path, total if ex.get("loop") and total > one + 1 else 0, wav, tmp)
+            elif sap_by_asap:
+                # digitized and other SAP players libgme lacks; ASAP stops after a song's TIME by itself
+                _zxtune(sap_song(path, max(subsong, 0), tmp), 0 if (extra or {}).get("natural") else total, wav, tmp)
             elif fam == "gme":
                 gme.render_wav(path, max(subsong, 0), total, wav)
             elif fam == "sid":
@@ -284,6 +290,26 @@ def _zxtune(path: str, seconds: float, wav: str, tmp: str):
     # zxtune123 exits happily when it can't play a file; the missing audio says so
     if not os.path.exists(wav) or os.path.getsize(wav) <= 44:
         raise RenderError("zxtune123 couldn't play this file")
+
+
+def _sap_type(path: str) -> str:
+    from .meta import chip
+    with open(path, "rb") as f:
+        return chip.sap_header(f.read(8192)).get("TYPE", "")
+
+
+def sap_song(path: str, song: int, tmp: str) -> str:
+    """A copy of a SAP file with `song` as its default song, the one ASAP plays."""
+    with open(path, "rb") as f:
+        head, sep, body = f.read().partition(b"\xff\xff")
+    eol = b"\r\n" if b"\r\n" in head else b"\n"
+    lines = [line for line in head.split(eol) if not line.startswith(b"DEFSONG")]
+    at = next((i for i, line in enumerate(lines) if line.startswith(b"TYPE")), 1)
+    lines.insert(at, b"DEFSONG %d" % song)
+    out = os.path.join(tmp, "song.sap")
+    with open(out, "wb") as f:
+        f.write(eol.join(lines) + sep + body)
+    return out
 
 
 def zx_length(path: str, tmp: str) -> float:
