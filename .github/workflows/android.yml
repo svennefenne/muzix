@@ -1,0 +1,65 @@
+name: Android app
+
+on:
+  push:
+    branches: [main]
+    paths: ["android/**", ".github/workflows/android.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write     # publishes the APK as a release
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0          # the version code counts the commits
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Build the signed APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          MUZIX_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          MUZIX_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::The ANDROID_KEYSTORE_BASE64 secret isn't set; an update has to be signed with the app's own key."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/muzix-release.jks"
+          export MUZIX_KEYSTORE="$RUNNER_TEMP/muzix-release.jks"
+          cd android && ./gradlew assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/muzix-android.apk"
+
+      - name: Version
+        id: version
+        run: |
+          echo "name=$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' android/app/build.gradle.kts)" >> "$GITHUB_OUTPUT"
+          echo "code=$(git rev-list --count HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: muzix-android-${{ steps.version.outputs.name }}-${{ steps.version.outputs.code }}
+          path: muzix-android.apk
+
+      # one release per version name; a newer build of the same version replaces its APK
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: android-v${{ steps.version.outputs.name }}
+          NAME: ${{ steps.version.outputs.name }}
+          CODE: ${{ steps.version.outputs.code }}
+        run: |
+          notes="Muzix for Android $NAME (build $CODE, $(git rev-parse --short HEAD)). Install the APK on the phone; it updates the app in place."
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release edit "$TAG" --notes "$notes"
+          else
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "Muzix for Android $NAME" --notes "$notes" --latest
+          fi
+          gh release upload "$TAG" muzix-android.apk --clobber

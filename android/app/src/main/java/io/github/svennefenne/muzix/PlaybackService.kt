@@ -92,6 +92,6 @@ class PlaybackService : MediaSessionService() {
     }
 
     companion object {
-        const val USER_AGENT = "MuzixApp/0.2.0 (Android)"
+        const val USER_AGENT = "MuzixApp/${BuildConfig.VERSION_NAME} (Android)"
     }
 }

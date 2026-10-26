@@ -1,6 +1,22 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
 }
+
+// Release signing: the keystore the MUZIX_KEYSTORE* variables name (GitHub Actions), or the one
+// ~/.config/muzix-android/keystore.properties names, on a computer that holds the key. Without
+// either, release builds are signed with the debug key.
+val keyFile = File(System.getProperty("user.home"), ".config/muzix-android/keystore.properties")
+val keyProps = Properties().apply { if (keyFile.exists()) keyFile.inputStream().use { load(it) } }
+fun signing(env: String, prop: String): String? = System.getenv(env)?.takeIf { it.isNotEmpty() } ?: keyProps.getProperty(prop)
+val keystore = signing("MUZIX_KEYSTORE", "storeFile")
+
+// every commit is a newer version to Android: the version code counts them
+val commits = providers.exec {
+    commandLine("git", "rev-list", "--count", "HEAD")
+    isIgnoreExitValue = true
+}.standardOutput.asText.map { it.trim().toIntOrNull() ?: 1 }
 
 android {
     namespace = "io.github.svennefenne.muzix"
@@ -12,8 +28,23 @@ android {
         applicationId = "io.github.svennefenne.muzix"
         minSdk = 29
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = commits.get()
+        versionName = "0.3.0"
+    }
+
+    buildFeatures {
+        buildConfig = true
+    }
+
+    signingConfigs {
+        if (keystore != null) {
+            create("release") {
+                storeFile = file(keystore)
+                storePassword = signing("MUZIX_KEYSTORE_PASSWORD", "storePassword")
+                keyAlias = signing("MUZIX_KEY_ALIAS", "keyAlias")
+                keyPassword = signing("MUZIX_KEY_PASSWORD", "keyPassword") ?: storePassword
+            }
+        }
     }
 
     buildTypes {
@@ -21,7 +52,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("debug")   // a prototype: signed with the debug key
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 

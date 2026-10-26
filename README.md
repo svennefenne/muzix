@@ -149,9 +149,18 @@ same signed links as casting from Chrome, so the app has to be connected to
 Muzix's https address for it. Spotify playback isn't in the app; open Muzix in
 Chrome for that.
 
+Install it from <https://github.com/svennefenne/muzix/releases/latest/download/muzix-android.apk>
+(the phone asks once to allow installs from the browser); later versions install
+over it. GitHub Actions builds and signs it whenever `android/` changes
+(`.github/workflows/android.yml`), with the key in the repository's secrets
+`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS`;
+Android only updates an app signed with the same key, so keep a copy of it. To
+build it yourself:
+
 ```sh
 cd android && ./gradlew assembleRelease    # JDK 17+ and the Android SDK (platform 36.1)
-# app/build/outputs/apk/release/app-release.apk, to install on the phone
+# app/build/outputs/apk/release/app-release.apk, signed with the key that
+# ~/.config/muzix-android/keystore.properties names (or the debug key without it)
 ```
 
 ## Keyboard
