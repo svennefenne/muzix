@@ -1,11 +1,13 @@
 import {
-  Activity, BookOpen, Disc3, Gamepad2, House, LogOut, Monitor, Moon, Music2, Podcast, Radio, Search, Settings, Shield, Sun, SunMoon,
+  Activity, BookOpen, Disc3, Gamepad2, House, LogOut, Monitor, Moon, Music2, Podcast, Radio, Search, Server, Settings, Shield, Sun,
+  SunMoon,
 } from "lucide-react";
 import { useEffect } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { Logo } from "../components/Logo";
 import { useMenu } from "../components/ui";
+import { appPlayer } from "../player/app";
 import { usePlayer } from "../store/player";
 import { useUi } from "../store/ui";
 import { QuickSearch } from "./QuickSearch";
@@ -84,6 +86,7 @@ export function TopBar() {
     { heading: user?.username || "" },
     { label: "Settings", icon: <Settings size={16} />, onClick: () => nav("/settings") },
     ...(user?.is_admin ? [{ label: "Admin", icon: <Shield size={16} />, onClick: () => nav("/admin") }] : []),
+    ...(appPlayer.available ? [{ label: "Change server", icon: <Server size={16} />, onClick: () => appPlayer.changeServer() }] : []),
     { sep: true },
     { label: "Sign out", icon: <LogOut size={16} />, onClick: () => api.post("/api/auth/logout").then(() => location.assign("/")) },
   ]);

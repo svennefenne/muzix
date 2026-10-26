@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.Muzix" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/muzix_bg</item>
+        <item name="android:colorAccent">@color/muzix_primary</item>
+    </style>
+    <color name="muzix_bg">#0a1020</color>
+    <color name="muzix_primary">#f2a93b</color>
+</resources>

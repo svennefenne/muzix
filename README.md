@@ -135,6 +135,22 @@ audio inside your network. Files the speaker plays as they are (MP3, AAC,
 FLAC up to 96 kHz, Ogg, WAV) are sent unchanged; everything else, chiptunes
 included, arrives as FLAC. Spotify songs are skipped on the speaker.
 
+### Android app (prototype)
+
+`android/` holds a small Android app: Muzix's own web interface from your
+server, as it looks in a browser, with Android's media player (Media3) behind
+it. The page hands the queue to that player the way it does to a Cast speaker,
+so songs go on with the screen off, the lock screen and notification show the
+player, and headsets, Bluetooth and cars can skip and pause. The first start
+asks for the server's address (http on the local network works too); "Change
+server" in the account menu asks again. Casting and Spotify playback aren't
+in the app yet; open Muzix in Chrome for those.
+
+```sh
+cd android && ./gradlew assembleRelease    # JDK 17+ and the Android SDK (platform 36.1)
+# app/build/outputs/apk/release/app-release.apk, to install on the phone
+```
+
 ## Keyboard
 
 | Key | Action |

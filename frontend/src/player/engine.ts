@@ -6,8 +6,22 @@ import { api } from "../api";
 import { report } from "../components/ErrorBoundary";
 import { usePlayer, type PlayItem } from "../store/player";
 import { useUi } from "../store/ui";
-import { caster } from "./cast";
+import { appPlayer } from "./app";
+import { caster, type CastHooks } from "./cast";
 import { spotify } from "./spotify";
+
+/** What plays the queue instead of the page's own audio element: a Cast speaker, or the Android app's player. */
+interface Remote {
+  loadQueue(start: number, at?: number, autoplay?: boolean): unknown;
+  syncUpcoming(): unknown;
+  jump(index: number): unknown;
+  toggle(): unknown;
+  next(): void;
+  prev(): void;
+  seek(t: number): void;
+  setVolume(volume: number, muted: boolean): void;
+  stopMedia(): void;
+}
 
 class Engine {
   el: HTMLAudioElement;
@@ -53,7 +67,7 @@ class Engine {
       usePlayer.getState().set({ buffering: true });
       window.clearTimeout(this.steadyTimer);
       // radio that stalls this long gets a fresh connection
-      if (usePlayer.getState().current()?.kind === "radio" && !caster.active) {
+      if (usePlayer.getState().current()?.kind === "radio" && !this.remote) {
         window.clearTimeout(this.stallTimer);
         this.stallTimer = window.setTimeout(() => this.reconnectRadio(), 12_000);
       }
@@ -67,8 +81,8 @@ class Engine {
     });
     this.applyVolume();
     spotify.onEnded = () => this.next(true);
-    // on a Cast speaker the speaker plays; we keep the books (plays, resume points, radio titles)
-    caster.attach({
+    // on a Cast speaker (or in the Android app) that plays; we keep the books (plays, resume points, radio titles)
+    const hooks: CastHooks = {
       onStart: () => {
         this.el.pause();
         spotify.pause();
@@ -90,8 +104,17 @@ class Engine {
         usePlayer.getState().set({ playing: false, buffering: false });
         if (usePlayer.getState().current()) this.load(false, pos);
       },
+    };
+    caster.attach(hooks);
+    appPlayer.attach({
+      ...hooks,
+      onFinish: () => {
+        this.saveProgress(true);
+        usePlayer.getState().set({ playing: false, buffering: false });
+      },
     });
     caster.load();
+    appPlayer.connect();
     usePlayer.subscribe((s, prev) => {
       if (s.volume !== prev.volume || s.muted !== prev.muted) this.applyVolume();
       if (s.speed !== prev.speed) el.playbackRate = s.speed;
@@ -99,12 +122,16 @@ class Engine {
     this.mediaSession();
   }
 
+  private get remote(): Remote | null {
+    return caster.active ? caster : appPlayer.active ? appPlayer : null;
+  }
+
   // ------------------------------------------------------------ queue control
 
   play(items: PlayItem[], start = 0) {
     if (!items.length) return;
     usePlayer.getState().set({ queue: items, index: start });
-    if (caster.active) return caster.loadQueue(start, items[start]?.resume ?? 0);
+    if (this.remote) return this.remote.loadQueue(start, items[start]?.resume ?? 0);
     this.load(true);
   }
 
@@ -115,12 +142,12 @@ class Engine {
     q.splice(next ? s.index + 1 : q.length, 0, ...items);
     s.set({ queue: q });
     useUi.getState().notify(next ? `Playing next: ${items[0].title}` : `Added ${items.length > 1 ? items.length + " songs" : items[0].title} to the queue`);
-    if (caster.active) caster.syncUpcoming();
+    if (this.remote) this.remote.syncUpcoming();
   }
 
   jump(index: number) {
     usePlayer.getState().set({ index });
-    if (caster.active) return caster.jump(index);
+    if (this.remote) return this.remote.jump(index);
     this.load(true);
   }
 
@@ -130,7 +157,7 @@ class Engine {
     let idx = s.index;
     if (index < idx) idx--;
     s.set({ queue: q, index: Math.min(idx, q.length - 1) });
-    if (caster.active) return index === s.index ? caster.loadQueue(Math.min(idx, q.length - 1), 0, s.playing) : caster.syncUpcoming();
+    if (this.remote) return index === s.index ? this.remote.loadQueue(Math.min(idx, q.length - 1), 0, s.playing) : this.remote.syncUpcoming();
     if (index === s.index) this.load(s.playing);
   }
 
@@ -144,11 +171,11 @@ class Engine {
     else if (from < idx && to >= idx) idx--;
     else if (from > idx && to <= idx) idx++;
     s.set({ queue: q, index: idx });
-    if (caster.active) caster.syncUpcoming();
+    if (this.remote) this.remote.syncUpcoming();
   }
 
   clear() {
-    if (caster.active) caster.stopMedia();
+    if (this.remote) this.remote.stopMedia();
     this.stop();
     usePlayer.getState().set({ queue: [], index: -1, position: 0, duration: 0 });
   }
@@ -156,7 +183,7 @@ class Engine {
   toggle() {
     const cur = usePlayer.getState().current();
     if (!cur) return;
-    if (caster.active) return caster.toggle();
+    if (this.remote) return this.remote.toggle();
     if (cur.kind === "spotify") return spotify.toggle();
     this.ensureAudioGraph();
     if (this.el.paused) {
@@ -168,7 +195,7 @@ class Engine {
   next(auto = false) {
     const s = usePlayer.getState();
     if (!s.queue.length) return;
-    if (caster.active) return caster.next();
+    if (this.remote) return this.remote.next();
     if (auto && s.repeat === "one") return this.seek(0, true);
     let idx = s.index + 1;
     if (s.shuffle && s.queue.length > 1) {
@@ -188,7 +215,7 @@ class Engine {
   }
 
   prev() {
-    if (caster.active) return caster.prev();
+    if (this.remote) return this.remote.prev();
     const s = usePlayer.getState();
     if (s.position > 4 || s.index <= 0) return this.seek(0);
     s.set({ index: s.index - 1 });
@@ -273,7 +300,7 @@ class Engine {
     if (item.kind === "spotify") return spotify.seek(t);
     if (item.kind === "radio") return;
     t = Math.max(0, item.duration ? Math.min(t, item.duration - 0.5) : t);
-    if (caster.active) return caster.seek(t);
+    if (this.remote) return this.remote.seek(t);
     const local = t - this.offset;
     const el = this.el;
     const canSeek = el.seekable.length > 0 && local >= 0 && el.seekable.end(el.seekable.length - 1) >= local - 1
@@ -292,7 +319,7 @@ class Engine {
   // ------------------------------------------------------------ events
 
   private onTime() {
-    if (caster.active) return;
+    if (this.remote) return;
     const item = usePlayer.getState().current();
     if (!item || item.kind === "spotify") return;
     const pos = this.offset + this.el.currentTime;
@@ -323,7 +350,7 @@ class Engine {
   }
 
   private onEnded() {
-    if (caster.active) return;
+    if (this.remote) return;
     this.saveProgress(true);
     this.next(true);
   }
@@ -340,7 +367,7 @@ class Engine {
   }
 
   private onError() {
-    if (caster.active) return;
+    if (this.remote) return;
     const item = usePlayer.getState().current();
     if (!item || !this.el.getAttribute("src")) return;
     if (item.kind === "radio" && this.reconnectRadio()) return;
@@ -498,7 +525,7 @@ class Engine {
 
   private applyVolume() {
     const s = usePlayer.getState();
-    if (caster.active) return caster.setVolume(s.muted ? 0 : s.volume, s.muted);
+    if (this.remote) return this.remote.setVolume(s.muted ? 0 : s.volume, s.muted);
     this.el.volume = s.muted ? 0 : s.volume ** 1.6;   // perceptual curve
     spotify.setVolume(s.muted ? 0 : s.volume);
   }
@@ -520,6 +547,7 @@ class Engine {
   private updateMediaSession(item: PlayItem, live = "") {
     if (!("mediaSession" in navigator)) return;
     const art = item.art ? [{ src: item.art.startsWith("/api/") ? item.art + "?s=600" : item.art, sizes: "600x600" }] : [];
+    if (live && appPlayer.active) appPlayer.meta(live, item.title);
     navigator.mediaSession.metadata = new MediaMetadata({
       title: live || item.title, artist: live ? item.title : item.artist, album: item.album || "", artwork: art,
     });

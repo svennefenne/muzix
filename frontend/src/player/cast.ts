@@ -22,8 +22,8 @@ export interface CastHooks {
   onEnd(position: number): void;   // back to local playback, paused here
 }
 
-/** What the speaker keeps of an item, enough to rebuild the queue if the page reloads. */
-type Slim = Pick<PlayItem, "key" | "kind" | "id" | "title" | "artist" | "album" | "art" | "duration" | "src"
+/** What the speaker (or the Android app) keeps of an item, enough to rebuild the queue if the page reloads. */
+export type Slim = Pick<PlayItem, "key" | "kind" | "id" | "title" | "artist" | "album" | "art" | "duration" | "src"
   | "albumId" | "artistId" | "bookId" | "partOffset" | "format" | "castNative">;
 interface Carried { muzix: Slim; offset: number }
 
@@ -32,7 +32,7 @@ const MIME: Record<string, string> = {
   ogg: "audio/ogg", oga: "audio/ogg", opus: "audio/ogg", wav: "audio/wav",
 };
 
-function slim(it: PlayItem): Slim {
+export function slim(it: PlayItem): Slim {
   const { key, kind, id, title, artist, album, art, duration, src, albumId, artistId, bookId, partOffset, format, castNative } = it;
   return { key, kind, id, title, artist, album, art, duration, src, albumId, artistId, bookId, partOffset, format, castNative };
 }
@@ -43,6 +43,19 @@ function carried(info?: chrome.cast.media.MediaInfo | null): Carried | null {
 }
 
 const castable = (it: PlayItem) => it.kind !== "spotify";
+
+/** A player that plays the queue in order (a speaker, the app) shuffles by playing a shuffled queue. */
+export function shuffleUpcoming() {
+  const s = usePlayer.getState();
+  const cur = s.current();
+  if (!cur) return;
+  const rest = s.queue.filter((_, i) => i !== s.index);
+  for (let i = rest.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [rest[i], rest[j]] = [rest[j], rest[i]];
+  }
+  s.set({ queue: [cur, ...rest], index: 0 });
+}
 
 /** Callback-style Cast calls as promises. */
 function call<T extends unknown[]>(fn: (...args: [...T, () => void, (e: chrome.cast.Error) => void]) => void, ...args: T) {
@@ -70,6 +83,7 @@ class Caster {
   load() {
     const set = usePlayer.getState().set;
     const no = (castWhy: string) => set({ castSupport: "unsupported", castWhy });
+    if (window.MuzixApp) return no("The Android app plays on the phone; to cast, open Muzix in Chrome.");
     if (!window.isSecureContext) return no("Casting needs Muzix's https address.");
     if (!/Chrome\//.test(navigator.userAgent) || /SamsungBrowser/.test(navigator.userAgent))
       return no("Casting needs Google Chrome, on Android or a computer.");
@@ -101,7 +115,7 @@ class Caster {
       if (!this.active) return;
       if (s.repeat !== prev.repeat) this.setRepeat();
       if (s.shuffle && !prev.shuffle) {
-        this.shuffleUpcoming();
+        shuffleUpcoming();
         this.syncUpcoming();
       }
     });
@@ -218,19 +232,6 @@ class Caster {
     return usePlayer.getState().queue.slice(start).filter(castable).slice(0, WINDOW);
   }
 
-  /** Shuffle on a speaker plays a shuffled queue in order (it can't pick at random as we do). */
-  private shuffleUpcoming() {
-    const s = usePlayer.getState();
-    const cur = s.current();
-    if (!cur) return;
-    const rest = s.queue.filter((_, i) => i !== s.index);
-    for (let i = rest.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [rest[i], rest[j]] = [rest[j], rest[i]];
-    }
-    s.set({ queue: [cur, ...rest], index: 0 });
-  }
-
   private repeatMode() {
     const R = chrome.cast.media.RepeatMode;
     return { off: R.OFF, all: R.ALL, one: R.SINGLE }[usePlayer.getState().repeat];
@@ -242,7 +243,7 @@ class Caster {
     const s = usePlayer.getState();
     if (!sess || start < 0) return;
     if (s.shuffle && start === s.index) {
-      this.shuffleUpcoming();
+      shuffleUpcoming();
       start = 0;
     }
     const first = s.queue[start];
