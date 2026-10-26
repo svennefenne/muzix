@@ -18,13 +18,14 @@ import shutil
 import threading
 import time
 import zipfile
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from html import unescape
 from urllib.parse import quote, unquote, urlencode
 
 import httpx
 
-from . import __version__, env, formats, render, vgmrips, zxart
+from . import __version__, env, formats, modarchive, render, settings, vgmrips, zxart
 from .lengths import play_plan
 
 log = logging.getLogger("muzix.online")
@@ -123,6 +124,10 @@ SOURCES = [
            "Game soundtracks logged from the real sound chips: arcade boards, consoles and Japanese computers, a pack per game.",
            "https://vgmrips.net/", "",
            starts=(("Systems", "systems"), ("Composers", "composers"), ("Chips", "chips"))),
+    Source("modarchive", "The Mod Archive", "Module archive",
+           "Over 100,000 tracker modules with titles, artists, genres and ratings, by file name, genre or rating.",
+           "https://modarchive.org/", "Amiga / PC tracker",
+           starts=(("A–Z", "letters"), ("Genres", "genres"), ("Ratings", "ratings"))),
     Source("sceneorg", "scene.org", "Demoscene",
            "Music from demo parties and scene artists: tracker modules and recordings, mostly zipped.",
            "https://archive.scene.org/pub/music/", "",
@@ -133,6 +138,28 @@ BY_ID = {s.id: s for s in SOURCES}
 
 class OnlineError(Exception):
     """Something to tell the listener: the archive didn't answer, or sent something odd."""
+
+
+def about(src: Source) -> str:
+    if src.id == "modarchive" and not settings.get("modarchive_api_key"):
+        return ("Needs an API key of your own: The Mod Archive hands them out on its forum. "
+                "Add it on the admin page under Online archives.")
+    return src.about
+
+
+def hide_keys(text: str) -> str:
+    """API keys travel in query strings (The Mod Archive's); they stay out of the log."""
+    return re.sub(r"(\bkey=)[^&\s\"']+", r"\1…", text)
+
+
+class _HideKeys(logging.Filter):
+    def filter(self, record):
+        if isinstance(record.args, tuple):
+            record.args = tuple(hide_keys(str(a)) if "key=" in str(a) else a for a in record.args)
+        return True
+
+
+logging.getLogger("httpx").addFilter(_HideKeys())
 
 
 # ---------------------------------------------------------------- paths
@@ -247,7 +274,7 @@ def _page(src: Source, url: str) -> str:
         r.raise_for_status()
         return r.text
     except httpx.HTTPError as e:
-        log.info("listing %s failed: %s", url, e)
+        log.info("listing %s failed: %s", hide_keys(url), e)
         raise OnlineError(f"{src.name} isn't answering right now")
 
 
@@ -259,6 +286,8 @@ def listing(src: Source, path: str, page: int = 0) -> dict:
         return _zxart_listing(src, names)
     if src.id == "vgmrips":
         return _vgmrips_listing(src, names, max(0, page))
+    if src.id == "modarchive":
+        return _modarchive_listing(src, names, max(0, page))
     url = remote_url(src, names, True)
     entries = _cached(url, lambda: parse_index(_page(src, url)))
     dirs = [{"name": n, "path": _join(names, n)} for n, folder, _ in entries if folder
@@ -289,6 +318,34 @@ def _folder(src: Source, names: list[str], dirs: list[dict], files: list[dict], 
         "files": playable if keep_order else sorted(playable, key=lambda f: f.get("title", f["name"]).casefold()),
         "other": other, "more": more, "total": total,
     }
+
+
+def _modarchive_listing(src: Source, names: list[str], page: int) -> dict:
+    """The Mod Archive's letters, genres, ratings and artists, and their modules a page at a time."""
+    if not names:
+        return _folder(src, names, [{"name": n, "path": p} for p, n in modarchive.ROOT], [], [], keep_order=True)
+    here = "/".join(names)
+    static = modarchive.static_folders(names)
+    key = settings.get("modarchive_api_key")
+    if static is None and not key:
+        raise OnlineError("The Mod Archive needs an API key: ask for one on its forum, then add it on the admin page")
+    if len(names) > 1 and names[0] == "genres" and here not in modarchive.folder_names:
+        _modarchive_listing(src, ["genres"], 0)              # for the breadcrumbs
+    crumbs = [{"name": modarchive.folder_names.get(names[0], names[0]), "path": names[0]}]
+    if len(names) > 1:
+        crumbs.append({"name": modarchive.folder_names.get(here, names[-1]), "path": here})
+    if static is not None:
+        return _folder(src, names, static, [], crumbs, keep_order=True)
+    url = modarchive.request_url(key, names, page)
+    if url is None:
+        raise OnlineError("That folder isn't in the archive")
+    try:
+        dirs, files, more = _cached(url, lambda: modarchive.parse(_page(src, url), names, page))
+    except modarchive.BadKey:
+        raise OnlineError("The Mod Archive didn't accept the API key; check it on the admin page")
+    except (ET.ParseError, ValueError) as e:
+        raise OnlineError(f"The Mod Archive answered oddly: {e}")
+    return _folder(src, names, dirs, files, crumbs, keep_order=names[0] != "genres", more=more)
 
 
 def _vgmrips_listing(src: Source, names: list[str], page: int) -> dict:
@@ -353,7 +410,8 @@ def fetch(src: Source, path: str, companion: bool = False) -> str:
         os.makedirs(os.path.dirname(out), exist_ok=True)
         part = out + ".part"
         try:
-            url = zxart.file_url(names) if src.id == "zxart" else remote_url(src, names, False)
+            url = (zxart.file_url(names) if src.id == "zxart" else modarchive.download_url(names)
+                   if src.id == "modarchive" else remote_url(src, names, False))
             if url is None:
                 raise OnlineError("That file isn't in the archive")
             with _http() as client, client.stream("GET", url) as r:
@@ -501,6 +559,8 @@ def _label(src: Source, path: str, row: dict, title: str):
         zxart.label(parts(path), row)
     elif src.id == "vgmrips":
         vgmrips.label(path, row)
+    elif src.id == "modarchive":
+        modarchive.label(parts(path), row)
     extra = row.get("extra") or {}
     if (row.get("album") or "").endswith(".d"):       # named after the folder it was unpacked into
         row["album"] = title
@@ -658,7 +718,14 @@ def fetch_aside(src: Source, path: str, max_age: float) -> str:
 
 
 def find(src: Source, path: str, member: str, sub: int) -> dict:
-    """The row for one tune: the file's first when `sub` is -1 and the file has several."""
+    """The row for one tune: the file's first when `sub` is -1 and the file has several. A member
+    of "*<number>" is one of the set's songs, picked by the number (a shuffle's random pick,
+    which stays the same song when the stream is asked for again to seek)."""
+    if member.startswith("*"):
+        rows = open_file(src, path).rows
+        if not rows:
+            raise OnlineError("Nothing in that set plays here")
+        return rows[int(member[1:] or 0) % len(rows)] if member[1:].isdigit() else rows[0]
     rows = [r for r in open_file(src, path).rows if r["member"] == member]
     if not rows:
         raise OnlineError("That tune isn't in the file")

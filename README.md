@@ -39,8 +39,13 @@ you choose from 98 colour schemes, each with a light and a dark version.
 - **Online chiptune archives** (VGM → Online archives): browse and play
   straight from HVSC (C64), Modland (trackers), ASMA (Atari 8-bit), Joshw's
   NES, Game Boy, SNES, PC Engine and MSX rips, ZXArt (ZX Spectrum), VGMRips
-  (arcade, consoles and Japanese computers, played with libvgm) and
-  scene.org. Muzix fetches a
+  (arcade, consoles and Japanese computers, played with libvgm), The Mod
+  Archive and scene.org. The Mod Archive needs an API key of your own (they
+  hand them out on their forum; add it on the admin page). Search every
+  archive (or one) by title, artist, year or system ("hubbard", "mega man nes",
+  "1988 atari"), and shuffle all of them, one, or a folder. HVSC, Modland and
+  ASMA are searched through the complete lists they publish, kept in a small
+  index in the cache and fetched again once a week. Muzix fetches a
   folder when you open it and a tune when you play it (game sets come as .7z or
   .zip and are unpacked for you, with song names and lengths from their
   playlists), and keeps up to 5 GB of recent downloads. It never crawls the

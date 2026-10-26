@@ -1,9 +1,10 @@
-/** The VGM page's online archives: HVSC, Modland, ASMA, the Joshw game rips and scene.org,
- * browsed folder by folder and played without adding anything to the library. */
+/** The VGM page's online archives: HVSC, Modland, ASMA, the Joshw game rips, ZXArt, VGMRips,
+ * The Mod Archive and scene.org, browsed folder by folder, searched and shuffled, and played
+ * without adding anything to the library. */
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, Folder, Loader2, Play, Search, Shuffle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, fmtBytes, fmtTime } from "../api";
 import { queryClient } from "../actions";
 import { Display, Empty, Loading, Stripes } from "../components/ui";
@@ -11,7 +12,7 @@ import { engine } from "../player/engine";
 import { fromOnline, usePlayer, type PlayItem } from "../store/player";
 import { useUi } from "../store/ui";
 import { SYSTEM_ACCENTS } from "../theme/skins";
-import type { OnlineFile, OnlineListing, OnlineSource, OnlineTrack } from "../types";
+import type { OnlineFile, OnlineListing, OnlineSearchResult, OnlineShuffleItem, OnlineSource, OnlineTrack } from "../types";
 
 const SHOWN = 240;   // folders like Modland's Protracker hold thousands of composers
 
@@ -47,13 +48,61 @@ function fileLabel(f: OnlineFile): [string, string] {
   return splitName(f.name);
 }
 
-/** A whole file, queued before it's downloaded: the server fetches it when it comes up. */
+/** A whole file, queued before it's downloaded: the server fetches it when it comes up. A game
+ * set (a zip or 7z of songs) plays one of its songs, picked at random now and kept. */
 function fileItem(source: string, f: OnlineFile, system: string): PlayItem {
-  const q = new URLSearchParams({ source, path: f.path, sub: "-1" });
+  const member = f.kind === "archive" ? `*${Math.floor(Math.random() * 1e6)}` : "";
+  const q = new URLSearchParams({ source, path: f.path, sub: "-1", ...(member && { member }) });
   return {
-    key: `online:${source}:${f.path}||-1`, kind: "online", id: f.path, title: fileLabel(f)[0],
+    key: `online:${source}:${f.path}|${member}|-1`, kind: "online", id: f.path, title: fileLabel(f)[0],
     artist: f.artist || "", duration: f.duration || 0, src: `/api/online/stream?${q}`, system, trackKind: f.chip ? "vgm" : "music", format: f.format,
   };
+}
+
+/** Plays random tunes from an archive, a folder of one, or every archive. */
+function useShuffle() {
+  const [busy, setBusy] = useState(false);
+  const notify = useUi((s) => s.notify);
+  async function shuffle(source = "", path = "") {
+    setBusy(true);
+    try {
+      const r = await api.get<{ items: OnlineShuffleItem[] }>("/api/online/shuffle", { source: source || undefined, path: path || undefined, n: 80 });
+      if (!r.items.length) return notify("Nothing to shuffle here", "error");
+      engine.play(r.items.map((it) => fileItem(it.source, it, it.system)), 0);
+    } catch (e) {
+      notify((e as Error).message, "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return { busy, shuffle };
+}
+
+/** The search box: every archive's, or one archive's. */
+function SearchBox({ source, label, initial = "" }: { source?: string; label?: string; initial?: string }) {
+  const navigate = useNavigate();
+  const [q, setQ] = useState(initial);
+  useEffect(() => setQ(initial), [initial]);
+  return (
+    <form className="online-search" role="search" onSubmit={(e) => {
+      e.preventDefault();
+      if (q.trim()) navigate(`/vgm/online/search?${new URLSearchParams({ q: q.trim(), ...(source && { source }) })}`);
+    }}>
+      <Search size={16} />
+      <input className="input" value={q} onChange={(e) => setQ(e.target.value)} enterKeyHint="search"
+             placeholder={label ? `Search ${label}: title, artist, year…` : "Search every archive: title, artist, year, system…"}
+             aria-label={label ? `Search ${label}` : "Search every archive"} />
+    </form>
+  );
+}
+
+function ShuffleAll({ source, path }: { source?: string; path?: string }) {
+  const { busy, shuffle } = useShuffle();
+  return (
+    <button className="btn primary" disabled={busy} onClick={() => shuffle(source, path)}>
+      {busy ? <Loader2 size={15} className="spin" /> : <Shuffle size={15} />} Shuffle all
+    </button>
+  );
 }
 
 export function OnlineHome() {
@@ -62,6 +111,10 @@ export function OnlineHome() {
   return (
     <>
       <p className="lede">The big chiptune and tracker archives, played straight from the source. Muzix fetches a folder when you open it and a tune when you play it, and keeps recent tunes for a while.</p>
+      <div className="online-head">
+        <ShuffleAll />
+        <SearchBox />
+      </div>
       {sources.isLoading ? <Loading /> : (
         <div className="bento online-sources">
           {(sources.data || []).map((s) => (
@@ -85,7 +138,7 @@ export function OnlineHome() {
           ))}
         </div>
       )}
-      <p className="faint online-credit">The archives are run by volunteers: thank you, HVSC, Modland, ASMA, Joshw and scene.org.</p>
+      <p className="faint online-credit">The archives are run by volunteers: thank you, HVSC, Modland, ASMA, Joshw, ZXArt, VGMRips, The Mod Archive and scene.org.</p>
     </>
   );
 }
@@ -117,6 +170,10 @@ export function OnlineBrowser() {
         ))}
       </nav>
       <Display l1={title || " "} small />
+      <div className="online-head">
+        {(!path || !!d?.dirs.length) && <ShuffleAll source={source} path={path} />}
+        <SearchBox source={source} label={src?.label} />
+      </div>
       {list.isLoading ? <Loading /> : list.isError ? (
         <Empty title="Couldn't open this folder">{(list.error as Error).message}. <button className="btn small" onClick={() => list.refetch()}>Try again</button></Empty>
       ) : d && <FolderView key={`${source}/${path}`} d={d} source={source} system={src?.system || d.system}
@@ -125,9 +182,10 @@ export function OnlineBrowser() {
   );
 }
 
-function FolderView({ d, source, system, more }: {
+function FolderView({ d, source, system, more, bare }: {
   d: OnlineListing; source: string; system: string;
   more?: { loading: boolean; load: () => void };       // the next page of a paged folder (VGMRips)
+  bare?: boolean;                                       // search results: no filter box
 }) {
   const [filter, setFilter] = useState("");
   const [shown, setShown] = useState(SHOWN);
@@ -169,10 +227,10 @@ function FolderView({ d, source, system, more }: {
     <>
       <div className="toolbar online-bar">
         {tunes.length > 0 && <>
-          <button className="btn primary" onClick={() => playFolder(false)}><Play size={15} fill="currentColor" /> Play folder</button>
+          <button className="btn primary" onClick={() => playFolder(false)}><Play size={15} fill="currentColor" /> {bare ? "Play all" : "Play folder"}</button>
           <button className="btn" onClick={() => playFolder(true)}><Shuffle size={15} /> Shuffle</button>
         </>}
-        {(total > 12 || more) && (
+        {!bare && (total > 12 || more) && (
           <label className="online-filter">
             <Search size={15} />
             <input className="input" value={filter} onChange={(e) => setFilter(e.target.value)}
@@ -237,6 +295,60 @@ function FolderView({ d, source, system, more }: {
       )}
       {total === 0 && <Empty title="Nothing here Muzix can play">{d.other ? `${d.other} files in other formats.` : "This folder is empty."}</Empty>}
       {d.other > 0 && total > 0 && <p className="faint online-other">{d.other.toLocaleString()} more {d.other === 1 ? "file" : "files"} here in formats Muzix doesn't play.</p>}
+    </>
+  );
+}
+
+/** Results for a search of every archive, or of one. */
+export function OnlineSearch() {
+  const [params] = useSearchParams();
+  const q = params.get("q") || "";
+  const source = params.get("source") || "";
+  const src = useSources().data?.find((s) => s.id === source);
+  const res = useQuery({
+    queryKey: ["online-search", q, source], enabled: !!q, staleTime: 5 * 60_000,
+    queryFn: () => api.get<OnlineSearchResult>("/api/online/search", { q, source: source || undefined }),
+    // an archive's list is still being fetched: ask again until it's there
+    refetchInterval: (query) => (query.state.data?.building.length ? 3000 : false),
+  });
+  const r = res.data;
+  const found = r?.groups.reduce((n, g) => n + (g.total || g.files.length), 0) || 0;
+  return (
+    <>
+      <nav className="crumbs" aria-label="You are here">
+        <Link to="/vgm/online">Online</Link>
+        {src && <><ChevronRight size={12} /><Link to={href(src.id)}>{src.label}</Link></>}
+        <ChevronRight size={12} /><span>Search</span>
+      </nav>
+      <Display l1={q ? `“${q}”` : "Search"} small />
+      <div className="online-head">
+        <SearchBox source={source || undefined} label={src?.label} initial={q} />
+        {source && <Link className="btn" to={`/vgm/online/search?${new URLSearchParams({ q })}`}>Search every archive</Link>}
+      </div>
+      {!q ? <Empty title="Search the archives">Titles, artists, composers, years and systems: “hubbard”, “mega man nes”, “1988 atari”.</Empty>
+        : res.isLoading ? <Loading /> : res.isError ? <Empty title="Couldn't search">{(res.error as Error).message}</Empty> : r && (
+        <>
+          <p className="faint online-found">
+            {found ? `${found.toLocaleString()} found in ${r.groups.length} ${r.groups.length === 1 ? "archive" : "archives"}` : "Nothing found"}
+            {r.building.length > 0 && <> · <Loader2 size={12} className="spin" /> still fetching a list, more on the way</>}
+          </p>
+          {r.groups.map((g) => (
+            <section key={g.source} className="online-group">
+              <div className="online-group-head">
+                <h3 className="h3">{g.label} <span className="faint">{g.archive}</span></h3>
+                <span className="faint">{(g.total || 0) > g.files.length ? `first ${g.files.length} of ${(g.total || 0).toLocaleString()}` : `${(g.files.length + g.dirs.length).toLocaleString()} found`}</span>
+                <Link className="btn small" to={href(g.source)}>Browse</Link>
+              </div>
+              <FolderView key={`${q}/${g.source}`} d={g} source={g.source} system={g.system} bare />
+            </section>
+          ))}
+          {r.skipped.length > 0 && (
+            <ul className="online-skipped faint">
+              {r.skipped.map((s) => <li key={s.source}><b>{s.label}</b> ({s.name}): {s.reason}</li>)}
+            </ul>
+          )}
+        </>
+      )}
     </>
   );
 }

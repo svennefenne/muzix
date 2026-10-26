@@ -88,6 +88,9 @@ SCHEMA: list[Spec] = [
     Spec("upload_genre_folders", "bool", True, "Uploads", "File into genre folders",
          "Genre/Artist/Artist - Year - Album, like the rest of the library."),
     # spotify
+    Spec("modarchive_api_key", "secret", "", "Online archives", "The Mod Archive API key",
+         "Lets VGM → Online archives browse modarchive.org. Keys are personal: ask for one in the API "
+         "section of The Mod Archive's forum (https://modarchive.org/forums), then paste it here."),
     Spec("spotify_client_id", "str", "", "Spotify", "Client ID",
          "From developer.spotify.com → your app. Redirect URI: <public URL>/api/spotify/callback"),
 ]

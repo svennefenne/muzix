@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
-from .. import online
+from .. import online, online_search
 from ..models import User
 from ..security import current_user, stream_user
 from .stream import audio
@@ -21,7 +21,7 @@ def _source(sid: str) -> online.Source:
 
 @router.get("/sources")
 def sources(user: User = Depends(current_user)):
-    return [{"id": s.id, "name": s.name, "label": s.label, "about": s.about, "system": s.system,
+    return [{"id": s.id, "name": s.name, "label": s.label, "about": online.about(s), "system": s.system,
              "home": s.base, "starts": [{"name": n, "path": p} for n, p in s.starts]}
             for s in online.SOURCES]
 
@@ -31,6 +31,24 @@ async def listing(source: str, path: str = "", page: int = 0, user: User = Depen
     src = _source(source)
     try:
         return await run_in_threadpool(online.listing, src, path, page)
+    except online.OnlineError as e:
+        raise HTTPException(502, str(e))
+
+
+@router.get("/search")
+async def search(q: str, source: str = "", user: User = Depends(current_user)):
+    """Every archive's matches (or one's), by title, artist, year and system."""
+    if source:
+        _source(source)
+    return await run_in_threadpool(online_search.search, q, source or None)
+
+
+@router.get("/shuffle")
+async def shuffle(source: str = "", path: str = "", n: int = 60, user: User = Depends(current_user)):
+    """Random tunes from an archive, a folder of one, or all of them."""
+    src = _source(source) if source else None
+    try:
+        return {"items": await run_in_threadpool(online_search.shuffle, src.id if src else None, path, max(1, min(n, 200)))}
     except online.OnlineError as e:
         raise HTTPException(502, str(e))
 

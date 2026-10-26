@@ -8,7 +8,7 @@ import { AlbumItems, DisplaySwitch, SortMenu, useBrowse } from "../components/Br
 import { Display, Empty, Kicker, Loading, Section, Stripes, useInView } from "../components/ui";
 import { SYSTEM_ACCENTS } from "../theme/skins";
 import type { Album, Paged } from "../types";
-import { OnlineBrowser, OnlineHome } from "./VgmOnline";
+import { OnlineBrowser, OnlineHome, OnlineSearch } from "./VgmOnline";
 
 interface SystemRow { system: string; tracks: number; albums: number }
 
@@ -18,7 +18,7 @@ const VGM_SORTS: [string, string][] = [
 ];
 
 export default function Vgm() {
-  const deep = useMatch("/vgm/online/:source/*");
+  const deep = useMatch("/vgm/online/:source/*");   // an archive's folders, or a search
   const online = useMatch("/vgm/online");
   const systems = useQuery({ queryKey: ["vgm-systems"], queryFn: () => api.get<SystemRow[]>("/api/vgm/systems") });
   const total = (systems.data || []).reduce((s, x) => s + x.tracks, 0);
@@ -36,6 +36,7 @@ export default function Vgm() {
       <Routes>
         <Route index element={<Collection />} />
         <Route path="online" element={<OnlineHome />} />
+        <Route path="online/search" element={<OnlineSearch />} />
         <Route path="online/:source/*" element={<OnlineBrowser />} />
       </Routes>
     </div>

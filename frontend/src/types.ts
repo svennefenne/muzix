@@ -272,6 +272,14 @@ export interface OnlineListing {
   more?: boolean;                // archives that list a folder a page at a time (VGMRips)
   total?: number | null;
 }
+export interface OnlineSearchGroup extends OnlineListing { label: string; archive: string }
+export interface OnlineSearchResult {
+  query: string;
+  groups: OnlineSearchGroup[];
+  skipped: { source: string; name: string; label: string; reason: string }[];
+  building: string[];                 // archives whose list is still being fetched
+}
+export interface OnlineShuffleItem extends OnlineFile { source: string; system: string }
 export interface OnlineTrack {
   key: string; title: string; artist: string; album: string; duration: number; format: string;
   kind: "music" | "vgm"; system: string; year: number; stream: string; cast_native: boolean;
