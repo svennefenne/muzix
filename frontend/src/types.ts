@@ -260,14 +260,17 @@ export interface OnlineSource {
 }
 export interface OnlineFile {
   name: string; path: string; kind: "tune" | "archive"; size: number; format: string; chip: boolean;
-  title?: string; artist?: string; year?: number; duration?: number;   // archives that say (ZXArt)
+  title?: string; artist?: string; year?: number; duration?: number;   // archives that say (ZXArt, VGMRips)
+  songs?: number;
 }
 export interface OnlineListing {
   source: string; path: string; name: string; system: string;
   crumbs: { name: string; path: string }[];
-  dirs: { name: string; path: string }[];
+  dirs: { name: string; path: string; count?: number }[];
   files: OnlineFile[];
   other: number;                 // files Muzix can't play
+  more?: boolean;                // archives that list a folder a page at a time (VGMRips)
+  total?: number | null;
 }
 export interface OnlineTrack {
   key: string; title: string; artist: string; album: string; duration: number; format: string;

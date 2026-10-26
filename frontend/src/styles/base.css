@@ -860,6 +860,8 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
   border: 1px solid var(--border); border-radius: 6px; color: var(--text-dim); font-size: 13.5px;
 }
 .online-folders a svg { flex-shrink: 0; color: var(--text-faint); }
+.online-count { margin-left: auto; flex-shrink: 0; font: 500 11.5px/1 var(--font-mono); color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.online-more-files { margin-top: 14px; }
 .online-folders a:hover, .online-folders a:focus-visible { color: var(--text); border-color: var(--border-strong); background: color-mix(in srgb, var(--surface) 80%, transparent); }
 .online-more { margin: -12px 0 24px; }
 .online-files { display: grid; gap: 2px; }

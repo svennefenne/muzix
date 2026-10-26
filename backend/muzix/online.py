@@ -24,7 +24,7 @@ from urllib.parse import quote, unquote, urlencode
 
 import httpx
 
-from . import __version__, env, formats, render, zxart
+from . import __version__, env, formats, render, vgmrips, zxart
 from .lengths import play_plan
 
 log = logging.getLogger("muzix.online")
@@ -119,6 +119,10 @@ SOURCES = [
            "Nearly 30,000 ZX Spectrum tunes from games and the demoscene: the top list, by author or by party.",
            "https://zxart.ee/", "ZX Spectrum",
            starts=(("Top tunes", "top"), ("Authors", "authors"), ("Parties", "parties"))),
+    Source("vgmrips", "VGMRips", "Arcade & computers",
+           "Game soundtracks logged from the real sound chips: arcade boards, consoles and Japanese computers, a pack per game.",
+           "https://vgmrips.net/", "",
+           starts=(("Systems", "systems"), ("Composers", "composers"), ("Chips", "chips"))),
     Source("sceneorg", "scene.org", "Demoscene",
            "Music from demo parties and scene artists: tracker modules and recordings, mostly zipped.",
            "https://archive.scene.org/pub/music/", "",
@@ -247,11 +251,14 @@ def _page(src: Source, url: str) -> str:
         raise OnlineError(f"{src.name} isn't answering right now")
 
 
-def listing(src: Source, path: str) -> dict:
-    """The folder at `path`: sub-folders, then the files Muzix can open."""
+def listing(src: Source, path: str, page: int = 0) -> dict:
+    """The folder at `path`: sub-folders, then the files Muzix can open. Archives that list a
+    folder a page at a time (VGMRips) say whether there's `more` after `page`."""
     names = parts(path)
     if src.id == "zxart":
         return _zxart_listing(src, names)
+    if src.id == "vgmrips":
+        return _vgmrips_listing(src, names, max(0, page))
     url = remote_url(src, names, True)
     entries = _cached(url, lambda: parse_index(_page(src, url)))
     dirs = [{"name": n, "path": _join(names, n)} for n, folder, _ in entries if folder
@@ -265,7 +272,7 @@ def _join(names: list[str], name: str) -> str:
 
 
 def _folder(src: Source, names: list[str], dirs: list[dict], files: list[dict], crumbs: list[dict],
-            keep_order: bool = False) -> dict:
+            keep_order: bool = False, more: bool = False, total: int | None = None) -> dict:
     playable, other = [], 0
     for f in files:
         k = kind_of(f["name"])
@@ -278,10 +285,30 @@ def _folder(src: Source, names: list[str], dirs: list[dict], files: list[dict], 
     return {
         "source": src.id, "path": "/".join(names), "name": crumbs[-1]["name"] if crumbs else src.label,
         "system": src.system, "crumbs": crumbs,
-        "dirs": sorted(dirs, key=lambda d: d["name"].casefold()),
+        "dirs": dirs if keep_order else sorted(dirs, key=lambda d: d["name"].casefold()),
         "files": playable if keep_order else sorted(playable, key=lambda f: f.get("title", f["name"]).casefold()),
-        "other": other,
+        "other": other, "more": more, "total": total,
     }
+
+
+def _vgmrips_listing(src: Source, names: list[str], page: int) -> dict:
+    """VGMRips' groups, most packs first as the site has them, and their packs a page at a time."""
+    if not names:
+        return _folder(src, names, [{"name": n, "path": p} for p, n in vgmrips.ROOT], [], [], keep_order=True)
+    url = vgmrips.page_url(names, page)
+    if url is None:
+        raise OnlineError("That folder isn't in the archive")
+    here = "/".join(names)
+    if len(names) > 1 and here not in vgmrips.folder_names:
+        _vgmrips_listing(src, [names[0]], 0)                 # for the breadcrumbs
+    crumbs = [{"name": vgmrips.folder_names[names[0]], "path": names[0]}]
+    if len(names) > 1:
+        crumbs.append({"name": vgmrips.folder_names.get(here, names[-1]), "path": here})
+    if len(names) == 1:
+        dirs = _cached(url, lambda: vgmrips.parse_groups(_page(src, url), names[0]))
+        return _folder(src, names, dirs, [], crumbs, keep_order=True)
+    files, total, more = _cached(url, lambda: vgmrips.parse_packs(_page(src, url)))
+    return _folder(src, names, [], files, crumbs, keep_order=True, more=more, total=total)
 
 
 def _zxart_listing(src: Source, names: list[str]) -> dict:
@@ -472,6 +499,8 @@ def _label(src: Source, path: str, row: dict, title: str):
     """Fills what file names and the archive's layout say when the file itself doesn't."""
     if src.id == "zxart":
         zxart.label(parts(path), row)
+    elif src.id == "vgmrips":
+        vgmrips.label(path, row)
     extra = row.get("extra") or {}
     if (row.get("album") or "").endswith(".d"):       # named after the folder it was unpacked into
         row["album"] = title

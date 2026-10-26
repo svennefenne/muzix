@@ -1,6 +1,6 @@
 /** The VGM page's online archives: HVSC, Modland, ASMA, the Joshw game rips and scene.org,
  * browsed folder by folder and played without adding anything to the library. */
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, Folder, Loader2, Play, Search, Shuffle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -43,7 +43,7 @@ function splitName(name: string): [string, string] {
 
 /** What a file row shows: the archive's own title and author when it gives them. */
 function fileLabel(f: OnlineFile): [string, string] {
-  if (f.title) return [f.title, [f.artist, f.year || ""].filter(Boolean).join(" · ")];
+  if (f.title) return [f.title, [f.songs ? `${f.songs} songs` : "", f.artist, f.year || ""].filter(Boolean).join(" · ")];
   return splitName(f.name);
 }
 
@@ -95,11 +95,13 @@ export function OnlineBrowser() {
   const source = params.source || "";
   const path = (params["*"] || "").replace(/\/+$/, "");
   const src = useSources().data?.find((s) => s.id === source);
-  const list = useQuery({
-    queryKey: ["online-list", source, path], staleTime: 10 * 60_000,
-    queryFn: () => api.get<OnlineListing>("/api/online/list", { source, path }),
+  const list = useInfiniteQuery({
+    queryKey: ["online-list", source, path], staleTime: 10 * 60_000, initialPageParam: 0,
+    queryFn: ({ pageParam }) => api.get<OnlineListing>("/api/online/list", { source, path, page: pageParam || undefined }),
+    getNextPageParam: (last, all) => (last.more ? all.length : undefined),
   });
-  const d = list.data;
+  const pages = list.data?.pages;
+  const d = useMemo(() => pages && { ...pages[0], files: pages.flatMap((p) => p.files) }, [pages]);
   const title = d?.crumbs.length ? d.name.replace(/_/g, " ") : src?.label || "";
   return (
     <>
@@ -117,12 +119,16 @@ export function OnlineBrowser() {
       <Display l1={title || " "} small />
       {list.isLoading ? <Loading /> : list.isError ? (
         <Empty title="Couldn't open this folder">{(list.error as Error).message}. <button className="btn small" onClick={() => list.refetch()}>Try again</button></Empty>
-      ) : d && <FolderView key={`${source}/${path}`} d={d} source={source} system={src?.system || d.system} />}
+      ) : d && <FolderView key={`${source}/${path}`} d={d} source={source} system={src?.system || d.system}
+                           more={list.hasNextPage ? { loading: list.isFetchingNextPage, load: () => list.fetchNextPage() } : undefined} />}
     </>
   );
 }
 
-function FolderView({ d, source, system }: { d: OnlineListing; source: string; system: string }) {
+function FolderView({ d, source, system, more }: {
+  d: OnlineListing; source: string; system: string;
+  more?: { loading: boolean; load: () => void };       // the next page of a paged folder (VGMRips)
+}) {
   const [filter, setFilter] = useState("");
   const [shown, setShown] = useState(SHOWN);
   const [open, setOpen] = useState<string | null>(null);
@@ -158,6 +164,7 @@ function FolderView({ d, source, system }: { d: OnlineListing; source: string; s
   }
 
   const total = d.dirs.length + d.files.length;
+  const all = d.total && d.total > d.files.length ? `${d.files.length.toLocaleString()} of ${d.total.toLocaleString()}` : total.toLocaleString();
   return (
     <>
       <div className="toolbar online-bar">
@@ -165,11 +172,11 @@ function FolderView({ d, source, system }: { d: OnlineListing; source: string; s
           <button className="btn primary" onClick={() => playFolder(false)}><Play size={15} fill="currentColor" /> Play folder</button>
           <button className="btn" onClick={() => playFolder(true)}><Shuffle size={15} /> Shuffle</button>
         </>}
-        {total > 12 && (
+        {(total > 12 || more) && (
           <label className="online-filter">
             <Search size={15} />
             <input className="input" value={filter} onChange={(e) => setFilter(e.target.value)}
-                   placeholder={`Filter ${total.toLocaleString()} ${d.files.length ? "items" : "folders"}`} aria-label="Filter this folder" />
+                   placeholder={`Filter ${all} ${d.files.length ? "items" : "folders"}`} aria-label="Filter this folder" />
           </label>
         )}
       </div>
@@ -183,6 +190,7 @@ function FolderView({ d, source, system }: { d: OnlineListing; source: string; s
           {dirs.slice(0, shown).map((x) => (
             <Link key={x.path} to={href(source, x.path)} title={x.name}>
               <Folder size={15} /><span className="ellipsis">{x.name.replace(/_/g, " ")}</span>
+              {!!x.count && <span className="online-count">{x.count.toLocaleString()}</span>}
             </Link>
           ))}
         </div>
@@ -221,6 +229,11 @@ function FolderView({ d, source, system }: { d: OnlineListing; source: string; s
             );
           })}
         </div>
+      )}
+      {more && (
+        <button className="btn small online-more-files" disabled={more.loading} onClick={more.load}>
+          {more.loading && <Loader2 size={14} className="spin" />} Load more ({all} shown)
+        </button>
       )}
       {total === 0 && <Empty title="Nothing here Muzix can play">{d.other ? `${d.other} files in other formats.` : "This folder is empty."}</Empty>}
       {d.other > 0 && total > 0 && <p className="faint online-other">{d.other.toLocaleString()} more {d.other === 1 ? "file" : "files"} here in formats Muzix doesn't play.</p>}

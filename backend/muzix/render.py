@@ -58,6 +58,9 @@ def render(path: str, fmt: str, subsong: int, duration: float, extra: dict | Non
     mode = settings.get("chip_loop_mode")
     extra_key = {"midi": settings.get("soundfont"), "furnace": f"{mode}{loops}",
                  "module": settings.get("module_repeats"), "zxtune": settings.get("module_repeats")}.get(fam, "")
+    vgm_by_libvgm = fam == "gme" and fmt in ("vgm", "vgz") and have("zxtune123")
+    if vgm_by_libvgm:
+        extra_key = "libvgm"
     # Furnace's length is only known after rendering; key its cache on the loop settings alone
     out = cache_path(path, subsong, (0.0, 0.0) if fam == "furnace" else (total, fade), str(extra_key))
     if os.path.exists(out):
@@ -71,6 +74,12 @@ def render(path: str, fmt: str, subsong: int, duration: float, extra: dict | Non
             if fam == "module":
                 openmpt.render_wav(path, subsong, int(settings.get("module_repeats")),
                                    total or cap, wav)
+            elif vgm_by_libvgm:
+                # libvgm (inside zxtune123) knows every chip a VGM logs; libgme only the Sega ones.
+                # zxtune123 plays one pass, then loops from the loop point when there's one.
+                ex = extra or {}
+                one = (ex.get("intro") or 0) + (ex.get("loop") or 0) or ex.get("length") or 0
+                _zxtune(path, total if ex.get("loop") and total > one + 1 else 0, wav, tmp)
             elif fam == "gme":
                 gme.render_wav(path, max(subsong, 0), total, wav)
             elif fam == "sid":

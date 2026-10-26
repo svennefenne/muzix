@@ -27,10 +27,10 @@ def sources(user: User = Depends(current_user)):
 
 
 @router.get("/list")
-async def listing(source: str, path: str = "", user: User = Depends(current_user)):
+async def listing(source: str, path: str = "", page: int = 0, user: User = Depends(current_user)):
     src = _source(source)
     try:
-        return await run_in_threadpool(online.listing, src, path)
+        return await run_in_threadpool(online.listing, src, path, page)
     except online.OnlineError as e:
         raise HTTPException(502, str(e))
 

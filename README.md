@@ -20,7 +20,8 @@ you choose from 98 colour schemes, each with a light and a dark version.
   | Family | Formats | Played by |
   |---|---|---|
   | Trackers | MOD, XM, IT, S3M, MT2 (MadTracker 2), MTM, MED, 669… | libopenmpt |
-  | Consoles | NSF/NSFe (NES), GBS (Game Boy), SPC (SNES), VGM/VGZ, GYM, HES, KSS, AY, SAP | Game_Music_Emu |
+  | Consoles | NSF/NSFe (NES), GBS (Game Boy), SPC (SNES), GYM, HES, KSS, AY, SAP | Game_Music_Emu |
+  | Sound chip logs | VGM/VGZ, from any of the hundred-odd chips VGM logs (arcade, PC-98, X68000, Mega Drive…) | libvgm (in zxtune123) |
   | Commodore 64 | SID | sidplayfp |
   | Atari ST | YM | StSound (`ymtool`) |
   | FamiTracker | FTM, 0CC, DNM, FUR | Furnace |
@@ -37,7 +38,8 @@ you choose from 98 colour schemes, each with a light and a dark version.
   modules have their own repeat count.
 - **Online chiptune archives** (VGM → Online archives): browse and play
   straight from HVSC (C64), Modland (trackers), ASMA (Atari 8-bit), Joshw's
-  NES, Game Boy, SNES, PC Engine and MSX rips, ZXArt (ZX Spectrum) and
+  NES, Game Boy, SNES, PC Engine and MSX rips, ZXArt (ZX Spectrum), VGMRips
+  (arcade, consoles and Japanese computers, played with libvgm) and
   scene.org. Muzix fetches a
   folder when you open it and a tune when you play it (game sets come as .7z or
   .zip and are unpacked for you, with song names and lengths from their
