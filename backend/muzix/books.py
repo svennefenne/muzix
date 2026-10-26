@@ -146,6 +146,8 @@ def scan_books(ctx: jobs.JobContext, full: bool = False):
                 else:
                     for k, v in meta.items():
                         setattr(book, k, v)
+                    for k, v in (book.custom or {}).items():   # the admin's edits win over the files
+                        setattr(book, k, v)
                     s.execute(delete(BookPart).where(BookPart.book_id == book.id))
                     updated += 1
                 book.signature, book.seen_scan = sig, gen

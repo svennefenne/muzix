@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ago, api, fmtTime } from "../api";
 import { queryClient } from "../actions";
+import { AdminCog } from "../components/AdminMode";
 import { Art, Display, Empty, Kicker, Loading, Modal, Section, Switch } from "../components/ui";
 import { engine } from "../player/engine";
 import { fromEpisode } from "../store/player";
@@ -135,6 +136,7 @@ export default function Podcasts() {
             {subs.data.map((f) => (
               <Link key={f.id} to={`/podcasts/${f.id}`} className="card">
                 <Art src={f.image} name={f.title} />
+                <AdminCog kind="podcast" id={f.id} title={f.title} />
                 <div className="card-title ellipsis">{f.title}</div>
                 <div className="card-sub ellipsis">{f.unplayed ? `${f.unplayed} unplayed` : f.author}</div>
               </Link>
@@ -192,6 +194,7 @@ export function PodcastPage() {
           {f.error && <p className="error-text">Last refresh failed: {f.error}</p>}
           <div className="row-actions">
             {next && <button className="btn accent" onClick={() => engine.play([fromEpisode(next, f.title, f.image)])}><Play size={15} fill="currentColor" /> Play latest unplayed</button>}
+            <AdminCog kind="podcast" id={f.id} title={f.title} className="inline" />
             {f.subscribed ? (
               <>
                 <label className="row-actions dim" style={{ gap: 8 }}>

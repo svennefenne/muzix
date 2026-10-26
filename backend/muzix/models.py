@@ -66,6 +66,7 @@ class Artist(Base):
     tags: Mapped[list] = mapped_column(JSON, default=list)             # [[tag, weight], ...]
     tags_checked: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     image: Mapped[str] = mapped_column(String(1024), default="")
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # admin: hidden from everyone
     __table_args__ = (UniqueConstraint("name", name="uq_artist_name"),)
 
 
@@ -87,6 +88,7 @@ class Album(Base):
     formats: Mapped[str] = mapped_column(String(128), default="")
     mbid: Mapped[str] = mapped_column(String(64), default="")
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # admin: hidden from everyone
     artist: Mapped[Artist | None] = relationship()
 
 
@@ -123,8 +125,33 @@ class Track(Base):
     extra: Mapped[dict] = mapped_column(JSON, default=dict)   # system, game, dumper, comment...
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
     seen_scan: Mapped[int] = mapped_column(Integer, default=0)   # scan generation marker
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # admin: hidden from everyone
     __table_args__ = (UniqueConstraint("path", "subsong", name="uq_track_path"),
                       Index("ix_tracks_album_order", "album_id", "disc_no", "track_no"))
+
+
+class TagOverride(Base):
+    """An admin's edit of a file whose tags can't be written (chip and tracker formats):
+    applied over what the file says whenever it is read."""
+    __tablename__ = "tag_overrides"
+    path: Mapped[str] = mapped_column(String(1024), primary_key=True)
+    subsong: Mapped[int] = mapped_column(Integer, primary_key=True)
+    fields: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class TrashItem(Base):
+    """Something deleted from the library: its files sit in a .muzix-trash folder of its
+    library folder until it is restored or the trash is emptied."""
+    __tablename__ = "trash"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16))             # album | track | artist | playlist
+    title: Mapped[str] = mapped_column(String(512), default="")
+    subtitle: Mapped[str] = mapped_column(String(512), default="")
+    root_id: Mapped[int | None] = mapped_column(ForeignKey("roots.id", ondelete="SET NULL"), nullable=True)
+    folder: Mapped[str] = mapped_column(String(1024), default="")   # the trash folder that holds it
+    moves: Mapped[list] = mapped_column(JSON, default=list)          # [[original path, path in the trash], ...]
+    size: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class Playlist(Base):
@@ -136,6 +163,7 @@ class Playlist(Base):
     public: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # admin: hidden from everyone
 
 
 class PlaylistItem(Base):
@@ -155,6 +183,7 @@ class FilePlaylist(Base):
     path: Mapped[str] = mapped_column(String(1024), unique=True)
     name: Mapped[str] = mapped_column(String(255), default="")
     entries: Mapped[int] = mapped_column(Integer, default=0)   # lines in the file, found or not
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # admin: hidden from everyone
 
 
 class FilePlaylistItem(Base):
@@ -200,6 +229,8 @@ class Book(Base):
     signature: Mapped[str] = mapped_column(String(64), default="")  # changes when its files change
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     seen_scan: Mapped[int] = mapped_column(Integer, default=0)
+    custom: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")   # admin's edits, kept over rescans
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # admin: hidden from everyone
 
 
 class BookPart(Base):
@@ -240,6 +271,8 @@ class Feed(Base):
     modified: Mapped[str] = mapped_column(String(255), default="")
     last_checked: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error: Mapped[str] = mapped_column(Text, default="")
+    custom: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")   # admin's edits, kept over refreshes
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # admin: hidden from everyone
 
 
 class Subscription(Base):
@@ -293,6 +326,7 @@ class Station(Base):
     codec: Mapped[str] = mapped_column(String(32), default="")
     bitrate: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # admin: hidden from everyone
 
 
 class RadioPlay(Base):
@@ -333,3 +367,7 @@ class Job(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+# what an admin can hide: hidden rows stay out of every page and list (db.py)
+HIDEABLE = (Artist, Album, Track, Playlist, FilePlaylist, Book, Feed, Station)

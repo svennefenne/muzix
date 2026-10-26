@@ -6,6 +6,7 @@ import { playTracks, toggleLike, usePlaylistPicker } from "../actions";
 import { engine } from "../player/engine";
 import { fromTrack, usePlayer } from "../store/player";
 import type { Track } from "../types";
+import { AdminCog } from "./AdminMode";
 import { Art, useMenu, type MenuItem } from "./ui";
 
 /** As in Spotify: on a touch screen a tap on a row plays it; with a mouse it takes a
@@ -99,6 +100,7 @@ export function TrackList({ tracks, showArt, showAlbum = true, numbered = "index
               {/* phones show the playing bars here, right of the time; desktops in place of the number */}
               <div className="t-eq">{isCur && <span className="eq"><i /><i /><i /></span>}</div>
               <div className="t-actions">
+                <AdminCog kind="track" id={t.id} title={t.title} className="inline" />
                 <button className={`mini t-like ${on ? "liked" : ""}`} aria-label={on ? "Unlike" : "Like"} onClick={() => like(t)}>
                   <Heart size={15} fill={on ? "currentColor" : "none"} />
                 </button>

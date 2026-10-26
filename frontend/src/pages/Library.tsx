@@ -8,6 +8,7 @@ import {
   ALBUM_SORTS, AlbumItems, ARTIST_SORTS, ArtistItems, DisplaySwitch, GENRE_SORTS, GenreItems, Segmented, SortMenu,
   useBrowse, type Choice,
 } from "../components/Browse";
+import { AdminCog } from "../components/AdminMode";
 import { AlbumCard, ArtistCard, MosaicCard, PlaylistCard } from "../components/Cards";
 import { TrackList } from "../components/TrackList";
 import { Art, Display, Empty, Kicker, Loading, Modal, Section, useInView } from "../components/ui";
@@ -228,7 +229,8 @@ export function Playlists() {
       {files.data && files.data.length > 0 && (
         <Section title="From your music folders">
           <div className="grid">
-            {files.data.map((f) => <MosaicCard key={f.id} to={`/playlist/file/${f.id}`} name={f.name} art={f.art} sub={`${f.tracks} songs`} />)}
+            {files.data.map((f) => <MosaicCard key={f.id} to={`/playlist/file/${f.id}`} name={f.name} art={f.art} sub={`${f.tracks} songs`}
+                                         admin={{ kind: "fileplaylist", id: f.id }} />)}
           </div>
         </Section>
       )}
@@ -281,6 +283,7 @@ export function AlbumPage() {
               <Heart size={15} fill={isLiked ? "currentColor" : "none"} /> {isLiked ? "Saved" : "Save"}
             </button>
             <button className="btn" onClick={() => pick(a.tracks.map((t) => t.id))}><ListPlus size={15} /> Add to playlist</button>
+            <AdminCog kind="album" id={a.id} title={a.title} className="inline" />
           </div>
         </div>
       </div>
@@ -321,6 +324,7 @@ export function ArtistPage() {
           <div className="row-actions">
             <button className="btn accent" onClick={() => playTracks(a.top_tracks, 0)}><Play size={15} fill="currentColor" /> Play</button>
             <button className="btn" onClick={() => playRandom({ artist_id: a.id, kind: "all" })}><Shuffle size={15} /> Shuffle</button>
+            <AdminCog kind="artist" id={a.id} title={a.name} className="inline" />
           </div>
         </div>
       </div>
@@ -407,6 +411,7 @@ export function FilePlaylistPage() {
       <div className="row-actions" style={{ marginBottom: 18 }}>
         <button className="btn accent" disabled={!p.tracks.length} onClick={() => playTracks(p.tracks, 0)}><Play size={15} fill="currentColor" /> Play</button>
         <button className="btn" disabled={!p.tracks.length} onClick={() => playTracks(p.tracks, 0, true)}><Shuffle size={15} /> Shuffle</button>
+        <AdminCog kind="fileplaylist" id={p.id} title={p.name} className="inline" />
       </div>
       <TrackList tracks={p.tracks} showArt />
       <div className="faint mono" style={{ fontSize: 11, marginTop: 14, letterSpacing: ".08em" }}>{p.path}</div>
@@ -443,6 +448,7 @@ export function PlaylistPage() {
             <button className="btn accent" disabled={!p.tracks?.length} onClick={() => playTracks(p.tracks!, 0)}><Play size={15} fill="currentColor" /> Play</button>
             <button className="btn" disabled={!p.tracks?.length} onClick={() => playTracks(p.tracks!, 0, true)}><Shuffle size={15} /> Shuffle</button>
             {mine && <button className="btn" onClick={() => { setName(p.name); setEditing(true); }}>Rename</button>}
+            <AdminCog kind="playlist" id={p.id} title={p.name} className="inline" />
             {mine && <button className="btn danger" onClick={async () => {
               if (!confirm(`Delete the playlist "${p.name}"? The songs stay in your library.`)) return;
               await api.del(`/api/playlists/${p.id}`);

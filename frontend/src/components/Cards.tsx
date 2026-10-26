@@ -2,6 +2,7 @@ import { Play } from "lucide-react";
 import { Link } from "react-router-dom";
 import { playAlbum, playRandom } from "../actions";
 import type { Album, Artist, Genre, Playlist } from "../types";
+import { AdminCog, type ItemKind } from "./AdminMode";
 import { Art } from "./ui";
 
 export function AlbumCard({ a }: { a: Album }) {
@@ -12,6 +13,7 @@ export function AlbumCard({ a }: { a: Album }) {
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); playAlbum(a.id); }}>
         <Play size={20} fill="currentColor" />
       </button>
+      <AdminCog kind="album" id={a.id} title={a.title} />
       <div className="card-title ellipsis">{a.title}</div>
       <div className="card-sub ellipsis">{[a.year || null, a.artist].filter(Boolean).join(" · ")}</div>
     </Link>
@@ -26,6 +28,7 @@ export function ArtistCard({ a, to }: { a: Artist; to?: string }) {
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); playRandom({ artist_id: a.id, kind: "all" }); }}>
         <Play size={20} fill="currentColor" />
       </button>
+      <AdminCog kind="artist" id={a.id} title={a.name} />
       <div className="card-title ellipsis" style={{ textAlign: "center" }}>{a.name}</div>
       <div className="card-sub ellipsis" style={{ textAlign: "center" }}>
         {a.album_count != null ? `${a.album_count} album${a.album_count === 1 ? "" : "s"}` : a.genre}
@@ -35,7 +38,9 @@ export function ArtistCard({ a, to }: { a: Artist; to?: string }) {
 }
 
 /** A playlist's card: four covers in a square, or one. */
-export function MosaicCard({ to, name, art, sub }: { to: string; name: string; art: string[]; sub: string }) {
+export function MosaicCard({ to, name, art, sub, admin }: {
+  to: string; name: string; art: string[]; sub: string; admin?: { kind: ItemKind; id: number };
+}) {
   return (
     <Link to={to} className="card">
       <div className="art" style={{ display: "grid", gridTemplateColumns: art.length >= 4 ? "1fr 1fr" : "1fr" }}>
@@ -43,6 +48,7 @@ export function MosaicCard({ to, name, art, sub }: { to: string; name: string; a
           ? art.slice(0, 4).map((u) => <img key={u} src={`${u}?s=160`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />)
           : <Art src={art[0]} name={name} />}
       </div>
+      {admin && <AdminCog kind={admin.kind} id={admin.id} title={name} />}
       <div className="card-title ellipsis">{name}</div>
       <div className="card-sub ellipsis">{sub}</div>
     </Link>
@@ -50,7 +56,8 @@ export function MosaicCard({ to, name, art, sub }: { to: string; name: string; a
 }
 
 export function PlaylistCard({ p }: { p: Playlist }) {
-  return <MosaicCard to={`/playlist/${p.id}`} name={p.name} art={p.art} sub={`${p.track_count} songs`} />;
+  return <MosaicCard to={`/playlist/${p.id}`} name={p.name} art={p.art} sub={`${p.track_count} songs`}
+                     admin={{ kind: "playlist", id: p.id }} />;
 }
 
 export function GenreCard({ g, to }: { g: Genre; to?: string }) {

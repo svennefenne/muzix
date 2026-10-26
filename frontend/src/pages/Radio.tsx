@@ -3,6 +3,7 @@ import { Heart, History, Play, Radio as RadioIcon, Tags, X } from "lucide-react"
 import { useState } from "react";
 import { api } from "../api";
 import { queryClient } from "../actions";
+import { AdminCog } from "../components/AdminMode";
 import { useStationHistory } from "../components/StationHistory";
 import { Art, Display, Empty, Kicker, Loading, Section } from "../components/ui";
 import { engine } from "../player/engine";
@@ -29,11 +30,13 @@ function StationGrid({ list, saved }: { list: Station[]; saved: Station[] }) {
       {list.filter((s) => !s.hls).map((s) => {
         const key = `radio:${s.uuid || s.url}`;
         const isSaved = savedBy.has(s.uuid || s.url);
+        const mine = savedBy.get(s.uuid || s.url);
         return (
           <div key={s.uuid || s.url} className="card" style={{ cursor: "pointer" }} onClick={() => engine.play([fromStation(s)])}>
             <div style={{ position: "relative" }}>
               <Art src={s.favicon} name={s.name} size={160} />
               {cur === key && <div className="badge accent" style={{ position: "absolute", left: 8, top: 8, background: "var(--bg)" }}>On air</div>}
+              {mine?.id && <AdminCog kind="station" id={mine.id} title={s.name} />}
             </div>
             <div className="card-title ellipsis">{s.name}</div>
             <div className="card-sub ellipsis">{[s.countrycode || s.country, s.codec, s.bitrate ? `${s.bitrate}k` : ""].filter(Boolean).join(" · ")}</div>

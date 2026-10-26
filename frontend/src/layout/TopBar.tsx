@@ -1,6 +1,6 @@
 import {
-  Activity, BookOpen, Disc3, Gamepad2, House, LogOut, Monitor, Moon, Music2, Podcast, Radio, Search, Server, Settings, Shield, Sun,
-  SunMoon,
+  Activity, BookOpen, Disc3, Gamepad2, House, LogOut, Monitor, Moon, Music2, Podcast, Radio, Server, Settings, Shield, Sun,
+  SunMoon, Wrench,
 } from "lucide-react";
 import { useEffect } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
@@ -105,7 +105,7 @@ export function TopBar() {
         <button className="iconbtn hide-sm" title="Now playing" onClick={() => setNowPlayingOpen(true)}>
           <LevelRing /><Activity size={15} />
         </button>
-        <button className="iconbtn show-sm" title="Search (/)" onClick={() => nav("/search")}><Search size={15} /></button>
+        <AdminSwitch />
         <button className="iconbtn hide-sm" title={`Light/dark: ${mode} (click for ${nextMode})`} onClick={() => setPref("mode", nextMode)}>
           <ModeIcon size={15} />
         </button>
@@ -116,6 +116,21 @@ export function TopBar() {
         </button>
       </div>
     </header>
+  );
+}
+
+/** Admin mode on and off (admins only): a cog on every item, to edit, hide or delete it. */
+function AdminSwitch() {
+  const admin = useUi((s) => !!s.user?.is_admin);
+  const on = useUi((s) => s.adminMode);
+  const setAdminMode = useUi((s) => s.setAdminMode);
+  if (!admin) return null;
+  return (
+    <button className={`iconbtn admin-switch ${on ? "on" : ""}`} aria-pressed={on}
+            title={on ? "Admin mode is on: click to leave it" : "Admin mode: edit, hide or delete items"}
+            onClick={() => setAdminMode(!on)}>
+      <Wrench size={15} />
+    </button>
   );
 }
 

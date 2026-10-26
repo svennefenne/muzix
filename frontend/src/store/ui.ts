@@ -22,12 +22,14 @@ interface UiState {
   radioBuffer: number;           // seconds of a station gathered before it starts
   queueOpen: boolean;
   nowPlayingOpen: boolean;
+  adminMode: boolean;            // admins: a cog on every item, to edit, hide or delete it (per device)
   toast: { text: string; kind: "info" | "error"; id: number } | null;
   setUser: (u: User | null) => void;
   setPref: <K extends keyof Prefs>(key: K, value: Prefs[K]) => void;
   setBrowse: (key: string, patch: BrowsePref) => void;
   setQueueOpen: (v: boolean) => void;
   setNowPlayingOpen: (v: boolean) => void;
+  setAdminMode: (v: boolean) => void;
   notify: (text: string, kind?: "info" | "error") => void;
 }
 
@@ -79,6 +81,13 @@ export const useUi = create<UiState>((set, get) => ({
   radioBuffer: initial.radio_buffer ?? 0,
   queueOpen: false,
   nowPlayingOpen: false,
+  adminMode: (() => {
+    try {
+      return localStorage.getItem("muzix.admin") === "1";
+    } catch {
+      return false;
+    }
+  })(),
   toast: null,
   setUser: (u) => {
     set({ user: u });
@@ -116,6 +125,14 @@ export const useUi = create<UiState>((set, get) => ({
   },
   setQueueOpen: (v) => set({ queueOpen: v }),
   setNowPlayingOpen: (v) => set({ nowPlayingOpen: v }),
+  setAdminMode: (v) => {
+    set({ adminMode: v });
+    try {
+      localStorage.setItem("muzix.admin", v ? "1" : "0");
+    } catch {
+      /* private mode */
+    }
+  },
   notify: (text, kind = "info") => {
     const id = Date.now();
     set({ toast: { text, kind, id } });

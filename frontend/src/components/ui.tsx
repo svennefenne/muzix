@@ -158,7 +158,7 @@ export function MenuHost() {
   );
 }
 
-export function Modal({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+export function Modal({ onClose, children, className = "" }: { onClose: () => void; children: ReactNode; className?: string }) {
   useEffect(() => {
     const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", key);
@@ -166,7 +166,7 @@ export function Modal({ onClose, children }: { onClose: () => void; children: Re
   }, [onClose]);
   return (
     <div className="modal-bg" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" role="dialog">{children}</div>
+      <div className={`modal ${className}`} role="dialog">{children}</div>
     </div>
   );
 }

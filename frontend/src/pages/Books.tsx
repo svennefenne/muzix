@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, ago, fmtLong, fmtNumber, fmtTime } from "../api";
 import { queryClient } from "../actions";
+import { AdminCog } from "../components/AdminMode";
 import { DisplaySwitch, Rows, SortMenu, useBrowse } from "../components/Browse";
 import { Art, Display, Empty, Kicker, Loading, Section } from "../components/ui";
 import { rowTap } from "../components/TrackList";
@@ -21,6 +22,7 @@ function BookCard({ b }: { b: Book }) {
   return (
     <Link to={`/audiobooks/${b.id}`} className="card">
       <Art src={b.art} name={b.title} />
+      <AdminCog kind="book" id={b.id} title={b.title} />
       {pct > 0 && !b.finished && <div className="progressbar" style={{ marginTop: 8 }}><div style={{ width: `${pct}%` }} /></div>}
       <div className="card-title ellipsis">{b.title}</div>
       <div className="card-sub ellipsis">{b.finished ? "Finished · " : ""}{b.author || "Unknown author"}</div>
@@ -50,6 +52,7 @@ function BookItems({ items, display }: { items: Book[]; display: DisplayMode }) 
           <span className="l-col ellipsis l-opt">{b.series}</span>
           <span className="l-col l-opt">{b.duration ? fmtLong(b.duration) : ""}</span>
           <span className="l-num">{progressText(b)}</span>
+          <AdminCog kind="book" id={b.id} title={b.title} />
         </Link>
       ))}
     </Rows>
@@ -121,6 +124,7 @@ export function BookPage() {
             </button>
             <button className="btn" onClick={() => start(0)}><RotateCcw size={15} /> From the start</button>
             <button className="btn" onClick={() => mark(!b.finished)}><Check size={15} /> {b.finished ? "Mark unfinished" : "Mark finished"}</button>
+            <AdminCog kind="book" id={b.id} title={b.title} className="inline" />
           </div>
         </div>
       </div>

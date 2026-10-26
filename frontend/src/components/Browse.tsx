@@ -8,6 +8,7 @@ import { fmtLong, fmtNumber } from "../api";
 import { playAlbum, playRandom } from "../actions";
 import { useUi } from "../store/ui";
 import type { Album, Artist, DisplayMode, Genre } from "../types";
+import { AdminCog } from "./AdminMode";
 import { AlbumCard, ArtistCard, GenreCard } from "./Cards";
 import { Art } from "./ui";
 
@@ -120,6 +121,7 @@ export function AlbumItems({ items, display, vgm }: { items: Album[]; display: D
           <span className="l-col ellipsis l-opt">{vgm ? a.formats.map((f) => f.toUpperCase()).join(", ") : a.genre}</span>
           <span className="l-num">{fmtNumber(a.track_count)}</span>
           <span className="l-num l-opt">{a.duration >= 60 ? fmtLong(a.duration) : a.duration > 0 ? "< 1 min" : ""}</span>
+          <AdminCog kind="album" id={a.id} title={a.title} />
         </Link>
       ))}
     </Rows>
@@ -146,6 +148,7 @@ export function ArtistItems({ items, display, linkTo }: { items: Artist[]; displ
           </div>
           <span className="l-col ellipsis l-opt">{a.genre}</span>
           <span className="l-num">{a.album_count ?? ""}</span>
+          <AdminCog kind="artist" id={a.id} title={a.name} />
         </Link>
       ))}
     </Rows>

@@ -67,6 +67,8 @@ def fetch(feed: Feed, client: httpx.Client) -> bool:
     feed.etag = r.headers.get("etag", "")
     feed.modified = r.headers.get("last-modified", "")
     feed.error = ""
+    for k, v in (feed.custom or {}).items():   # the admin's edits win over the feed
+        setattr(feed, k, v)
     with db.session() as s:
         known = set(s.scalars(select(Episode.guid).where(Episode.feed_id == feed.id)))
     new = []

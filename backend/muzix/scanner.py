@@ -19,7 +19,7 @@ from sqlalchemy.exc import IntegrityError
 
 from . import db, formats, jobs, playlists as file_playlists, settings
 from .meta import chip, tags
-from .models import Album, Artist, Root, Track
+from .models import Album, Artist, Root, TagOverride, Track
 
 log = logging.getLogger("muzix.scan")
 COVER_NAMES = ("cover", "folder", "front", "album", "albumart", "art", "artwork")
@@ -220,6 +220,8 @@ def scan_root(ctx, root: Root, full: bool, base=0.0, span=1.0, playlists: list |
 
     stats = {"added": 0, "updated": 0, "removed": 0, "files": len(files)}
     resolver = Resolver()
+    with db.session() as s:
+        overrides = load_overrides(s, root.path)
     folder_albums: dict[str, str] = {}
 
     def fill_album(s, row, path):
@@ -263,6 +265,7 @@ def scan_root(ctx, root: Root, full: bool, base=0.0, span=1.0, playlists: list |
                 for (path, size, mtime), rows in results:
                     old = {o[0]: o[1] for o in by_path.get(path, [])}
                     for row in rows:
+                        row.update(overrides.get((path, row["subsong"]), {}))
                         row.update(path=path, size=size, mtime=mtime, root_id=root.id, seen_scan=gen)
                         if not row["album"]:
                             row["album"] = fill_album(s, row, path)
@@ -273,7 +276,8 @@ def scan_root(ctx, root: Root, full: bool, base=0.0, span=1.0, playlists: list |
                             s.execute(update(Track).where(Track.id == tid).values(**row))
                             stats["updated"] += 1
                         else:
-                            s.add(Track(**row))
+                            # a new file in an album or by an artist the admin hid stays hidden with it
+                            s.add(Track(**row, hidden=resolver.hidden(s, row["artist_id"], row["album_id"])))
                             stats["added"] += 1
             done = min(start + BATCH, len(todo))
             ctx.update(base + span * done / max(1, len(todo)), f"{root.path}: {done}/{len(todo)} read")
@@ -288,6 +292,12 @@ def scan_root(ctx, root: Root, full: bool, base=0.0, span=1.0, playlists: list |
     return stats
 
 
+def load_overrides(s, folder: str) -> dict[tuple[str, int], dict]:
+    """The admin's edits of files under `folder` whose tags can't be written."""
+    rows = s.execute(select(TagOverride).where(TagOverride.path > folder + "/", TagOverride.path < folder + "0"))
+    return {(o.path, o.subsong): o.fields for (o,) in rows}
+
+
 class Resolver:
     """Find-or-create artists and albums, cached for the duration of a scan."""
 
@@ -295,6 +305,13 @@ class Resolver:
         self.artists: dict[str, int] = {}
         self.albums: dict[str, int] = {}
         self.by_name: dict[str, int] | None = None     # every artist, by casefolded name
+        self.hidden_ids: tuple[set, set] | None = None   # artists and albums the admin hid
+
+    def hidden(self, s, artist_id: int | None, album_id: int | None) -> bool:
+        if self.hidden_ids is None:
+            self.hidden_ids = (set(s.scalars(select(Artist.id).where(Artist.hidden.is_(True)))),
+                               set(s.scalars(select(Album.id).where(Album.hidden.is_(True)))))
+        return artist_id in self.hidden_ids[0] or album_id in self.hidden_ids[1]
 
     def artist(self, s, name: str) -> int | None:
         name = (name or "").strip()
@@ -328,9 +345,12 @@ class Resolver:
             alb = Album(key=key, kind=row["kind"], title=row["album"] or os.path.basename(folder),
                         folder=folder, artist_name=row["albumartist"] or row["artist"],
                         artist_id=row["artist_id"], year=row["year"], genre=row["genre"],
-                        mbid=row.get("extra", {}).get("album_mbid", ""))
+                        mbid=row.get("extra", {}).get("album_mbid", ""),
+                        hidden=self.hidden(s, row["artist_id"], None))
             s.add(alb)
             s.flush()
+            if alb.hidden:
+                self.hidden_ids[1].add(alb.id)
         self.albums[key] = alb.id
         return alb.id
 

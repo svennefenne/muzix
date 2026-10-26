@@ -88,6 +88,9 @@ SCHEMA: list[Spec] = [
     Spec("upload_genre_folders", "bool", True, "Uploads", "File into genre folders",
          "Genre/Artist/Artist - Year - Album, like the rest of the library."),
     # spotify
+    Spec("brave_api_key", "secret", "", "Library", "Brave Search API key",
+         "For the web image search when changing a cover in admin mode. A free key comes from "
+         "https://brave.com/search/api/ (the \"Data for Search\" plan)."),
     Spec("modarchive_api_key", "secret", "", "Online archives", "The Mod Archive API key",
          "Lets VGM → Online archives browse modarchive.org. Keys are personal: ask for one in the API "
          "section of The Mod Archive's forum (https://modarchive.org/forums), then paste it here."),

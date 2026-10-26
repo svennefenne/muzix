@@ -65,6 +65,19 @@ you choose from 98 colour schemes, each with a light and a dark version.
   Muzix, lossless where it can, and keeps going when your phone sleeps.
 - **Admin page**: library folders with a folder browser, scans and jobs with
   logs, users, and every setting with an explanation.
+- **Admin mode** (the wrench in the top bar, admins only): a cog on every album,
+  song, artist, audiobook, podcast, playlist and station, with
+  - *Edit metadata*: the fields (an album with all its songs) side by side with
+    what MusicBrainz, Deezer, iTunes and your linked Spotify know, to fill in with
+    one click, and a cover from those sources, a web image search (needs a free
+    Brave Search API key on the admin page), a picture's address or a file. Tags
+    are written into the files, and an album in a music folder is filed again by
+    its new tags; chip and tracker files, audiobooks and podcasts keep their
+    edits in Muzix.
+  - *Hide from library*: gone from every page for everyone; Admin → Hidden &
+    trash shows it again.
+  - *Delete*: the files move to a `.muzix-trash` folder on their share, to put
+    back or delete for good from Admin → Hidden & trash.
 - **Upload area**: drop files or whole folders in the browser. Music is matched
   with MusicBrainz (beets), gets cover art and a main genre, and is filed as
   `Genre/Artist/Artist - Year - Album/1. Artist - Album - Title (Year).ext`.
