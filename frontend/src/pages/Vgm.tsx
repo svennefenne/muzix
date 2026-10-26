@@ -23,11 +23,11 @@ export default function Vgm() {
   const systems = useQuery({ queryKey: ["vgm-systems"], queryFn: () => api.get<SystemRow[]>("/api/vgm/systems") });
   const total = (systems.data || []).reduce((s, x) => s + x.tracks, 0);
   return (
-    <div className="page wide">
+    <div className="page wide vgm">
       {!deep && <>
         <Kicker parts={online ? ["Video game music", "Online archives"]
           : ["Video game music", total && `${fmtNumber(total)} tunes`, systems.data && `${systems.data.length} systems`]} />
-        <Display l1="Press" l2="start" />
+        <div className="vgm-intro"><Display l1="Press" l2="start" /></div>
       </>}
       <nav className="subnav" aria-label="Video game music">
         <NavLink to="/vgm" end className={({ isActive }) => (isActive ? "active" : "")}>Your collection</NavLink>
@@ -63,13 +63,13 @@ function Collection() {
 
   return (
     <>
-      <p className="lede">Chiptunes and tracker music, played by the real chip emulators: NES, Game Boy, SNES, Mega Drive, C64, ZX Spectrum, Atari ST, Amiga MODs, TFMX and AHX, and PC trackers. Looping songs follow the loop settings on the admin page.</p>
+      <p className="lede vgm-intro">Chiptunes and tracker music, played by the real chip emulators: NES, Game Boy, SNES, Mega Drive, C64, ZX Spectrum, Atari ST, Amiga MODs, TFMX and AHX, and PC trackers. Looping songs follow the loop settings on the admin page.</p>
       <div className="row-actions" style={{ marginBottom: 26 }}>
         <button className="btn primary" onClick={() => playRandom({ kind: "vgm", system: system || undefined })}><Shuffle size={15} /> Shuffle {system || "all VGM"}</button>
       </div>
 
       {systems.data && systems.data.length > 0 && (
-        <div className="bento" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gridAutoRows: 130 }}>
+        <div className="bento vgm-systems">
           {systems.data.map((s) => {
             const accent = SYSTEM_ACCENTS[s.system];
             return (
@@ -79,8 +79,8 @@ function Collection() {
                 <Stripes />
                 <div className="tile-body">
                   <div className="tile-kicker">{fmtNumber(s.tracks)} tunes · {fmtNumber(s.albums)} {s.albums === 1 ? "set" : "sets"}</div>
-                  <div className="tile-title" style={{ fontSize: s.system.length > 16 ? 19 : 25 }}>{s.system}</div>
-                  <button className="btn small" style={{ marginTop: 8 }}
+                  <div className={`tile-title ${s.system.length > 16 ? "long" : ""}`}>{s.system}</div>
+                  <button className="btn small vgm-tile-shuffle"
                           onClick={(e) => { e.stopPropagation(); playRandom({ kind: "vgm", system: s.system }); }}>
                     <Shuffle size={13} /> Shuffle
                   </button>

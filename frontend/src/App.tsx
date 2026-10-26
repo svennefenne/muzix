@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { lazy, type RefObject, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Route, Routes, useLocation, useNavigate, useNavigationType } from "react-router-dom";
 import { api } from "./api";
+import { AdminHost } from "./components/AdminMode";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Logo } from "./components/Logo";
 import { StationHistory } from "./components/StationHistory";
@@ -56,13 +57,59 @@ function Shortcuts() {
   return null;
 }
 
+/** Where each page was scrolled, by history entry: going back (or forward) returns there; a new
+ * page starts at the top. */
+const scrolledTo = new Map<string, number>();
+
+function useScrollMemory(scroll: RefObject<HTMLDivElement | null>) {
+  const loc = useLocation();
+  const how = useNavigationType();
+  const entry = useRef(loc.key);
+  const path = useRef(loc.pathname);
+  useEffect(() => {
+    const el = scroll.current;
+    if (!el) return;
+    const save = () => scrolledTo.set(entry.current, el.scrollTop);
+    el.addEventListener("scroll", save, { passive: true });
+    return () => el.removeEventListener("scroll", save);
+  }, [scroll]);
+  // right after the new page is on screen, before any scroll event: a clamped scroll belongs to it
+  useLayoutEffect(() => {
+    const el = scroll.current;
+    entry.current = loc.key;
+    const samePage = path.current === loc.pathname;
+    path.current = loc.pathname;
+    if (!el) return;
+    if (how !== "POP") {
+      if (!samePage) el.scrollTo({ top: 0, behavior: "instant" });
+      return;
+    }
+    const target = scrolledTo.get(loc.key) ?? 0;
+    el.scrollTo({ top: target, behavior: "instant" });
+    if (!target) return;
+    // the page may still be filling in: keep at it until it's tall enough, or the user scrolls
+    let tries = 0;
+    const stop = () => {
+      window.clearInterval(timer);
+      el.removeEventListener("wheel", stop);
+      el.removeEventListener("touchstart", stop);
+    };
+    const timer = window.setInterval(() => {
+      if (++tries > 40 || entry.current !== loc.key) return stop();
+      if (el.scrollHeight - el.clientHeight >= target && Math.abs(el.scrollTop - target) < 2) return stop();
+      el.scrollTo({ top: target, behavior: "instant" });
+    }, 50);
+    el.addEventListener("wheel", stop, { passive: true });
+    el.addEventListener("touchstart", stop, { passive: true });
+    return stop;
+  }, [loc.key, loc.pathname, how, scroll]);
+}
+
 function Shell() {
   const loc = useLocation();
   const npPanel = useUi((s) => s.npPanel);
   const scroll = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    scroll.current?.scrollTo({ top: 0 });   // (newer Chrome returns a Promise here; an effect mustn't)
-  }, [loc.pathname]);
+  useScrollMemory(scroll);
   return (
     <div className="shell">
       <ThemeApplier />
@@ -118,6 +165,7 @@ function Shell() {
       <PlaylistPicker />
       <StationHistory />
       <MenuHost />
+      <AdminHost />
       <Toast />
     </div>
   );

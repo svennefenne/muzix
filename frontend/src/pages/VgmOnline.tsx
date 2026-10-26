@@ -99,8 +99,8 @@ function SearchBox({ source, label, initial = "" }: { source?: string; label?: s
 function ShuffleAll({ source, path }: { source?: string; path?: string }) {
   const { busy, shuffle } = useShuffle();
   return (
-    <button className="btn primary" disabled={busy} onClick={() => shuffle(source, path)}>
-      {busy ? <Loader2 size={15} className="spin" /> : <Shuffle size={15} />} Shuffle all
+    <button className="btn primary shuffle-all" disabled={busy} onClick={() => shuffle(source, path)} aria-label="Shuffle all">
+      {busy ? <Loader2 size={15} className="spin" /> : <Shuffle size={15} />}<span> Shuffle all</span>
     </button>
   );
 }
@@ -110,7 +110,7 @@ export function OnlineHome() {
   const navigate = useNavigate();
   return (
     <>
-      <p className="lede">The big chiptune and tracker archives, played straight from the source. Muzix fetches a folder when you open it and a tune when you play it, and keeps recent tunes for a while.</p>
+      <p className="lede vgm-intro">The big chiptune and tracker archives, played straight from the source. Muzix fetches a folder when you open it and a tune when you play it, and keeps recent tunes for a while.</p>
       <div className="online-head">
         <ShuffleAll />
         <SearchBox />
@@ -124,7 +124,7 @@ export function OnlineHome() {
               <Stripes />
               <div className="tile-body">
                 <div className="tile-kicker">{s.name}</div>
-                <div className="tile-title" style={{ fontSize: s.label.length > 14 ? 24 : 30 }}>{s.label}</div>
+                <div className={`tile-title ${s.label.length > 14 ? "long" : ""}`}>{s.label}</div>
                 <div className="tile-sub">{s.about}</div>
                 {s.starts.length > 0 && (
                   <div className="online-starts">
@@ -138,7 +138,7 @@ export function OnlineHome() {
           ))}
         </div>
       )}
-      <p className="faint online-credit">The archives are run by volunteers: thank you, HVSC, Modland, ASMA, Joshw, ZXArt, VGMRips, The Mod Archive and scene.org.</p>
+      <p className="faint online-credit vgm-intro">The archives are run by volunteers: thank you, HVSC, Modland, ASMA, Joshw, ZXArt, VGMRips, The Mod Archive and scene.org.</p>
     </>
   );
 }
@@ -198,6 +198,8 @@ function FolderView({ d, source, system, more, bare }: {
   const files = useMemo(() => d.files.filter((x) => !f || `${x.name} ${x.title || ""} ${x.artist || ""}`.toLowerCase().includes(f)), [d, f]);
   const tunes = files.filter((x) => x.kind === "tune");
   const letters = d.dirs.length > 0 && d.dirs.every((x) => x.name.length <= 3);
+  // mostly letter folders (and a "zzz unlicensed" or two): a tighter grid on a phone
+  const short = d.dirs.filter((x) => x.name.length <= 3).length >= d.dirs.length * 0.8;
   useEffect(() => setShown(SHOWN), [f]);
 
   async function play(file: OnlineFile) {
@@ -244,7 +246,7 @@ function FolderView({ d, source, system, more, bare }: {
           {d.dirs.map((x) => <Link key={x.path} to={href(source, x.path)}>{x.name}</Link>)}
         </div>
       ) : dirs.length > 0 && (
-        <div className="online-folders">
+        <div className={`online-folders ${short ? "short" : ""}`}>
           {dirs.slice(0, shown).map((x) => (
             <Link key={x.path} to={href(source, x.path)} title={x.name}>
               <Folder size={15} /><span className="ellipsis">{x.name.replace(/_/g, " ")}</span>
