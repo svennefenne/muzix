@@ -6,8 +6,8 @@ import androidx.media3.cast.CastPlayer
 import androidx.media3.cast.RemoteCastPlayer
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.DeviceInfo
 import androidx.media3.common.MediaItem
-import androidx.media3.common.Player
 import androidx.media3.datasource.DataSourceBitmapLoader
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -74,12 +74,11 @@ class PlaybackService : MediaSessionService() {
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
 
-    /** Swiped away from the recent apps: keep playing if it is, otherwise stop. */
+    /** The app's card closed in the recent apps: the phone stops playing (going Home or Back
+     * keeps the task, and the music). A speaker plays on by itself; the phone only lets go of it. */
     override fun onTaskRemoved(rootIntent: Intent?) {
-        val player = session?.player
-        if (player == null || !player.playWhenReady || player.mediaItemCount == 0 || player.playbackState == Player.STATE_ENDED) {
-            stopSelf()
-        }
+        if (session?.player?.deviceInfo?.playbackType == DeviceInfo.PLAYBACK_TYPE_REMOTE) stopSelf()
+        else pauseAllPlayersAndStopSelf()
     }
 
     override fun onDestroy() {
