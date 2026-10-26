@@ -177,7 +177,7 @@ components:
 
 **Creative North Star: "The Late-Night Broadcast"**
 
-Muzix is a station on the air after midnight, and it restyles itself for every show. The top bar is the station's dial: the striped logo, then the sections (Music, VGM, Audiobooks, Podcasts, Radio, Spotify) as pills to tune to. The footer is the station's status line, set in tiny spaced-out monospace: the host name, track counts, the skin on air, a fullscreen hint. Between them sits the screen itself, a thin rounded frame floating on a nebula backdrop, with the library to its left and what's playing to its right. When the music changes genre, the whole station re-dresses for the show: death metal brings bone and blood with blackletter type, a chiptune brings CRT scanlines and pixel type, jazz brings Blue Note duotones.
+Muzix is a station on the air after midnight, and it restyles itself for every show. The top bar is the station's dial: the cassette logo, then the sections (Music, VGM, Audiobooks, Podcasts, Radio, Spotify) as pills to tune to. The footer is the station's status line, set in tiny spaced-out monospace: the host name, track counts, the skin on air, a fullscreen hint. Between them sits the screen itself, a thin rounded frame floating on a nebula backdrop, with the library to its left and what's playing to its right. When the music changes genre, the whole station re-dresses for the show: death metal brings bone and blood with blackletter type, a chiptune brings CRT scanlines and pixel type, jazz brings Blue Note duotones.
 
 The house look, used when no skin is on air, is night-time warm: Bone text on Midnight Navy, Marigold for whatever is live, Vermilion for the one thing to do next, and a soft nebula of jade, marigold and vermilion glow behind everything. Headings are loud (heavy condensed capitals); everything around them is quiet. The layout follows Spotify's arrangement, so nobody has to learn where things are; the personality lives in the type, the colour, the skins and the broadcast furniture (stripes, section pills, mono labels, status line).
 
@@ -264,7 +264,7 @@ The desktop is a fixed shell of four rows: the top bar (58px), the workspace, th
 Breakpoints give up the least useful parts first:
 - Below 1500px the fullscreen button goes.
 - Below 1440px the docks narrow (272px and 300px).
-- Below about 1280px the section pills drop their names for icons (with the names as tooltips); below 1000px the logo shrinks to its stripes.
+- Below about 1280px the section pills drop their names for icons (with the names as tooltips); below 1000px the logo shrinks to its cassette.
 - Below 1180px the now playing panel goes.
 - Below 1100px the library folds.
 - At 860px and under, the phone layout takes over:
@@ -307,7 +307,7 @@ The house shape is a gently rounded rectangle on a 1px hairline:
 - **Badges and footer chips:** 4px.
 - **Pills:** search, filter chips and section chips are fully round, and so are icon buttons and avatars.
 
-The recurring motif is **the stripes**: five vertical colour bars with 2px gaps, coloured from Bone, Saffron, Marigold, Coral Red and Jade (plus a sixth in Vermilion on tiles). They make the logo mark (26×30px, with the name's capitals exactly as tall) and the right edge of the Home tiles and VGM cards. Skins replace the frame's edge with their own: thorns, frost, rivets, gaffer tape, neon, pixel steps, art deco corners, double rules, ornaments, film sprockets, rope, a checkerboard band or bubbly 28px corners.
+The recurring motif is **the stripes**: five vertical colour bars with 2px gaps, coloured from Bone, Saffron, Marigold, Coral Red and Jade (plus a sixth in Vermilion on tiles). Laid horizontally they make the logo: a 40×30px cassette with two reel holes, the tape opening below and a small notch on top so it also reads as an M, with the name's capitals exactly as tall (22px tall on phones). Upright they edge the Home tiles and VGM cards. The favicon redraws the cassette on a 32px grid, with a second drawing for 16px, so every edge lands on a whole pixel; the app icons put it on a Midnight Navy plate. Skins replace the frame's edge with their own: thorns, frost, rivets, gaffer tape, neon, pixel steps, art deco corners, double rules, ornaments, film sprockets, rope, a checkerboard band or bubbly 28px corners.
 
 ## Components
 
@@ -341,7 +341,7 @@ Small, outlined and exact; they recede until you need them.
 - **Switches and ranges:** a 40×22px track that fills Marigold when on. Range sliders have 4px tracks and a 13px Bone thumb; seek bars turn Marigold on hover and show a striped Coral Red fill when the stream is live.
 
 ### Navigation
-- **Top bar:** striped logo (links Home), the section pills (13px semibold on Bone at 10%, the current section solid Marigold), a round home button (Marigold when you're home) beside the search, and on the right a now-playing button with a progress ring, the light/dark toggle, fullscreen and the account pill (avatar plus name; Settings, Admin and Sign out live in its menu).
+- **Top bar:** cassette logo (links Home), the section pills (13px semibold on Bone at 10%, the current section solid Marigold), a round home button (Marigold when you're home) beside the search, and on the right a now-playing button with a progress ring, the light/dark toggle, fullscreen and the account pill (avatar plus name; Settings, Admin and Sign out live in its menu).
 - **Your library (left dock):**
   - Header row with a panel title and a "+" for a new playlist, then filter chips, then rows.
   - Each row is a 48px cover with a 14px bold title and a 12.5px dim subtitle ("Playlist · 12 songs").
@@ -370,7 +370,7 @@ The footer status line runs in 9.5px mono capitals in Bone Faint: "MUZIX · NODE
 - **Do** size page content against the frame with container queries (`cqi`, `@container page`), not the window.
 - **Do** take dim, faint, on-accent and error text from the theme (`--text-dim`, `--text-faint`, `--on-primary`, `--on-secondary`, `--error-text`, and `--on-error` on `--error-solid`); never pick a text colour for an accent by hand.
 - **Do** keep controls quiet: 38px buttons with 12px labels, 32px icon buttons, outlines before fills, and one Vermilion action per view.
-- **Do** keep the broadcast furniture on every desktop screen: the striped logo, the section pills, the footer status line.
+- **Do** keep the broadcast furniture on every desktop screen: the cassette logo, the section pills, the footer status line.
 
 ### Don't:
 - **Don't** hard-code the house hex values in a component; the one sanctioned exception is the bento tiles' fixed dark plate.

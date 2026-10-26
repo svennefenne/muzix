@@ -47,7 +47,7 @@ Muzix is a self-hosted, Spotify-style player for everything you own: your music 
 ## Brand Commitments
 
 - **Name:** Muzix.
-- **Logo:** five colour stripes and the name, with the name's capitals exactly as tall as the stripes.
+- **Logo:** a cassette made of the five colour stripes, notched on top so it also reads as an M, and the name, with the name's capitals exactly as tall as the cassette. (Before 2026-10-26 it was five vertical stripes, which looked too much like other players' spectrum-bar marks, CLIAmp's in particular; keep away from bars of varying height.)
 - **Look:** modelled on the owner's site *Unlimited Deck Force*. The reference screenshot is outside the repo, at `~/Projects/muzix-testdata/design-ref/deckforce-home.png`.
 - **Binding (from the owner):**
   - The layout follows Spotify's arrangement while the Deck Force style stays intact. That style covers the colours, fonts, genre skins, frame lines, kicker labels, the now-playing ticker and the footer status line.

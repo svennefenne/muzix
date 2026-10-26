@@ -1,1 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#11111b"/><g fill="#f5a623"><rect x="12" y="22" width="6" height="20" rx="3"/><rect x="22" y="14" width="6" height="36" rx="3"/><rect x="32" y="26" width="6" height="12" rx="3"/><rect x="42" y="18" width="6" height="28" rx="3"/></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Muzix: a cassette of the five stripes, notched on top so it also reads as an M.
+       Two drawings on the same 32 grid: every edge falls on a whole pixel at 32px and up,
+       and the small one (2px stripes and gaps) also at 16px, where the big one would blur. -->
+  <style>.small { display: none } @media (max-width: 20px) { .big { display: none } .small { display: inline } }</style>
+  <rect width="32" height="32" rx="7" fill="#0a1020"/>
+  <clipPath id="big"><path clip-rule="evenodd" d="M6 7H26A2 2 0 0 1 28 9V24A2 2 0 0 1 26 26H6A2 2 0 0 1 4 24V9A2 2 0 0 1 6 7Z M14 7L16 9L18 7Z M8.8 14.5a2.2 2.2 0 1 0 4.4 0a2.2 2.2 0 1 0 -4.4 0Z M18.8 14.5a2.2 2.2 0 1 0 4.4 0a2.2 2.2 0 1 0 -4.4 0Z M10 26L12 23H20L22 26Z"/></clipPath>
+  <clipPath id="small"><path clip-rule="evenodd" d="M6 6H26A2 2 0 0 1 28 8V22A2 2 0 0 1 26 24H6A2 2 0 0 1 4 22V8A2 2 0 0 1 6 6Z M14 6L16 8L18 6Z M8 12a2 2 0 1 0 4 0a2 2 0 1 0 -4 0Z M20 12a2 2 0 1 0 4 0a2 2 0 1 0 -4 0Z M10 24L12 22H20L22 24Z"/></clipPath>
+  <g class="big" clip-path="url(#big)">
+    <rect x="4" y="7" width="24" height="3" fill="#f1e7d0"/>
+    <rect x="4" y="11" width="24" height="3" fill="#f2c14e"/>
+    <rect x="4" y="15" width="24" height="3" fill="#f2a93b"/>
+    <rect x="4" y="19" width="24" height="3" fill="#ef5350"/>
+    <rect x="4" y="23" width="24" height="3" fill="#4fb286"/>
+  </g>
+  <g class="small" clip-path="url(#small)">
+    <rect x="4" y="6" width="24" height="2" fill="#f1e7d0"/>
+    <rect x="4" y="10" width="24" height="2" fill="#f2c14e"/>
+    <rect x="4" y="14" width="24" height="2" fill="#f2a93b"/>
+    <rect x="4" y="18" width="24" height="2" fill="#ef5350"/>
+    <rect x="4" y="22" width="24" height="2" fill="#4fb286"/>
+  </g>
+</svg>

@@ -90,13 +90,13 @@ img { display: block; }
 /* the stripes sit on the name's baseline; Logo.tsx sizes the name so its capitals
    are exactly as tall as the stripes in whatever font the skin uses */
 .logo { display: flex; align-items: baseline; gap: 10px; flex-shrink: 0; min-width: 0; font: 900 42px/1 var(--font-display); }
-.logo-mark { width: 26px; height: 30px; display: flex; gap: 2px; align-items: stretch; flex-shrink: 0; }
-.logo-mark span { flex: 1; border-radius: 1px; }
-.logo-mark span:nth-child(1) { background: var(--stripe-1); }
-.logo-mark span:nth-child(2) { background: var(--stripe-2); }
-.logo-mark span:nth-child(3) { background: var(--stripe-3); }
-.logo-mark span:nth-child(4) { background: var(--stripe-4); }
-.logo-mark span:nth-child(5) { background: var(--stripe-5); }
+.logo-mark { width: 40px; height: 30px; flex-shrink: 0; }
+.logo-mark svg { display: block; width: 100%; height: 100%; }
+.logo-mark .s1 { fill: var(--stripe-1); }
+.logo-mark .s2 { fill: var(--stripe-2); }
+.logo-mark .s3 { fill: var(--stripe-3); }
+.logo-mark .s4 { fill: var(--stripe-4); }
+.logo-mark .s5 { fill: var(--stripe-5); }
 .logo-name { letter-spacing: .02em; text-transform: var(--display-case); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .keychip {
@@ -901,7 +901,7 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
 
 @media (max-width: 1500px) { .topbar-right .trim-2 { display: none; } }
 @media (max-width: 1440px) { :root { --side-w: 272px; --np-w: 300px; } }
-@media (max-width: 1000px) { .topbar .logo-name { display: none; } }   /* the stripes alone, to make room */
+@media (max-width: 1000px) { .topbar .logo-name { display: none; } }   /* the cassette alone, to make room */
 @media (max-width: 1180px) {
   .workspace.np-open { grid-template-columns: var(--side-w) minmax(0, 1fr); }
   .nppanel, .np-toggle { display: none; }
@@ -978,7 +978,7 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
   .workspace, .workspace.np-open { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 0; }
   .sidepanel, .nppanel { display: none; }
   .logo { font-size: 30px; gap: 8px; }
-  .logo-mark { width: 19px; height: 22px; }
+  .logo-mark { width: 29.33px; height: 22px; }
   .userpill { width: 34px; height: 34px; padding: 0; justify-content: center; border-radius: 50%; }
   .userpill .uname { display: none; }
 

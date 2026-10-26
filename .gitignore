@@ -5,3 +5,5 @@ node_modules/
 frontend/dist/
 backend/muzix/static/
 .env
+# impeccable live mode: local helper state, never committed
+**/.impeccable/live/
