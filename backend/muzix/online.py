@@ -31,8 +31,8 @@ from .lengths import play_plan
 log = logging.getLogger("muzix.online")
 UA = f"Muzix/{__version__} (+https://github.com/svennefenne/muzix)"
 ONLINE_CACHE_LIMIT = 5 * 1024 ** 3
-MAX_DOWNLOAD = 100 * 1024 ** 2
-MAX_UNPACKED = 300 * 1024 ** 2
+MAX_DOWNLOAD = 600 * 1024 ** 2      # CD games' sets carry the disc's audio tracks: 150 MB and more
+MAX_UNPACKED = 1024 ** 3
 LISTING_TTL = 6 * 3600
 ARCHIVES = (".zip", ".7z")
 
@@ -564,12 +564,16 @@ def _label(src: Source, path: str, row: dict, title: str):
     extra = row.get("extra") or {}
     if (row.get("album") or "").endswith(".d"):       # named after the folder it was unpacked into
         row["album"] = title
+    stem = os.path.splitext(os.path.basename(row.get("member") or ""))[0]
+    cd = re.fullmatch(r"[A-Za-z0-9]+[_ -](\d{1,3})", stem)
+    if cd and row["title"] in (stem, stem.replace("_", " ")):
+        row["title"] = f"Track {int(cd.group(1))}"     # a CD rip's audio track, named TGXCD1048_03
     if "_" in row["title"] and " " not in row["title"]:   # a file name: 5_Title_Tunes
         row["title"] = row["title"].replace("_", " ")
     if src.system and not extra.get("system"):
         row["extra"] = {**extra, "system": src.system}
-    if formats.family(row["format"]) not in formats.RENDERED:
-        row["kind"] = "music"
+    if src.id == "sceneorg" and formats.family(row["format"]) not in formats.RENDERED:
+        row["kind"] = "music"                          # recordings; the game archives' stay VGM
     # Joshw names its sets "Game (year)(developer)(publisher)[system]"
     album = row.get("album") or ""
     m = re.match(r"^(.+?)\s*\((\d{4})[^)]*\)", album) or re.match(r"^(.+?)\s*\((\d{4})", os.path.basename(path))

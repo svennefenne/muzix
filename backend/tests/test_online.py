@@ -112,3 +112,13 @@ def test_the_cache_drops_the_oldest_downloads_first(monkeypatch, tmp_path):
     os.utime(old, (time.time() - 100, time.time() - 100))
     assert online.prune(limit=1000) == (1, 1)
     assert not old.exists() and not (tmp_path / "nsf" / "a" / "old.7z.d").exists() and new.exists()
+
+
+def test_cd_audio_tracks_are_named_and_stay_vgm():
+    src = online.source("hes")
+    row = {"title": "TGXCD1048_03", "member": "TGXCD1048_03.ape", "format": "ape", "kind": "vgm",
+           "album": "Beyond Shadowgate (1993)(Viacom New Media)(NEC)[TCD].7z.d", "artist": "", "extra": {}}
+    online._label(src, "b/Beyond Shadowgate (1993)(Viacom New Media)(NEC)[TCD].7z", row,
+                  "Beyond Shadowgate (1993)(Viacom New Media)(NEC)[TCD]")
+    assert (row["title"], row["album"], row["year"], row["kind"]) == ("Track 3", "Beyond Shadowgate", 1993, "vgm")
+    assert online.MAX_DOWNLOAD > 150 * 1024 ** 2         # the set is 141 MB
