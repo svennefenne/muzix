@@ -143,8 +143,11 @@ it. The page hands the queue to that player the way it does to a Cast speaker,
 so songs go on with the screen off, the lock screen and notification show the
 player, and headsets, Bluetooth and cars can skip and pause. The first start
 asks for the server's address (http on the local network works too); "Change
-server" in the account menu asks again. Casting and Spotify playback aren't
-in the app yet; open Muzix in Chrome for those.
+server" in the account menu asks again. The Cast button (or the output switcher
+in the notification) moves the queue to a Google Cast speaker and back, with the
+same signed links as casting from Chrome, so the app has to be connected to
+Muzix's https address for it. Spotify playback isn't in the app; open Muzix in
+Chrome for that.
 
 ```sh
 cd android && ./gradlew assembleRelease    # JDK 17+ and the Android SDK (platform 36.1)

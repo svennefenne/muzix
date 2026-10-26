@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.text.InputType
 import android.view.Gravity
+import android.view.ContextThemeWrapper
 import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
 import android.webkit.CookieManager
@@ -30,11 +31,16 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.addCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.mediarouter.app.MediaRouteChooserDialog
+import androidx.mediarouter.app.MediaRouteControllerDialog
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import com.google.android.gms.cast.framework.CastContext
+import com.google.android.gms.cast.framework.CastState
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -69,8 +75,9 @@ class MainActivity : ComponentActivity() {
             v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             WindowInsetsCompat.CONSUMED
         }
-        bridge = PlayerBridge(this) { t, m -> command(t, m) }
+        bridge = PlayerBridge(this, { t, m -> command(t, m) }, ::castState)
         bridge.connect()
+        watchSpeakers()
         onBackPressedDispatcher.addCallback(this) {
             val w = web
             if (w != null && w.canGoBack()) w.goBack() else moveTaskToBack(true)   // the music goes on
@@ -100,6 +107,7 @@ class MainActivity : ComponentActivity() {
     private fun command(t: String, m: JSONObject) {
         when (t) {
             "server" -> showConnect(server, null)
+            "cast" -> chooseSpeaker()
             "bars" -> runCatching { Color.parseColor(m.optString("color")) }.getOrNull()?.let(::bars)
         }
     }
@@ -110,6 +118,39 @@ class MainActivity : ComponentActivity() {
         val light = ColorUtils.calculateLuminance(color) > 0.5
         val style = if (light) SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT) else SystemBarStyle.dark(Color.TRANSPARENT)
         enableEdgeToEdge(style, style)
+    }
+
+    // ------------------------------------------------------------ Google Cast speakers
+
+    /** Cast is there on phones with Google Play services; elsewhere the page shows no Cast button. */
+    private fun cast(then: (CastContext) -> Unit) {
+        runCatching {
+            CastContext.getSharedInstance(this, ContextCompat.getMainExecutor(this)).addOnSuccessListener(then)
+        }
+    }
+
+    private fun watchSpeakers() = cast { it.addCastStateListener { castState() } }
+
+    /** Tells the page whether speakers are around, and which one plays. */
+    private fun castState() = cast { ctx ->
+        val state = when (ctx.castState) {
+            CastState.CONNECTED -> "connected"
+            CastState.CONNECTING -> "connecting"
+            CastState.NOT_CONNECTED -> "available"
+            else -> "unavailable"
+        }
+        val device = ctx.sessionManager.currentCastSession?.castDevice?.friendlyName ?: ""
+        bridge.send(JSONObject().put("t", "cast").put("state", state).put("device", device))
+    }
+
+    /** The speaker picker; while casting, the speaker's own dialog (volume, Stop casting). */
+    private fun chooseSpeaker() = cast { ctx ->
+        val themed = ContextThemeWrapper(this, androidx.appcompat.R.style.Theme_AppCompat_NoActionBar)
+        if (ctx.castState == CastState.CONNECTED) {
+            MediaRouteControllerDialog(themed).show()
+        } else {
+            MediaRouteChooserDialog(themed).apply { ctx.mergedSelector?.let { routeSelector = it } }.show()
+        }
     }
 
     // ------------------------------------------------------------ the server's address

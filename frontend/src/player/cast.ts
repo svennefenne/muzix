@@ -44,6 +44,28 @@ function carried(info?: chrome.cast.media.MediaInfo | null): Carried | null {
 
 const castable = (it: PlayItem) => it.kind !== "spotify";
 
+let link = { token: "", expires: 0 };
+
+/** A token for links a speaker can fetch without signing in (valid a day). */
+export async function castLink() {
+  if (link.expires - Date.now() / 1000 < 3600) link = await api.get<{ token: string; expires: number }>("/api/cast/token");
+  return link.token;
+}
+
+/** The link a speaker plays: what it can take as it is, everything else as FLAC; `from` starts that far in. */
+export function castUrl(it: PlayItem, token: string, from = 0) {
+  const u = new URL(it.src, location.origin);
+  if (it.kind !== "radio") u.searchParams.set("q", "cast");
+  else if (useUi.getState().radioBuffer > 0) u.searchParams.set("buffer", String(useUi.getState().radioBuffer));
+  if (from > 0.5) u.searchParams.set("t", from.toFixed(1));
+  u.searchParams.set("ct", token);
+  return u.toString();
+}
+
+export function castMime(it: PlayItem) {
+  return it.kind === "track" || it.kind === "online" ? MIME[it.format || ""] || "audio/flac" : "audio/mpeg";
+}
+
 /** A player that plays the queue in order (a speaker, the app) shuffles by playing a shuffled queue. */
 export function shuffleUpcoming() {
   const s = usePlayer.getState();
@@ -67,7 +89,6 @@ class Caster {
   private hooks: CastHooks | null = null;
   private player: cast.framework.RemotePlayer | null = null;
   private ctl: cast.framework.RemotePlayerController | null = null;
-  private link = { token: "", expires: 0 };
   private offset = 0;          // where the current item's stream started, when it was restarted at a time
   private localVolume: number | null = null;
 
@@ -83,7 +104,7 @@ class Caster {
   load() {
     const set = usePlayer.getState().set;
     const no = (castWhy: string) => set({ castSupport: "unsupported", castWhy });
-    if (window.MuzixApp) return no("The Android app plays on the phone; to cast, open Muzix in Chrome.");
+    if (window.MuzixApp) return set({ castSupport: "ready" });   // the app casts itself (player/app.ts)
     if (!window.isSecureContext) return no("Casting needs Muzix's https address.");
     if (!/Chrome\//.test(navigator.userAgent) || /SamsungBrowser/.test(navigator.userAgent))
       return no("Casting needs Google Chrome, on Android or a computer.");
@@ -182,28 +203,10 @@ class Caster {
 
   // ------------------------------------------------------------ handing the queue over
 
-  private async token() {
-    if (this.link.expires - Date.now() / 1000 < 3600) {
-      const r = await api.get<{ token: string; expires: number }>("/api/cast/token");
-      this.link = r;
-    }
-    return this.link.token;
-  }
-
-  private url(it: PlayItem, token: string, from: number) {
-    const u = new URL(it.src, location.origin);
-    if (it.kind !== "radio") u.searchParams.set("q", "cast");
-    else if (useUi.getState().radioBuffer > 0) u.searchParams.set("buffer", String(useUi.getState().radioBuffer));
-    if (from > 0.5) u.searchParams.set("t", from.toFixed(1));
-    u.searchParams.set("ct", token);
-    return u.toString();
-  }
-
   /** `from`: the stream starts that far in (converted streams can't seek); `startTime`: the speaker seeks there itself. */
   private queueItem(it: PlayItem, token: string, from = 0, startTime = 0) {
     const live = it.kind === "radio";
-    const info = new chrome.cast.media.MediaInfo(this.url(it, token, from),
-      it.kind === "track" || it.kind === "online" ? MIME[it.format || ""] || "audio/flac" : "audio/mpeg");
+    const info = new chrome.cast.media.MediaInfo(castUrl(it, token, from), castMime(it));
     info.streamType = live ? chrome.cast.media.StreamType.LIVE : chrome.cast.media.StreamType.BUFFERED;
     if (it.duration && !from) info.duration = it.duration;
     // words only: the speaker never gets a picture
@@ -250,7 +253,7 @@ class Caster {
     if (first && !castable(first)) useUi.getState().notify("Spotify songs can't be cast; skipping them on the speaker");
     const items = this.upcoming(start);
     if (!items.length) return useUi.getState().notify("Nothing in the queue can play on a speaker");
-    const token = await this.token();
+    const token = await castLink();
     // a file the speaker takes as it is, it seeks in itself; anything converted starts at the time
     const into = at > 0.5 && items[0] === first ? at : 0;
     const native = !!items[0].castNative;
@@ -280,7 +283,7 @@ class Caster {
     if (after.length === want.length && after.every((qi, i) => carried(qi.media)?.muzix.key === want[i].key)) return;
     try {
       for (const qi of after) await call(m.queueRemoveItem.bind(m), qi.itemId);
-      const token = await this.token();
+      const token = await castLink();
       if (want.length) await call(m.queueInsertItems.bind(m), new chrome.cast.media.QueueInsertItemsRequest(want.map((it) => this.queueItem(it, token))));
     } catch {
       /* the speaker keeps what it had */
@@ -400,7 +403,7 @@ class Caster {
     const have = new Set(m.items.map((i) => carried(i.media)?.muzix.key));
     const more = this.upcoming(usePlayer.getState().index).filter((it) => !have.has(it.key));
     if (!more.length) return;
-    const token = await this.token();
+    const token = await castLink();
     m.queueInsertItems(new chrome.cast.media.QueueInsertItemsRequest(more.map((it) => this.queueItem(it, token))), () => {}, () => {});
   }
 }

@@ -1,12 +1,13 @@
 /** Playback in the Muzix Android app. The app's own player (Android's Media3, in a service)
  * holds the next stretch of the queue and plays it, so songs go on with the screen off and the
  * lock screen, headset and car controls work. The engine hands its controls to this module the
- * way it does to a Cast speaker; the app reports back what plays and where (android/…/PlayerBridge.kt). */
+ * way it does to a Cast speaker; the app reports back what plays and where (android/…/PlayerBridge.kt).
+ * The app casts by itself too: every entry carries the signed link a speaker would play. */
 
 import { report } from "../components/ErrorBoundary";
 import { usePlayer, type PlayItem } from "../store/player";
 import { useUi } from "../store/ui";
-import { type CastHooks, type Slim, shuffleUpcoming, slim } from "./cast";
+import { type CastHooks, type CastState, type Slim, castLink, castMime, castUrl, shuffleUpcoming, slim } from "./cast";
 
 interface Bridge {
   postMessage(data: string): void;
@@ -99,12 +100,21 @@ class AppPlayer {
     return it.castNative ?? (it.kind === "book" || it.kind === "episode");
   }
 
-  private item(it: PlayItem, from = 0) {
+  private item(it: PlayItem, token: string, from = 0) {
     const art = it.art ? new URL(it.art.startsWith("/api/") ? it.art + "?s=600" : it.art, location.origin).toString() : "";
     return {
       key: it.key, url: this.url(it, from), title: it.title, artist: it.artist, album: it.album || "", art,
       duration: it.kind === "radio" ? 0 : it.duration, offset: from, muzix: JSON.stringify(slim(it)),
+      cast: castUrl(it, token, from), castMime: castMime(it), live: it.kind === "radio",
     };
+  }
+
+  private async token() {
+    try {
+      return await castLink();
+    } catch {
+      return "";        // no speaker links; playing on the phone doesn't need them
+    }
   }
 
   /** The playable items from `start` on, as many as one handover takes. */
@@ -113,7 +123,7 @@ class AppPlayer {
   }
 
   /** Starts the app on the queue at `start`, `at` seconds in. */
-  loadQueue(start: number, at = 0, autoplay = true) {
+  async loadQueue(start: number, at = 0, autoplay = true) {
     const s = usePlayer.getState();
     if (start < 0) return;
     if (s.shuffle && start === s.index) {
@@ -130,19 +140,26 @@ class AppPlayer {
     const direct = now ? !!this.state?.seekable && !this.offset : this.direct(items[0]);
     this.offset = direct ? 0 : into;
     this.handed = new Set(items.map((it) => it.key));
+    const token = await this.token();
     this.send({
       t: "load", index: 0, position: direct ? into : 0, play: autoplay,
-      items: items.map((it, i) => this.item(it, i === 0 ? this.offset : 0)),
+      items: items.map((it, i) => this.item(it, token, i === 0 ? this.offset : 0)),
     });
     usePlayer.getState().set({ buffering: autoplay, error: "" });
   }
 
   /** Makes the app's upcoming songs match ours, without touching what plays now. */
-  syncUpcoming() {
+  async syncUpcoming() {
     const s = usePlayer.getState();
     const want = this.upcoming(s.index).slice(s.current() && playable(s.current()!) ? 1 : 0);
     this.handed = new Set([s.current()?.key ?? "", ...want.map((it) => it.key)]);
-    this.send({ t: "upcoming", items: want.map((it) => this.item(it)) });
+    const token = await this.token();
+    this.send({ t: "upcoming", items: want.map((it) => this.item(it, token)) });
+  }
+
+  /** The app's speaker picker (while casting: the speaker's volume and Stop casting). */
+  chooseSpeaker() {
+    this.send({ t: "cast" });
   }
 
   // ------------------------------------------------------------ controls
@@ -222,6 +239,7 @@ class AppPlayer {
     if (m.t === "hello") this.onHello(m as unknown as { queue: string[]; index: number; state: AppState });
     else if (m.t === "item") this.onItem(m.key as string, (m.offset as number) || 0, m.muzix as string);
     else if (m.t === "state") this.onState(m as unknown as AppState);
+    else if (m.t === "cast") usePlayer.getState().set({ castState: m.state as CastState, castDevice: (m.device as string) || "" });
     else if (m.t === "error") {
       const msg = `Couldn't play ${(m.title as string) || "this"}`;
       useUi.getState().notify(msg, "error");

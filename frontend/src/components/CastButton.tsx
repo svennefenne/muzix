@@ -1,7 +1,8 @@
-/** Opens the speaker picker for Google Cast speakers; shown wherever this browser can cast,
- * dimmed until a speaker turns up on the network. */
+/** Opens the speaker picker for Google Cast speakers (the browser's, or the Android app's own);
+ * shown wherever casting works, dimmed until a speaker turns up on the network. */
 
 import { Cast } from "lucide-react";
+import { appPlayer } from "../player/app";
 import { caster } from "../player/cast";
 import { usePlayer } from "../store/player";
 
@@ -15,7 +16,7 @@ export function CastButton({ size = 18, className = "ctl", label = false }: { si
     : state === "unavailable" ? "No speakers found on this network yet" : "Play on a speaker";
   return (
     <button className={`${className} cast-btn ${on ? "on" : ""} ${state === "connecting" ? "connecting" : ""} ${state === "unavailable" ? "dim" : ""}`}
-            aria-label={what} title={what} onClick={() => caster.choose()}>
+            aria-label={what} title={what} onClick={() => (appPlayer.available ? appPlayer.chooseSpeaker() : caster.choose())}>
       <Cast size={size} />{label && <span>{on ? device : "Cast"}</span>}
     </button>
   );

@@ -2,6 +2,8 @@ package io.github.svennefenne.muzix
 
 import android.app.PendingIntent
 import android.content.Intent
+import androidx.media3.cast.CastPlayer
+import androidx.media3.cast.RemoteCastPlayer
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -23,8 +25,9 @@ import com.google.common.util.concurrent.ListenableFuture
 /**
  * Plays the queue the web interface hands over, in a foreground service: it goes on with the
  * screen off, moves on to the next song by itself, and shows the lock screen and notification
- * player that headsets, Bluetooth and cars talk to. Requests to the Muzix server carry the
- * login cookie; requests elsewhere (a radio station's logo) don't.
+ * player that headsets, Bluetooth and cars talk to, and it hands the queue to a Cast speaker
+ * when one is chosen. Requests to the Muzix server carry the login cookie; requests elsewhere
+ * (a radio station's logo) don't, and a speaker gets signed links instead.
  */
 class PlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
@@ -41,7 +44,7 @@ class PlaybackService : MediaSessionService() {
             else spec
         }
         val data = DefaultDataSource.Factory(this, signedIn)
-        val player = ExoPlayer.Builder(this)
+        val local = ExoPlayer.Builder(this)
             .setMediaSourceFactory(DefaultMediaSourceFactory(data))
             // a long buffer rides out a weak mobile connection
             .setLoadControl(DefaultLoadControl.Builder().setBufferDurationsMs(30_000, 120_000, 1_500, 3_000).build())
@@ -49,6 +52,9 @@ class PlaybackService : MediaSessionService() {
             .setHandleAudioBecomingNoisy(true)  // headphones out: pause
             .setWakeMode(C.WAKE_MODE_NETWORK)   // the screen off doesn't stop the download
             .build()
+        // the queue moves to a Google Cast speaker and back (the Cast button, or the notification's output switcher)
+        val speaker = RemoteCastPlayer.Builder(this).setMediaItemConverter(CastItems()).build()
+        val player = CastPlayer.Builder(this).setLocalPlayer(local).setRemotePlayer(speaker).build()
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         session = MediaSession.Builder(this, player)
@@ -86,6 +92,6 @@ class PlaybackService : MediaSessionService() {
     }
 
     companion object {
-        const val USER_AGENT = "MuzixApp/0.1.0 (Android)"
+        const val USER_AGENT = "MuzixApp/0.2.0 (Android)"
     }
 }

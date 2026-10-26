@@ -2,14 +2,11 @@ package io.github.svennefenne.muzix
 
 import android.content.ComponentName
 import android.content.Context
-import android.net.Uri
-import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import androidx.core.content.ContextCompat
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
@@ -24,7 +21,11 @@ import org.json.JSONObject
  * and where it is: on every change, and twice a second while the app is in view (every five
  * seconds behind the lock screen, enough for play counts and resume points).
  */
-class PlayerBridge(private val context: Context, private val onCommand: (String, JSONObject) -> Unit) : Player.Listener {
+class PlayerBridge(
+    private val context: Context,
+    private val onCommand: (String, JSONObject) -> Unit,
+    private val onHello: () -> Unit,
+) : Player.Listener {
     private var controller: MediaController? = null
     private var reply: JavaScriptReplyProxy? = null
     private val waiting = ArrayDeque<JSONObject>()
@@ -81,16 +82,16 @@ class PlayerBridge(private val context: Context, private val onCommand: (String,
         when (val t = m.optString("t")) {
             "hello" -> send(JSONObject().put("t", "hello").put("version", PlaybackService.USER_AGENT)
                 .put("queue", JSONArray((0 until c.mediaItemCount).map { c.getMediaItemAt(it).carried() }))
-                .put("index", c.currentMediaItemIndex).put("state", state(c)))
+                .put("index", c.currentMediaItemIndex).put("state", state(c))).also { onHello() }
             "load" -> {
-                val items = m.getJSONArray("items").let { a -> (0 until a.length()).map { item(a.getJSONObject(it)) } }
+                val items = m.getJSONArray("items").let { a -> (0 until a.length()).map { Items.fromJson(a.getJSONObject(it)) } }
                 c.setMediaItems(items, m.optInt("index"), (m.optDouble("position", 0.0) * 1000).toLong())
                 c.prepare()
                 c.playWhenReady = m.optBoolean("play", true)
             }
             "upcoming" -> {
                 // everything after the current song, replaced
-                val items = m.getJSONArray("items").let { a -> (0 until a.length()).map { item(a.getJSONObject(it)) } }
+                val items = m.getJSONArray("items").let { a -> (0 until a.length()).map { Items.fromJson(a.getJSONObject(it)) } }
                 val at = c.currentMediaItemIndex
                 if (at + 1 < c.mediaItemCount) c.removeMediaItems(at + 1, c.mediaItemCount)
                 c.addMediaItems(items)
@@ -129,31 +130,6 @@ class PlayerBridge(private val context: Context, private val onCommand: (String,
         }
     }
 
-    /** A queue entry from the page: key, url, title, artist, album, art, duration, offset, and the page's own record. */
-    private fun item(o: JSONObject): MediaItem {
-        val url = Uri.parse(o.getString("url"))
-        val extras = Bundle().apply {
-            putDouble("offset", o.optDouble("offset", 0.0))
-            putDouble("duration", o.optDouble("duration", 0.0))
-            putString("muzix", o.optString("muzix"))
-        }
-        val md = MediaMetadata.Builder()
-            .setTitle(o.optString("title"))
-            .setArtist(o.optString("artist").ifEmpty { null })
-            .setAlbumTitle(o.optString("album").ifEmpty { null })
-            .setArtworkUri(o.optString("art").ifEmpty { null }?.let(Uri::parse))
-            .setIsPlayable(true)
-            .setIsBrowsable(false)
-            .setExtras(extras)
-            .build()
-        return MediaItem.Builder()
-            .setMediaId(o.getString("key"))
-            .setUri(url)
-            .setRequestMetadata(MediaItem.RequestMetadata.Builder().setMediaUri(url).build())
-            .setMediaMetadata(md)
-            .build()
-    }
-
     private fun MediaItem.carried(): String = mediaMetadata.extras?.getString("muzix") ?: ""
 
     private fun offset(it: MediaItem?) = it?.mediaMetadata?.extras?.getDouble("offset") ?: 0.0
@@ -177,7 +153,8 @@ class PlayerBridge(private val context: Context, private val onCommand: (String,
         controller?.let { send(state(it)) }
     }
 
-    private fun send(msg: JSONObject) {
+    /** A message for the page. */
+    fun send(msg: JSONObject) {
         runCatching { reply?.postMessage(msg.toString()) }
     }
 

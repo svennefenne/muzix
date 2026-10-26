@@ -26,6 +26,13 @@
             </intent-filter>
         </activity>
 
+        <!-- Google Cast: Google's Default Media Receiver plays on the speaker, nothing to register -->
+        <meta-data
+            android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+            android:value="androidx.media3.cast.DefaultCastOptionsProvider" />
+        <!-- lets the notification's output switcher move playback to a speaker and back -->
+        <receiver android:name="androidx.mediarouter.media.MediaTransferReceiver" android:exported="true" />
+
         <service
             android:name=".PlaybackService"
             android:exported="true"
