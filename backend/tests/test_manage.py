@@ -314,3 +314,45 @@ def test_undoing_an_edit_puts_back_the_cover_picked_with_it(library):
     assert [t["kind"] for t in manage.trash_items()] == ["cover"]       # the picked one, to put back if wanted
     with db.session() as s:
         assert s.get(Album, album_id).art == os.path.join(album, "cover.jpg")
+
+
+def test_songs_can_swap_names(library):
+    top, album, album_id = library
+    first, second = (os.path.join(album, f"{n}. Old Artist - Old Album - {t} (1990).wav") for n, t in ((1, "First"), (2, "Second")))
+    with db.session() as s:
+        ids = {t.title: t.id for t in s.scalars(select(Track).where(Track.album_id == album_id))}
+    # each file takes the other's title and number, so each takes the other's name too
+    r = manage.edit_album(album_id, {}, [{"id": ids["First"], "title": "Second", "track_no": 2},
+                                         {"id": ids["Second"], "title": "First", "track_no": 1}])
+    assert sorted(os.listdir(album)) == [os.path.basename(first), os.path.basename(second), "cover.jpg"]
+    with db.session() as s:
+        assert s.get(Track, ids["First"]).path == second and s.get(Track, ids["Second"]).path == first
+    assert (tags.read(second).title, tags.read(second).track_no) == ("Second", 2)
+    manage.undo_edit(r["edit_id"])
+    with db.session() as s:
+        assert s.get(Track, ids["First"]).path == first and s.get(Track, ids["Second"]).path == second
+    assert tags.read(first).title == "First"
+
+
+def test_a_file_changed_since_it_was_read_stops_the_edit(library):
+    top, album, album_id = library
+    path = os.path.join(album, "1. Old Artist - Old Album - First (1990).wav")
+    was = raw(path)
+    os.utime(path, (1, 1))
+    with pytest.raises(manage.ManageError, match="scan the library folder first"):
+        manage.edit_album(album_id, {"title": "Better Album"}, [])
+    assert raw(path) == was and os.path.isdir(album)
+
+
+def test_a_save_that_fails_halfway_puts_the_files_back(library, monkeypatch):
+    top, album, album_id = library
+    before = {f: raw(os.path.join(album, f)) for f in os.listdir(album) if f.endswith(".wav")}
+
+    def broken(*a, **k):
+        raise RuntimeError("the database went away")
+    monkeypatch.setattr(manage, "_reread", broken)
+    with pytest.raises(manage.ManageError, match="put back as they were"):
+        manage.edit_album(album_id, {"title": "Better Album", "year": 1992}, [])
+    assert {f: raw(os.path.join(album, f)) for f in os.listdir(album) if f.endswith(".wav")} == before
+    assert not os.path.exists(os.path.join(top, "Metal", "Old Artist", "Old Artist - 1992 - Better Album"))
+    assert manage.edit_list() == []

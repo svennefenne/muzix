@@ -621,6 +621,50 @@ def _summarize(s, album_ids: set[int]):
         alb.folder = os.path.dirname(tracks[0].path)
 
 
+def _unchanged(t: Track) -> bool:
+    """Whether the file is still the one Muzix last read (same size and time)."""
+    try:
+        st = os.stat(t.path)
+    except OSError:
+        return False
+    return st.st_size == t.size and abs(st.st_mtime - t.mtime) < 1
+
+
+def _check_unchanged(rows: list[Track]):
+    stale = [t for t in rows if not _unchanged(t)]
+    if stale:
+        raise ManageError(f"{os.path.basename(stale[0].path)} isn't as Muzix last read it (changed, or not there); "
+                          "scan the library folder first (Admin → Library folders), then edit again")
+
+
+def _set_paths(s, moves: list[tuple[Track, str]]):
+    """Songs to their new paths, through temporary ones: when songs swap names, a path can't be
+    two songs' at once, even for a moment."""
+    moves = [(t, new) for t, new in moves if t.path != new]
+    if not moves:
+        return
+    for t, _ in moves:
+        t.path = f"{t.path}\x00moving-{t.id}"
+    s.flush()
+    for t, new in moves:
+        t.path = new
+    s.flush()
+
+
+def _put_files_back(before: list[dict], refiled: tuple | None):
+    """After an edit failed halfway: the files' names and tags as they were, matching the database
+    (whose changes are rolled back) again."""
+    try:
+        if refiled:
+            folder, target, moves = refiled
+            _refile(target, folder, {new: old for old, new in moves.items()})
+        for e in before:
+            if "tags" in e and os.path.exists(e["was"]):
+                tagwrite.put_back(e["was"], e["tags"])
+    except Exception:
+        log.exception("couldn't put the files back after a failed edit")
+
+
 def _and(words: list[str]) -> str:
     return " and ".join([", ".join(words[:-1]), words[-1]] if len(words) > 1 else words)
 
@@ -686,6 +730,7 @@ def edit_album(id_: int, fields: dict, tracks: list[dict], remember: bool = True
         root = s.get(Root, rows[0].root_id)
         if any(not _writable(t.path) for t in rows if _taggable(t)):
             raise ManageError("The album's folder is read-only for Muzix")
+        _check_unchanged(rows)
         written = kept = 0
         before, todo = [], []
         for t in rows:
@@ -693,55 +738,63 @@ def edit_album(id_: int, fields: dict, tracks: list[dict], remember: bool = True
             changes = {k: v for k, v in want.items() if getattr(t, k) != v}
             before.append(_before(s, t, changes))       # every file's tags first: then the writing
             todo.append((t, changes))
-        for t, changes in todo:
-            _write(s, t, changes)
-            if changes:
-                written += _taggable(t)
-                kept += not _taggable(t)
-        s.flush()
-        # filing: music folders only, an album in a <Genre>/<Artist>/<Album> folder of its own
-        paths = sorted({t.path for t in rows})
-        folder = album_dir(paths)
-        moved_to = None
-        new = {"title": album_level.get("album", alb.title), "artist": album_level.get("albumartist", alb.artist_name),
-               "year": album_level.get("year", alb.year)}
-        can_file = root.kind == "music" and all(_taggable(t) for t in rows)
-        depth = len(os.path.relpath(folder, root.path).split(os.sep))
-        if can_file and depth == 3 and _owns_folder(folder, set(paths), root.path):
-            plan_tracks = [{"path": t.path, "title": per_track.get(t.id, {}).get("title", t.title),
-                            "artist": per_track.get(t.id, {}).get("artist", t.artist),
-                            "track_no": per_track.get(t.id, {}).get("track_no", t.track_no),
-                            "disc_no": per_track.get(t.id, {}).get("disc_no", t.disc_no),
-                            "year": album_level.get("year", t.year)} for t in rows]
-            target, moves = _plan(root.path, folder, new, plan_tracks)
-            if os.path.normpath(target) != os.path.normpath(folder) or any(a != b for a, b in moves.items()):
-                _refile(folder, target, moves)
-                moved_to = target
-                for t in rows:
-                    t.path = moves[t.path]
-                if alb.art and alb.art.startswith(folder + "/"):
-                    alb.art = target + alb.art[len(folder):]
-        elif root.kind == "music" and can_file:
-            notes.append("Kept in its folder: it isn't in a Genre/Artist/Album folder of its own")
-        s.flush()
-        files = _after(s, before, {t.id: t.path for t in rows})
-        undo = {"album_id": id_, "album_title": [title_before, new["title"]], "files": files,
-                "folder": [folder, moved_to] if moved_to and os.path.normpath(moved_to) != os.path.normpath(folder) else None,
-                "art": [art_before, alb.art] if alb.art != art_before else None}
-        _rekey(s, alb, rows[0], new["title"])
-        _reread(s, root, [(t.id, t.subsong, t.path) for t in rows], scanner.Resolver())
-        s.flush()
-        album_ids = {id_} | set(s.scalars(select(Track.album_id).where(Track.id.in_([t.id for t in rows]))))
-        _summarize(s, {a for a in album_ids if a})
-        new_id = s.scalar(select(Track.album_id).where(Track.id == rows[0].id))
-        labels = {"album": "title", "albumartist": "album artist", "year": "year", "genre": "genre"}
-        songs = sum(1 for f in files if set(f.get("fields", [])) - set(album_level))
-        summary = "; ".join(x for x in (
-            _and([labels[k] for k in album_level]).capitalize(),
-            f"{songs} song{'s' if songs != 1 else ''}" if songs else "",
-            "filed in " + " / ".join(moved_to.split(os.sep)[-2:]) if moved_to else "") if x)
-        title = new["title"] + (f" (was {title_before})" if new["title"] != title_before else "")
-        edit_id = _remember(s, "album", new_id or id_, title, summary, undo) if remember and files else None
+        refiled = None
+        try:
+            for t, changes in todo:
+                _write(s, t, changes)
+                if changes:
+                    written += _taggable(t)
+                    kept += not _taggable(t)
+            s.flush()
+            # filing: music folders only, an album in a <Genre>/<Artist>/<Album> folder of its own
+            paths = sorted({t.path for t in rows})
+            folder = album_dir(paths)
+            moved_to = None
+            new = {"title": album_level.get("album", alb.title), "artist": album_level.get("albumartist", alb.artist_name),
+                   "year": album_level.get("year", alb.year)}
+            can_file = root.kind == "music" and all(_taggable(t) for t in rows)
+            depth = len(os.path.relpath(folder, root.path).split(os.sep))
+            if can_file and depth == 3 and _owns_folder(folder, set(paths), root.path):
+                plan_tracks = [{"path": t.path, "title": per_track.get(t.id, {}).get("title", t.title),
+                                "artist": per_track.get(t.id, {}).get("artist", t.artist),
+                                "track_no": per_track.get(t.id, {}).get("track_no", t.track_no),
+                                "disc_no": per_track.get(t.id, {}).get("disc_no", t.disc_no),
+                                "year": album_level.get("year", t.year)} for t in rows]
+                target, moves = _plan(root.path, folder, new, plan_tracks)
+                if os.path.normpath(target) != os.path.normpath(folder) or any(a != b for a, b in moves.items()):
+                    _refile(folder, target, moves)
+                    refiled = (folder, target, moves)
+                    moved_to = target
+                    _set_paths(s, [(t, moves[t.path]) for t in rows])
+                    if alb.art and alb.art.startswith(folder + "/"):
+                        alb.art = target + alb.art[len(folder):]
+            elif root.kind == "music" and can_file:
+                notes.append("Kept in its folder: it isn't in a Genre/Artist/Album folder of its own")
+            s.flush()
+            files = _after(s, before, {t.id: t.path for t in rows})
+            undo = {"album_id": id_, "album_title": [title_before, new["title"]], "files": files,
+                    "folder": [folder, moved_to] if moved_to and os.path.normpath(moved_to) != os.path.normpath(folder) else None,
+                    "art": [art_before, alb.art] if alb.art != art_before else None}
+            _rekey(s, alb, rows[0], new["title"])
+            _reread(s, root, [(t.id, t.subsong, t.path) for t in rows], scanner.Resolver())
+            s.flush()
+            album_ids = {id_} | set(s.scalars(select(Track.album_id).where(Track.id.in_([t.id for t in rows]))))
+            _summarize(s, {a for a in album_ids if a})
+            new_id = s.scalar(select(Track.album_id).where(Track.id == rows[0].id))
+            labels = {"album": "title", "albumartist": "album artist", "year": "year", "genre": "genre"}
+            songs = sum(1 for f in files if set(f.get("fields", [])) - set(album_level))
+            summary = "; ".join(x for x in (
+                _and([labels[k] for k in album_level]).capitalize(),
+                f"{songs} song{'s' if songs != 1 else ''}" if songs else "",
+                "filed in " + " / ".join(moved_to.split(os.sep)[-2:]) if moved_to else "") if x)
+            title = new["title"] + (f" (was {title_before})" if new["title"] != title_before else "")
+            edit_id = _remember(s, "album", new_id or id_, title, summary, undo) if remember and files else None
+        except Exception as err:
+            _put_files_back(before, refiled)
+            if isinstance(err, ManageError):
+                raise
+            log.exception("editing album %s failed", id_)
+            raise ManageError(f"Saving failed ({type(err).__name__}), so the files were put back as they were") from err
     _tidy_later()
     return {"written": written, "kept": kept, "moved_to": moved_to, "notes": notes, "album_id": new_id,
             "edit_id": edit_id, **({} if remember else {"undo": undo if files else None, "summary": summary})}
@@ -757,6 +810,7 @@ def edit_track(id_: int, fields: dict, remember: bool = True) -> dict:
         root = s.get(Root, t.root_id)
         if _taggable(t) and not _writable(t.path):
             raise ManageError("The song's folder is read-only for Muzix")
+        _check_unchanged([t])
         changes = {k: v for k, v in changes_in.items() if getattr(t, k) != v}
         before = [_before(s, t, changes)]
         title = changes.get("title", t.title)
@@ -971,8 +1025,7 @@ def _undo_files(s, u: dict):
             folder = os.path.commonpath([os.path.dirname(p) for p in moves])
             _refile(folder, folder, moves)
     rows = [s.get(Track, e["id"]) for e in u["files"]]
-    for e, t in zip(u["files"], rows):
-        t.path = e["was"]
+    _set_paths(s, [(t, e["was"]) for e, t in zip(u["files"], rows)])
     alb = s.get(Album, u["album_id"]) if u.get("album_id") else None
     if alb is not None and u.get("art") and alb.art == u["art"][1]:
         alb.art = u["art"][0]
