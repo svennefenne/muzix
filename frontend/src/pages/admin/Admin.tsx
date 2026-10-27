@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Activity, EyeOff, Folder, FolderOpen, HardDrive, Library, Plus, RefreshCw, Save, Settings2, Trash2, Upload, Users, X } from "lucide-react";
+import { Activity, EyeOff, Folder, FolderOpen, HardDrive, History, Library, Plus, RefreshCw, Save, Settings2, Trash2, Upload, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { create } from "zustand";
@@ -9,6 +9,7 @@ import { Display, Empty, Kicker, Loading, Modal, Switch } from "../../components
 import { useUi } from "../../store/ui";
 import type { Job } from "../../types";
 import { SchemePicker } from "../Settings";
+import { Edits } from "./Edits";
 import { HiddenAndTrash } from "./HiddenTrash";
 
 interface Root { id: number; path: string; kind: string; name: string; enabled: boolean; upload_target: boolean; excludes: string[]; items: number; exists: boolean; writable: boolean; last_scan: string | null }
@@ -563,7 +564,7 @@ export default function Admin() {
   // files dragged over any admin page can be dropped to upload them
   const files = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
   const nav = [["", "Overview", Activity], ["library", "Library folders", Library], ["upload", "Upload", Upload],
-    ["hidden", "Hidden & trash", EyeOff], ["jobs", "Jobs", RefreshCw], ["settings", "Settings", Settings2], ["users", "Users", Users]] as const;
+    ["edits", "Edits", History], ["hidden", "Hidden & trash", EyeOff], ["jobs", "Jobs", RefreshCw], ["settings", "Settings", Settings2], ["users", "Users", Users]] as const;
   return (
     <div className="page wide"
          onDragOver={(e) => { if (!files(e)) return; e.preventDefault(); setDragging(true); }}
@@ -590,6 +591,7 @@ export default function Admin() {
             <Route index element={<Overview />} />
             <Route path="library" element={<LibraryFolders />} />
             <Route path="upload" element={<UploadArea />} />
+            <Route path="edits" element={<Edits />} />
             <Route path="hidden" element={<HiddenAndTrash />} />
             <Route path="jobs" element={<Jobs />} />
             <Route path="settings" element={<AdminSettings />} />

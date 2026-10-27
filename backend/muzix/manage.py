@@ -11,16 +11,22 @@ Editing writes the new tags into the files (or, for chip and tracker formats tha
 them in TagOverride), then files an album in a music folder the way the rest of the library is
 filed, "<Genre>/<Album artist>/<Artist - Year - Album>/<n>. <Artist> - <Album> - <Title> (<Year>)",
 and reads the files again so the database matches what a scan would find.
+
+Every edit leaves an EditRecord of what it changed: the tags it touched exactly as the files had
+them, file and folder names, an item's own fields. `undo_edit` puts those back, unless something
+has changed the same files or fields since (then the later edit has to be undone first).
 """
 
+import hashlib
 import io
+import json
 import logging
 import os
 import re
 import shutil
 import threading
 import time
-from datetime import timezone
+from datetime import datetime, timezone
 
 import httpx
 from PIL import Image, ImageOps
@@ -28,8 +34,8 @@ from sqlalchemy import delete, func, or_, select, update
 
 from . import db, enrich, env, formats, jobs, scanner
 from .meta import tagwrite
-from .models import (Album, Artist, Book, Episode, Feed, FilePlaylist, Like, Playlist, Root, Station, TagOverride,
-                     Track, TrashItem)
+from .models import (Album, Artist, Book, EditRecord, Episode, Feed, FilePlaylist, Like, Playlist, Root, Station,
+                     TagOverride, Track, TrashItem)
 
 log = logging.getLogger("muzix.manage")
 TRASH = ".muzix-trash"
@@ -274,16 +280,100 @@ def restore(trash_id: int) -> dict:
         item = s.get(TrashItem, trash_id)
         if item is None:
             raise ManageError("That's no longer in the trash")
-        clash = [src for src, _ in item.moves if os.path.lexists(src)]
-        if clash:
-            raise ManageError(f"Something new is already at {clash[0]}; nothing was put back")
-        for src, dst in item.moves:
-            _move(dst, src)
-        _remove_empty(item.folder)
-        root_id = item.root_id
-        s.delete(item)
+        root_id = _restore(s, item)
     job = jobs.submit("scan", "Scan after putting back from the trash", root_id=root_id) if root_id else None
     return {"job_id": job}
+
+
+def _restore(s, item: TrashItem) -> int | None:
+    """A cover that was replaced swaps places with the one that replaced it, and goes into its
+    album's files again."""
+    clash = [src for src, _ in item.moves if os.path.lexists(src)]
+    root = s.get(Root, item.root_id) if item.root_id else None
+    swap = item.kind == "cover" and len(item.moves) == 1 and clash and os.path.isfile(clash[0]) and root
+    if clash and not swap:
+        raise ManageError(f"Something new is already at {clash[0]}; nothing was put back")
+    if swap:        # the cover that replaced it goes into the trash in its place, with the pictures it put in the files
+        now = _pictures_of(_tracks_in(s, os.path.dirname(clash[0])))
+        newer = _to_trash(root, "cover", item.title, item.subtitle, clash)
+        s.add(newer)
+        _save_pictures(now, os.path.join(newer.folder, EMBEDDED))
+    for src, dst in item.moves:
+        _move(dst, src)
+    if item.kind == "cover" and not _put_pictures(os.path.join(item.folder, EMBEDDED)):
+        _embed_again(s, item.moves[0][0])       # trashed before Muzix kept the pictures
+    _remove_empty(item.folder)
+    root_id = item.root_id
+    s.delete(item)
+    return root_id
+
+
+EMBEDDED = ".muzix-embedded.json"      # in a trashed cover's trash folder: the pictures its files had
+
+
+def _tracks_in(s, folder: str) -> list[Track]:
+    """The songs of the album in `folder` (and its CD folders)."""
+    return [t for t in s.scalars(select(Track).where(Track.path.startswith(folder + "/", autoescape=True)))
+            if album_dir([t.path]) == folder]
+
+
+def _pictures_of(tracks: list[Track]) -> dict:
+    """The pictures embedded in the files, before a new cover replaces them:
+    {"files": {path: key or None}, "pictures": {key: snapshot}}, each picture kept once."""
+    out = {"files": {}, "pictures": {}}
+    for t in tracks:
+        if not _taggable(t):
+            continue
+        try:
+            snap = tagwrite.pictures(t.path)
+        except (tagwrite.TagError, OSError):
+            continue
+        key = hashlib.sha1(json.dumps(snap, sort_keys=True).encode()).hexdigest()
+        out["pictures"].setdefault(key, snap)
+        out["files"][t.path] = key
+    return out
+
+
+def _save_pictures(saved: dict, path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(saved, f)
+
+
+def _put_pictures(path: str) -> bool:
+    """The pictures saved in `path` back into the files that are still where they were."""
+    try:
+        with open(path) as f:
+            saved = json.load(f)
+    except (OSError, ValueError):
+        return False
+    for file, key in saved["files"].items():
+        if os.path.exists(file):
+            try:
+                tagwrite.put_pictures(file, saved["pictures"][key])
+            except (tagwrite.TagError, OSError) as e:
+                log.warning("couldn't put the pictures back into %s: %s", file, e)
+    os.remove(path)
+    return True
+
+
+def _embed_again(s, cover: str):
+    """A cover put back from the trash goes into its album's files again, as setting it did."""
+    folder = os.path.dirname(cover)
+    try:
+        with open(cover, "rb") as f:
+            small = _jpeg(f.read(), 600)
+    except (OSError, ManageError):
+        return
+    tracks = _tracks_in(s, folder)
+    for t in tracks:
+        if _taggable(t):
+            try:
+                tagwrite.embed_cover(t.path, small)
+            except (tagwrite.TagError, OSError) as e:
+                log.warning("couldn't put the cover back into %s: %s", t.path, e)
+    for aid in {t.album_id for t in tracks if t.album_id}:
+        s.get(Album, aid).art = cover
 
 
 def empty_trash(trash_id: int | None = None) -> int:
@@ -318,42 +408,47 @@ def _taggable(t: Track) -> bool:
 
 def details(kind: str, id_: int) -> dict:
     with db.session() as s:
-        row = _row(s, kind, id_)
-        if kind == "album":
-            tracks = list(s.scalars(select(Track).where(Track.album_id == id_).order_by(Track.disc_no, Track.track_no, Track.path)))
-            root = s.get(Root, tracks[0].root_id) if tracks else None
-            folder = album_dir(sorted({t.path for t in tracks}))
-            return {"kind": kind, "id": id_, "title": row.title, "artist": row.artist_name, "year": row.year,
-                    "genre": row.genre, "folder": folder, "hidden": row.hidden,
-                    "art": f"/api/art/album/{id_}" if row.art else None,
-                    "files": "music" if root and root.kind == "music" else root.kind if root else "",
-                    "writable": bool(tracks) and _writable(tracks[0].path),
-                    "tags": "files" if tracks and all(_taggable(t) for t in tracks) else "muzix",
-                    "tracks": [{"id": t.id, "title": t.title, "artist": t.artist, "track_no": t.track_no,
-                                "disc_no": t.disc_no, "duration": t.duration, "format": t.format} for t in tracks]}
-        if kind == "track":
-            return {"kind": kind, "id": id_, "title": row.title, "artist": row.artist, "albumartist": row.albumartist,
-                    "album": row.album, "album_id": row.album_id, "track_no": row.track_no, "disc_no": row.disc_no,
-                    "year": row.year, "genre": row.genre, "path": row.path, "format": row.format, "hidden": row.hidden,
-                    "art": f"/api/art/album/{row.album_id}" if row.album_id else None,
-                    "writable": _writable(row.path), "tags": "files" if _taggable(row) else "muzix"}
-        if kind == "artist":
-            n = s.scalar(select(func.count()).select_from(Track).where(Track.artist_id == id_))
-            return {"kind": kind, "id": id_, "name": row.name, "songs": n, "hidden": row.hidden,
-                    "art": f"/api/art/artist/{id_}"}
-        if kind == "book":
-            return {"kind": kind, "id": id_, "title": row.title, "author": row.author, "narrator": row.narrator,
-                    "series": row.series, "year": row.year, "description": row.description, "hidden": row.hidden,
-                    "art": f"/api/art/book/{id_}" if row.art else None}
-        if kind == "podcast":
-            return {"kind": kind, "id": id_, "title": row.title, "author": row.author, "description": row.description,
-                    "image": row.image, "hidden": row.hidden}
-        if kind == "playlist":
-            return {"kind": kind, "id": id_, "name": row.name, "description": row.description, "hidden": row.hidden}
-        if kind == "fileplaylist":
-            return {"kind": kind, "id": id_, "name": row.name, "path": row.path, "hidden": row.hidden,
-                    "writable": _writable(row.path)}
-        return {"kind": kind, "id": id_, "name": row.name, "favicon": row.favicon, "hidden": row.hidden}
+        return {**_details(s, kind, id_), "last_edit": last_edit(s, kind, id_)}
+
+
+def _details(s, kind: str, id_: int) -> dict:
+    row = _row(s, kind, id_)
+    if kind == "album":
+        tracks = list(s.scalars(select(Track).where(Track.album_id == id_).order_by(Track.disc_no, Track.track_no, Track.path)))
+        root = s.get(Root, tracks[0].root_id) if tracks else None
+        folder = album_dir(sorted({t.path for t in tracks}))
+        return {"kind": kind, "id": id_, "title": row.title, "artist": row.artist_name, "year": row.year,
+                "genre": row.genre, "folder": folder, "hidden": row.hidden,
+                "art": f"/api/art/album/{id_}" if row.art else None,
+                "files": "music" if root and root.kind == "music" else root.kind if root else "",
+                "writable": bool(tracks) and _writable(tracks[0].path),
+                "tags": "files" if tracks and all(_taggable(t) for t in tracks) else "muzix",
+                "tracks": [{"id": t.id, "title": t.title, "artist": t.artist, "track_no": t.track_no,
+                            "disc_no": t.disc_no, "duration": t.duration, "format": t.format} for t in tracks]}
+    if kind == "track":
+        return {"kind": kind, "id": id_, "title": row.title, "artist": row.artist, "albumartist": row.albumartist,
+                "album": row.album, "album_id": row.album_id, "track_no": row.track_no, "disc_no": row.disc_no,
+                "year": row.year, "genre": row.genre, "path": row.path, "format": row.format, "hidden": row.hidden,
+                "duration": row.duration,
+                "art": f"/api/art/album/{row.album_id}" if row.album_id else None,
+                "writable": _writable(row.path), "tags": "files" if _taggable(row) else "muzix"}
+    if kind == "artist":
+        n = s.scalar(select(func.count()).select_from(Track).where(Track.artist_id == id_))
+        return {"kind": kind, "id": id_, "name": row.name, "songs": n, "hidden": row.hidden,
+                "art": f"/api/art/artist/{id_}"}
+    if kind == "book":
+        return {"kind": kind, "id": id_, "title": row.title, "author": row.author, "narrator": row.narrator,
+                "series": row.series, "year": row.year, "description": row.description, "hidden": row.hidden,
+                "art": f"/api/art/book/{id_}" if row.art else None}
+    if kind == "podcast":
+        return {"kind": kind, "id": id_, "title": row.title, "author": row.author, "description": row.description,
+                "image": row.image, "hidden": row.hidden}
+    if kind == "playlist":
+        return {"kind": kind, "id": id_, "name": row.name, "description": row.description, "hidden": row.hidden}
+    if kind == "fileplaylist":
+        return {"kind": kind, "id": id_, "name": row.name, "path": row.path, "hidden": row.hidden,
+                "writable": _writable(row.path)}
+    return {"kind": kind, "id": id_, "name": row.name, "favicon": row.favicon, "hidden": row.hidden}
 
 
 # ---------------------------------------------------------------- filing
@@ -526,9 +621,54 @@ def _summarize(s, album_ids: set[int]):
         alb.folder = os.path.dirname(tracks[0].path)
 
 
-def edit_album(id_: int, fields: dict, tracks: list[dict]) -> dict:
+def _and(words: list[str]) -> str:
+    return " and ".join([", ".join(words[:-1]), words[-1]] if len(words) > 1 else words)
+
+
+def _before(s, t: Track, changes: dict) -> dict:
+    """A file as it was before an edit: where it was, and the tags (or overrides) behind `changes`."""
+    e = {"id": t.id, "subsong": t.subsong, "was": t.path, "fields": sorted(changes)}
+    if not changes:
+        return e
+    if _taggable(t):
+        try:
+            e["tags"] = tagwrite.snapshot(t.path, changes)
+        except (tagwrite.TagError, OSError) as err:
+            raise ManageError(f"Couldn't read the tags of {os.path.basename(t.path)}: {err}")
+    else:
+        o = s.get(TagOverride, (t.path, t.subsong))
+        e["override"] = dict(o.fields) if o else None
+    return e
+
+
+def _after(s, before: list[dict], paths: dict[int, str]) -> list[dict]:
+    """The files an edit changed or moved, each also with its tags as the edit left them (to tell
+    later whether something has changed them since)."""
+    out = []
+    for e in before:
+        e["path"] = paths.get(e["id"], e["was"])
+        if e["fields"]:
+            if "tags" in e:
+                e["tags_after"] = tagwrite.snapshot(e["path"], e["fields"])
+            else:
+                o = s.get(TagOverride, (e["path"], e["subsong"]))
+                e["override_after"] = dict(o.fields) if o else None
+        if e["fields"] or e["path"] != e["was"]:
+            out.append(e)
+    return out
+
+
+def _remember(s, kind: str, item_id: int, title: str, summary: str, undo: dict) -> int:
+    rec = EditRecord(kind=kind, item_id=item_id, title=title, summary=summary, undo=undo)
+    s.add(rec)
+    s.flush()
+    return rec.id
+
+
+def edit_album(id_: int, fields: dict, tracks: list[dict], remember: bool = True) -> dict:
     """The album's fields (title, artist, year, genre) and its songs' (title, artist, track_no,
-    disc_no): into the files, then the album filed by its new tags."""
+    disc_no): into the files, then the album filed by its new tags. With `remember`, the edit is
+    kept in the list of edits to undo; otherwise what undoes it comes back as "undo"."""
     album_level = {"album": fields.get("title"), "albumartist": fields.get("artist"),
                    "year": fields.get("year"), "genre": fields.get("genre")}
     album_level = _clean_fields({k: v for k, v in album_level.items() if v is not None})
@@ -536,6 +676,7 @@ def edit_album(id_: int, fields: dict, tracks: list[dict]) -> dict:
     notes = []
     with db.session() as s:
         alb = _row(s, "album", id_)
+        title_before, art_before = alb.title, alb.art
         # only what changed: the window sends every field
         current = {"album": alb.title, "albumartist": alb.artist_name, "year": alb.year, "genre": alb.genre}
         album_level = {k: v for k, v in album_level.items() if v != current[k]}
@@ -546,9 +687,13 @@ def edit_album(id_: int, fields: dict, tracks: list[dict]) -> dict:
         if any(not _writable(t.path) for t in rows if _taggable(t)):
             raise ManageError("The album's folder is read-only for Muzix")
         written = kept = 0
+        before, todo = [], []
         for t in rows:
             want = {**album_level, **per_track.get(t.id, {})}
             changes = {k: v for k, v in want.items() if getattr(t, k) != v}
+            before.append(_before(s, t, changes))       # every file's tags first: then the writing
+            todo.append((t, changes))
+        for t, changes in todo:
             _write(s, t, changes)
             if changes:
                 written += _taggable(t)
@@ -579,19 +724,32 @@ def edit_album(id_: int, fields: dict, tracks: list[dict]) -> dict:
         elif root.kind == "music" and can_file:
             notes.append("Kept in its folder: it isn't in a Genre/Artist/Album folder of its own")
         s.flush()
+        files = _after(s, before, {t.id: t.path for t in rows})
+        undo = {"album_id": id_, "album_title": [title_before, new["title"]], "files": files,
+                "folder": [folder, moved_to] if moved_to and os.path.normpath(moved_to) != os.path.normpath(folder) else None,
+                "art": [art_before, alb.art] if alb.art != art_before else None}
         _rekey(s, alb, rows[0], new["title"])
         _reread(s, root, [(t.id, t.subsong, t.path) for t in rows], scanner.Resolver())
         s.flush()
         album_ids = {id_} | set(s.scalars(select(Track.album_id).where(Track.id.in_([t.id for t in rows]))))
         _summarize(s, {a for a in album_ids if a})
         new_id = s.scalar(select(Track.album_id).where(Track.id == rows[0].id))
+        labels = {"album": "title", "albumartist": "album artist", "year": "year", "genre": "genre"}
+        songs = sum(1 for f in files if set(f.get("fields", [])) - set(album_level))
+        summary = "; ".join(x for x in (
+            _and([labels[k] for k in album_level]).capitalize(),
+            f"{songs} song{'s' if songs != 1 else ''}" if songs else "",
+            "filed in " + " / ".join(moved_to.split(os.sep)[-2:]) if moved_to else "") if x)
+        title = new["title"] + (f" (was {title_before})" if new["title"] != title_before else "")
+        edit_id = _remember(s, "album", new_id or id_, title, summary, undo) if remember and files else None
     _tidy_later()
-    return {"written": written, "kept": kept, "moved_to": moved_to, "notes": notes, "album_id": new_id}
+    return {"written": written, "kept": kept, "moved_to": moved_to, "notes": notes, "album_id": new_id,
+            "edit_id": edit_id, **({} if remember else {"undo": undo if files else None, "summary": summary})}
 
 
-def edit_track(id_: int, fields: dict) -> dict:
+def edit_track(id_: int, fields: dict, remember: bool = True) -> dict:
     """One song's fields into its file. It's renamed to match when its album is filed; moving it
-    to another album's folder is left to editing that album."""
+    to another album's folder is left to editing that album. `remember` as for edit_album."""
     changes_in = _clean_fields(fields)
     notes = []
     with db.session() as s:
@@ -600,6 +758,8 @@ def edit_track(id_: int, fields: dict) -> dict:
         if _taggable(t) and not _writable(t.path):
             raise ManageError("The song's folder is read-only for Muzix")
         changes = {k: v for k, v in changes_in.items() if getattr(t, k) != v}
+        before = [_before(s, t, changes)]
+        title = changes.get("title", t.title)
         _write(s, t, changes)
         s.flush()
         renamed = None
@@ -626,13 +786,20 @@ def edit_track(id_: int, fields: dict) -> dict:
         elif changes and not same_album:
             notes.append("Its file stays in the album's folder; edit the album to file it elsewhere")
         s.flush()
+        files = _after(s, before, {t.id: t.path})
         old_album = t.album_id
         _reread(s, root, [(t.id, t.subsong, t.path)], scanner.Resolver())
         s.flush()
         new_album = s.scalar(select(Track.album_id).where(Track.id == id_))
         _summarize(s, {a for a in (old_album, new_album) if a})
+        labels = {"title": "title", "artist": "artist", "albumartist": "album artist", "album": "album",
+                  "track_no": "number", "disc_no": "disc", "year": "year", "genre": "genre"}
+        summary = "; ".join(x for x in (_and([labels[k] for k in changes]).capitalize(), "renamed" if renamed else "") if x)
+        undo = {"files": files}
+        edit_id = _remember(s, "track", id_, title, summary, undo) if remember and files else None
     _tidy_later()
-    return {"renamed_to": renamed, "notes": notes}
+    return {"renamed_to": renamed, "notes": notes, "edit_id": edit_id,
+            **({} if remember else {"undo": undo if files else None})}
 
 
 @jobs.job("rename_artist")
@@ -642,31 +809,39 @@ def rename_artist_job(ctx: jobs.JobContext, artist_id: int, name: str):
         a = _row(s, "artist", artist_id)
         old = a.name
         # the artist keeps their row (picture, tags, hidden), unless the new name is someone already there
-        if s.scalar(select(func.count()).select_from(Artist).where(Artist.name == name)) == 0:
+        renamed_row = s.scalar(select(func.count()).select_from(Artist).where(Artist.name == name)) == 0
+        if renamed_row:
             a.name = name
         albums = list(s.scalars(select(Album.id).where(Album.artist_id == artist_id)))
         loose = list(s.scalars(select(Track).where(Track.artist_id == artist_id, ~Track.album_id.in_(albums))))
     ctx.log(f"{old} → {name}: {len(albums)} albums")
+    parts = []      # what undoes each album and song, in the order they were done
     for i, aid in enumerate(albums):
         ctx.check()
         with db.session() as s:
             rows = list(s.scalars(select(Track).where(Track.album_id == aid)))
             per = [{"id": t.id, **({"artist": name} if t.artist == old else {})} for t in rows]
         try:
-            r = edit_album(aid, {"artist": name}, per)
+            r = edit_album(aid, {"artist": name}, per, remember=False)
+            parts += [r["undo"]] if r["undo"] else []
             ctx.log(f"  album {aid}: {r['written']} files" + (f", now in {r['moved_to']}" if r["moved_to"] else ""))
         except ManageError as e:
             ctx.log(f"  album {aid}: {e}")
         ctx.update((i + 1) / max(1, len(albums) + len(loose)))
     for t in loose:
         try:
-            edit_track(t.id, {k: name for k in ("artist", "albumartist") if getattr(t, k) == old})
+            r = edit_track(t.id, {k: name for k in ("artist", "albumartist") if getattr(t, k) == old}, remember=False)
+            parts += [r["undo"]] if r["undo"] else []
         except ManageError as e:
             ctx.log(f"  {t.path}: {e}")
     with db.session() as s:
         new = s.scalar(select(Artist).where(Artist.name == name))
         if new is not None and new.id != artist_id:
             ctx.log(f"merged into the existing artist {name}")
+        if parts or renamed_row:
+            n = len(parts)
+            _remember(s, "artist", artist_id, f"{name} (was {old})", f"Renamed; {n} album{'s' if n != 1 else ''} and songs",
+                      {"artist_id": artist_id, "name": old, "new": name, "row": renamed_row, "parts": parts})
 
 
 def edit_simple(kind: str, id_: int, fields: dict) -> dict:
@@ -679,6 +854,9 @@ def edit_simple(kind: str, id_: int, fields: dict) -> dict:
                    "playlist": ("name", "description"), "fileplaylist": ("name",),
                    "station": ("name", "favicon"), "artist": ("name",)}[kind]
         changes = {k: (int(v or 0) if k == "year" else str(v or "").strip()) for k, v in fields.items() if k in allowed}
+        before = {k: getattr(row, k) for k in changes if kind != "artist"}
+        path_before = getattr(row, "path", None)
+        custom_before = dict(row.custom or {}) if kind in ("book", "podcast") else None
         if kind == "artist":
             name = changes.get("name", "")
             if not name:
@@ -696,7 +874,196 @@ def edit_simple(kind: str, id_: int, fields: dict) -> dict:
             setattr(row, k, v)
         if kind in ("book", "podcast"):
             row.custom = {**(row.custom or {}), **changes}
-    return {}
+        changed = {k: v for k, v in changes.items() if before[k] != v}
+        moved = path_before is not None and row.path != path_before
+        if not changed and not moved:
+            return {}
+        undo = {"fields": {k: before[k] for k in changed}, "after": changed}
+        if moved:
+            undo["path"] = [path_before, row.path]
+        if custom_before is not None:
+            undo["custom"] = custom_before
+        title = str(getattr(row, "title", None) or getattr(row, "name", ""))
+        return {"edit_id": _remember(s, kind, id_, title, _and(sorted(changed)).capitalize(), undo)}
+
+
+# ---------------------------------------------------------------- undoing an edit
+
+def edit_list(limit: int = 100) -> list[dict]:
+    with db.session() as s:
+        return [{"id": e.id, "kind": e.kind, "item_id": e.item_id, "title": e.title, "summary": e.summary,
+                 "created_at": _utc(e.created_at), "undone_at": _utc(e.undone_at)}
+                for e in s.scalars(select(EditRecord).order_by(EditRecord.id.desc()).limit(limit))]
+
+
+def last_edit(s, kind: str, id_: int) -> dict | None:
+    """The item's latest edit still to undo. Only edits made since it came into the library: a
+    database can give a deleted item's id to a new one."""
+    row = s.get(MODELS[kind], id_)
+    since = getattr(row, "added_at", None) or getattr(row, "created_at", None)
+    q = select(EditRecord).where(EditRecord.kind == kind, EditRecord.item_id == id_, EditRecord.undone_at.is_(None))
+    if since is not None:
+        q = q.where(EditRecord.created_at >= since)
+    e = s.scalar(q.order_by(EditRecord.id.desc()).limit(1))
+    return {"id": e.id, "summary": e.summary, "created_at": _utc(e.created_at)} if e else None
+
+
+def _here(e: dict) -> str | None:
+    """Where a file of an edit is: where the edit put it, or back where it was (undone halfway)."""
+    return e["path"] if os.path.lexists(e["path"]) else e["was"] if os.path.lexists(e["was"]) else None
+
+
+def _check_files(s, u: dict):
+    """Refuses (before anything is touched) when the files aren't as the edit left them."""
+    later = "has been changed since; undo the later edit first"
+    paths = {e["path"] for e in u["files"]}
+    for e in u["files"]:
+        name = os.path.basename(e["path"])
+        here, t = _here(e), s.get(Track, e["id"])
+        if t is not None and here is None and os.path.lexists(t.path):
+            raise ManageError(f"{name} {later}")            # renamed or moved by another edit
+        if here is None or t is None:
+            raise ManageError(f"{name} isn't in the library any more")
+        if "tags" in e:
+            try:
+                now = tagwrite.snapshot(here, e["fields"])
+            except (tagwrite.TagError, OSError) as err:
+                raise ManageError(f"Couldn't read the tags of {name}: {err}")
+            if now not in (e["tags_after"], e["tags"]):
+                raise ManageError(f"{name} {later}")
+        elif e["fields"]:
+            o = s.get(TagOverride, (here, e["subsong"]))
+            if (dict(o.fields) if o else None) not in (e.get("override_after"), e["override"]):
+                raise ManageError(f"{name} {later}")
+        if here == e["path"] and e["was"] != e["path"] and os.path.lexists(e["was"]) and e["was"] not in paths \
+                and not (u.get("folder") and os.path.isdir(u["folder"][1])):
+            raise ManageError(f"Something new is already at {e['was']}; nothing was changed")
+    if u.get("folder"):
+        was, now = u["folder"]
+        if os.path.isdir(now) and os.path.lexists(was):
+            raise ManageError(f"Something new is already at {was}; nothing was changed")
+
+
+def _undo_files(s, u: dict):
+    """Tags (or overrides) back as they were, then the files back where they were."""
+    for e in u["files"]:
+        here = _here(e)
+        if "tags" in e:
+            try:
+                tagwrite.put_back(here, e["tags"])
+            except (tagwrite.TagError, OSError) as err:
+                raise ManageError(f"Couldn't put back the tags of {os.path.basename(here)}: {err}")
+        elif e["fields"]:
+            o = s.get(TagOverride, (here, e["subsong"]))
+            if e["override"] is None:
+                if o is not None:
+                    s.delete(o)
+            elif o is None:
+                s.add(TagOverride(path=here, subsong=e["subsong"], fields=e["override"]))
+            else:
+                o.fields = e["override"]
+    moves = {e["path"]: e["was"] for e in u["files"] if e["path"] != e["was"]}
+    if u.get("folder") and os.path.isdir(u["folder"][1]):
+        _refile(u["folder"][1], u["folder"][0], moves)
+    else:
+        moves = {a: b for a, b in moves.items() if os.path.lexists(a)}
+        if moves:
+            folder = os.path.commonpath([os.path.dirname(p) for p in moves])
+            _refile(folder, folder, moves)
+    rows = [s.get(Track, e["id"]) for e in u["files"]]
+    for e, t in zip(u["files"], rows):
+        t.path = e["was"]
+    alb = s.get(Album, u["album_id"]) if u.get("album_id") else None
+    if alb is not None and u.get("art") and alb.art == u["art"][1]:
+        alb.art = u["art"][0]
+    if alb is not None and u.get("folder") and alb.art and alb.art.startswith(u["folder"][1] + "/"):
+        alb.art = u["folder"][0] + alb.art[len(u["folder"][1]):]       # a cover set since, in the folder
+    s.flush()
+    root = s.get(Root, rows[0].root_id)
+    if alb is not None:
+        _rekey(s, alb, rows[0], u["album_title"][0])
+    old_albums = {t.album_id for t in rows}
+    _reread(s, root, [(t.id, t.subsong, t.path) for t in rows], scanner.Resolver())
+    s.flush()
+    new_albums = set(s.scalars(select(Track.album_id).where(Track.id.in_([t.id for t in rows]))))
+    _summarize(s, {a for a in old_albums | new_albums if a})
+
+
+def _undo_cover(s, u: dict):
+    """The cover picked with an album's edit: the old one back, or (it had none) the new one into the trash."""
+    c = u["cover"]
+    alb = s.get(Album, u["album_id"])
+    if c["trash"]:
+        item = s.get(TrashItem, c["trash"])
+        if item is not None:
+            _restore(s, item)
+    elif os.path.isfile(c["path"]):
+        root = _root_for(s, c["path"])
+        if root is not None:
+            s.add(_to_trash(root, "cover", alb.title if alb else "", "Cover picked with an edit that was undone", [c["path"]]))
+            if alb is not None:
+                alb.art = c["art"]
+    if c.get("pictures"):
+        _put_pictures(c["pictures"])        # exactly what the files had, none if none
+    s.flush()
+
+
+def _undo_fields(s, kind: str, id_: int, u: dict):
+    row = _row(s, kind, id_)
+    if any(getattr(row, k) != v for k, v in u["after"].items()):
+        raise ManageError("It has been changed since; undo the later edit first")
+    if u.get("path"):
+        was, now = u["path"]
+        if row.path == now:
+            _move(now, was)
+            row.path = was
+    for k, v in u["fields"].items():
+        setattr(row, k, v)
+    if "custom" in u:
+        row.custom = u["custom"]
+
+
+def undo_edit(edit_id: int) -> dict:
+    """Puts back what an edit changed. An artist's rename is undone album by album, each kept as
+    it's done, so stopping halfway (a file that can't be written) can be carried on with later."""
+    with db.session() as s:
+        rec = s.get(EditRecord, edit_id)
+        if rec is None:
+            raise ManageError("That edit isn't in the list any more")
+        if rec.undone_at:
+            raise ManageError("That edit has already been undone")
+        kind, item_id, u = rec.kind, rec.item_id, dict(rec.undo)
+        if kind != "artist":
+            if "files" in u:
+                _check_files(s, u)
+                if u.get("cover"):      # in the folder the edit made, before that moves back
+                    _undo_cover(s, u)
+                _undo_files(s, u)
+            else:
+                _undo_fields(s, kind, item_id, u)
+            rec.undone_at = datetime.now(timezone.utc)
+    if kind == "artist":
+        parts = u["parts"]
+        with db.session() as s:
+            for part in parts:
+                if not part.get("undone"):
+                    _check_files(s, part)
+            a = s.get(Artist, u["artist_id"])
+            if u["row"] and a is not None and a.name == u["new"] and \
+                    s.scalar(select(func.count()).select_from(Artist).where(Artist.name == u["name"])) == 0:
+                a.name = u["name"]
+        for i in reversed(range(len(parts))):
+            if parts[i].get("undone"):
+                continue
+            with db.session() as s:
+                _undo_files(s, parts[i])
+                parts[i] = {**parts[i], "undone": True}
+                rec = s.get(EditRecord, edit_id)
+                rec.undo = {**u, "parts": list(parts)}
+        with db.session() as s:
+            s.get(EditRecord, edit_id).undone_at = datetime.now(timezone.utc)
+    _tidy_later()
+    return {"undone": edit_id, "kind": kind, "item_id": item_id}
 
 
 # ---------------------------------------------------------------- covers
@@ -735,9 +1102,10 @@ def _own_art(folder: str, id_: int) -> str:
     return str(env.DATA_DIR / folder / f"{id_}.jpg")
 
 
-def set_cover(kind: str, id_: int, data: bytes) -> dict:
+def set_cover(kind: str, id_: int, data: bytes, edit_id: int | None = None) -> dict:
     """A new cover: an album's goes into its folder as cover.jpg and into its files (the old cover
-    file into the trash); an artist's, book's or a shared folder's into Muzix's own data."""
+    file into the trash); an artist's, book's or a shared folder's into Muzix's own data. With
+    `edit_id` (an album picked from a source, saved with its edit) undoing the edit undoes it too."""
     big, small = _jpeg(data, 1200), _jpeg(data, 600)
     notes = []
     with db.session() as s:
@@ -754,8 +1122,19 @@ def set_cover(kind: str, id_: int, data: bytes) -> dict:
             if root and folder and _writable(folder) and _owns_folder(folder, set(paths), root.path):
                 path = os.path.join(folder, "cover.jpg")
                 old = scanner.find_cover(folder)
+                trashed = None
+                had = _pictures_of(tracks)
                 if old and os.path.isfile(old):
-                    s.add(_to_trash(root, "cover", row.title, f"Cover of {row.title}", [old]))
+                    trashed = _to_trash(root, "cover", row.title, f"Cover of {row.title}", [old])
+                    s.add(trashed)
+                    s.flush()
+                    _save_pictures(had, os.path.join(trashed.folder, EMBEDDED))
+                rec = s.get(EditRecord, edit_id) if edit_id else None
+                if rec is not None and rec.kind == "album" and rec.item_id == id_ and not rec.undone_at:
+                    pictures = str(env.DATA_DIR / "edit-pictures" / f"{edit_id}.json")
+                    _save_pictures(had, pictures)
+                    rec.undo = {**rec.undo, "cover": {"trash": trashed.id if trashed else None, "path": path,
+                                                      "art": row.art, "pictures": pictures}}
                 with open(path + ".part", "wb") as f:
                     f.write(big)
                 os.replace(path + ".part", path)

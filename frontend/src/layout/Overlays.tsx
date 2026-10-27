@@ -318,5 +318,11 @@ export function PlaylistPicker() {
 export function Toast() {
   const toast = useUi((s) => s.toast);
   if (!toast) return null;
-  return <div className={`toast ${toast.kind}`} role="status">{toast.text}</div>;
+  const act = toast.action;
+  return (
+    <div className={`toast ${toast.kind}`} role="status">
+      {toast.text}
+      {act && <button className="toast-action" onClick={() => { useUi.setState({ toast: null }); act.run(); }}>{act.label}</button>}
+    </div>
+  );
 }

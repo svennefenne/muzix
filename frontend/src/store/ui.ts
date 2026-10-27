@@ -23,15 +23,18 @@ interface UiState {
   queueOpen: boolean;
   nowPlayingOpen: boolean;
   adminMode: boolean;            // admins: a cog on every item, to edit, hide or delete it (per device)
-  toast: { text: string; kind: "info" | "error"; id: number } | null;
+  toast: { text: string; kind: "info" | "error"; id: number; action?: ToastAction } | null;
   setUser: (u: User | null) => void;
   setPref: <K extends keyof Prefs>(key: K, value: Prefs[K]) => void;
   setBrowse: (key: string, patch: BrowsePref) => void;
   setQueueOpen: (v: boolean) => void;
   setNowPlayingOpen: (v: boolean) => void;
   setAdminMode: (v: boolean) => void;
-  notify: (text: string, kind?: "info" | "error") => void;
+  notify: (text: string, kind?: "info" | "error", action?: ToastAction) => void;
 }
+
+/** A button in the message, such as Undo after saving an edit. */
+export interface ToastAction { label: string; run: () => void }
 
 const LOCAL = "muzix.prefs";
 
@@ -133,12 +136,12 @@ export const useUi = create<UiState>((set, get) => ({
       /* private mode */
     }
   },
-  notify: (text, kind = "info") => {
+  notify: (text, kind = "info", action) => {
     const id = Date.now();
-    set({ toast: { text, kind, id } });
+    set({ toast: { text, kind, id, action } });
     window.setTimeout(() => {
       if (get().toast?.id === id) set({ toast: null });
-    }, kind === "error" ? 6000 : 3500);
+    }, action ? 10000 : kind === "error" ? 6000 : 3500);
   },
 }));
 

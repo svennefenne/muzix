@@ -1,18 +1,20 @@
 /** The admin's edit window: an item's metadata (an album with its songs), what MusicBrainz,
- * Deezer, iTunes and Spotify know about it, and its cover, from those sources, a web image
- * search, a picture's address or a file. Covers are saved at once; the rest with Save. */
+ * Discogs, Deezer, iTunes and Spotify know about it, and its cover. An album picked from a source
+ * brings that source's cover, saved with the rest; otherwise covers come from the sources,
+ * fanart.tv, a web image search, a picture's address or a file, and are saved at once. */
 
 import { useQuery } from "@tanstack/react-query";
-import { ExternalLink, ImagePlus, Loader2, Search, Upload } from "lucide-react";
+import { ExternalLink, ImagePlus, Loader2, RotateCcw, Search, Upload } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
-import { api, fmtTime } from "../api";
+import { ago, api, fmtTime } from "../api";
 import { useUi } from "../store/ui";
-import { type ItemKind, refreshAll } from "./AdminMode";
+import { type ItemKind, refreshAll, undoEdit } from "./AdminMode";
 import { Modal } from "./ui";
 
 interface TrackEdit { id: number; title: string; artist: string; track_no: number; disc_no: number; duration?: number }
 type Details = { kind: ItemKind; id: number; tracks?: TrackEdit[]; art?: string | null; image?: string; favicon?: string;
-  tags?: "files" | "muzix"; writable?: boolean; files?: string; album_id?: number | null } & Record<string, unknown>;
+  tags?: "files" | "muzix"; writable?: boolean; files?: string; album_id?: number | null; duration?: number;
+  last_edit?: { id: number; summary: string; created_at: string } | null } & Record<string, unknown>;
 interface Match {
   source: string; id: string; title: string; artist?: string; album?: string; year?: number; tracks?: number;
   cover?: string | null; url?: string; country?: string; label?: string; format?: string; genre?: string;
@@ -20,7 +22,10 @@ interface Match {
 }
 interface Found<T> { results: T[]; errors: Record<string, string> }
 interface Cover { source: string; thumb: string; url: string; title: string; width?: number; height?: number }
-interface AlbumDetails { title: string; artist: string; year: number; genre: string; tracks: { disc: number; no: number; title: string; artist: string }[] }
+interface Song { disc: number; no: number; title: string; artist: string; length?: number }
+interface AlbumDetails { title: string; artist: string; year: number; genre: string; cover?: string | null; tracks: Song[] }
+type Pairing = { song: Song; how: "length" | "number" | "order" } | undefined;
+interface Picked { url: string; thumb: string; source: string }
 type Form = Record<string, string | number>;
 
 const FIELDS: Record<ItemKind, [string, string, "text" | "number" | "area"][]> = {
@@ -40,8 +45,9 @@ const NOUN: Record<ItemKind, string> = {
   fileplaylist: "playlist", station: "station",
 };
 const LOOKUP: Partial<Record<ItemKind, "album" | "track" | "artist">> = { album: "album", track: "track", artist: "artist" };
-const SOURCE: Record<string, string> = { musicbrainz: "MusicBrainz", deezer: "Deezer", itunes: "iTunes", spotify: "Spotify", web: "Web search" };
-const ORDER = ["musicbrainz", "spotify", "deezer", "itunes"];     // the fullest metadata first
+const SOURCE: Record<string, string> = { musicbrainz: "MusicBrainz", discogs: "Discogs", deezer: "Deezer", itunes: "iTunes",
+  spotify: "Spotify", fanarttv: "fanart.tv", web: "Web search" };
+const ORDER = ["musicbrainz", "discogs", "spotify", "deezer", "itunes"];     // the fullest metadata first
 const SHOWN = 8;
 
 /** A picture that steps aside when it can't load (a release without cover art). */
@@ -49,6 +55,43 @@ function Thumb({ src }: { src?: string | null }) {
   const [failed, setFailed] = useState(false);
   return src && !failed ? <img src={src} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} />
     : <span className="edit-nocover" />;
+}
+
+/** Close enough in length to be the same recording: 3 s, or 2.5% of a long one. */
+const sameLength = (a: number, b: number) => Math.abs(a - b) <= Math.max(3, b * 0.025);
+
+/** Each file to the source's song of the same length, the closest pairs first; the numbers only
+ * break near ties. Without lengths to go by: disc and number, and file order only when the counts
+ * agree and nothing else matched. A file whose length no song has keeps its own tags. */
+function pair(files: TrackEdit[], songs: Song[]): Pairing[] {
+  const out: Pairing[] = files.map(() => undefined);
+  const used = new Set<number>();
+  const timed = songs.some((s) => s.length);
+  const close: [number, number, number][] = [];
+  files.forEach((f, i) => songs.forEach((s, j) => {
+    if (f.duration && s.length && sameLength(f.duration, s.length)) {
+      const sameNo = f.track_no === s.no && (f.disc_no || 1) === (s.disc || 1);
+      close.push([Math.abs(f.duration - s.length) + (sameNo ? 0 : 0.5), i, j]);
+    }
+  }));
+  close.sort((a, b) => a[0] - b[0]);
+  for (const [, i, j] of close) {
+    if (!out[i] && !used.has(j)) {
+      out[i] = { song: songs[j], how: "length" };
+      used.add(j);
+    }
+  }
+  const byNo = new Map(songs.map((s, j) => [`${s.disc || 1}-${s.no}`, j]));
+  files.forEach((f, i) => {
+    const j = f.track_no ? byNo.get(`${f.disc_no || 1}-${f.track_no}`) : undefined;
+    if (out[i] || j === undefined || used.has(j) || (timed && f.duration && songs[j].length)) return;   // its length said no
+    out[i] = { song: songs[j], how: "number" };
+    used.add(j);
+  });
+  if (out.every((p) => !p) && files.length === songs.length && !(timed && files.some((f) => f.duration))) {
+    return songs.map((song) => ({ song, how: "order" }));
+  }
+  return out;
 }
 
 /** Where the changes end up, in a sentence. */
@@ -75,6 +118,9 @@ export function EditDialog({ kind, id, onClose }: { kind: ItemKind; id: number; 
   const [filled, setFilled] = useState("");
   const [saving, setSaving] = useState(false);
   const [ready, setReady] = useState(false);       // the form holds the item: the side panel can start searching
+  const [picked, setPicked] = useState<Picked | null>(null);       // the cover of the album taken from a source
+  const [missed, setMissed] = useState<Set<number>>(new Set());    // songs no source song was as long as
+  const [matches, setMatches] = useState<number | null>(null);     // how many the sources found, once they answer
   const d = q.data;
   useEffect(() => {
     if (!d) return;
@@ -86,12 +132,22 @@ export function EditDialog({ kind, id, onClose }: { kind: ItemKind; id: number; 
   const save = async () => {
     setSaving(true);
     try {
-      const r = await api.put<{ notes?: string[]; job_id?: number; moved_to?: string | null; renamed_to?: string | null }>(
+      const r = await api.put<{ notes?: string[]; job_id?: number; moved_to?: string | null; renamed_to?: string | null; edit_id?: number | null }>(
         `/api/manage/${kind}/${id}`, { fields: form, tracks });
       const said = r.job_id ? "Renaming in the background: see Admin → Jobs"
         : r.moved_to ? `Saved, and filed in ${r.moved_to.split("/").slice(-3).join(" / ")}`
         : r.renamed_to ? "Saved, and the file renamed" : "Saved";
-      notify([said, ...(r.notes || [])].join(". "));
+      let cover = "";
+      if (picked) {
+        try {
+          await api.post(`/api/manage/album/${id}/cover`, { url: picked.url, edit_id: r.edit_id });
+          cover = `with the cover from ${picked.source}`;
+        } catch (e) {
+          cover = `but the cover from ${picked.source} couldn't be saved: ${(e as Error).message}`;
+        }
+      }
+      notify([cover ? `${said}, ${cover}` : said, ...(r.notes || [])].join(". "), cover.startsWith("but") ? "error" : "info",
+        r.edit_id ? { label: "Undo", run: () => void undoEdit(r.edit_id!) } : undefined);
       refreshAll();
       onClose();
     } catch (e) {
@@ -107,22 +163,32 @@ export function EditDialog({ kind, id, onClose }: { kind: ItemKind; id: number; 
     } else if (kind === "track") {
       setForm({ ...form, title: m.title, artist: m.artist || form.artist, album: m.album || form.album,
         year: m.year || form.year, genre: m.genre || form.genre, track_no: m.no || form.track_no, disc_no: m.disc || form.disc_no });
+      if (m.length && d?.duration && !sameLength(d.duration, m.length)) {
+        setFilled(`Filled in from ${SOURCE[m.source]}, but its song is ${fmtTime(m.length)} long and this file ${fmtTime(d.duration)}: `
+          + "it may be another recording. Check it, then save.");
+        return;
+      }
     } else {
       try {
         const a = await api.get<AlbumDetails>(`/api/manage/lookup/${m.source}/album/${encodeURIComponent(m.id)}`);
         setForm({ ...form, title: a.title || form.title, artist: a.artist || form.artist, year: a.year || form.year,
           genre: a.genre || form.genre });
-        // songs by disc and number, or in order when the counts agree
-        const byNo = new Map(a.tracks.map((t) => [`${t.disc || 1}-${t.no}`, t]));
-        let matched = 0;
+        const pairs = pair(tracks, a.tracks);
+        const discs = a.tracks.some((x) => (x.disc || 1) > 1);
         setTracks(tracks.map((t, i) => {
-          const r = byNo.get(`${t.disc_no || 1}-${t.track_no}`) || (a.tracks.length === tracks.length ? a.tracks[i] : undefined);
-          if (!r) return t;
-          matched++;
-          return { ...t, title: r.title, artist: r.artist || t.artist, track_no: r.no || t.track_no,
-            disc_no: a.tracks.some((x) => (x.disc || 1) > 1) ? r.disc : t.disc_no };
+          const r = pairs[i]?.song;
+          return r ? { ...t, title: r.title, artist: r.artist || t.artist, track_no: r.no || t.track_no, disc_no: discs ? r.disc : t.disc_no } : t;
         }));
-        setFilled(`Filled in from ${SOURCE[m.source]}: ${matched} of ${tracks.length} songs matched. Check them, then save.`);
+        const matched = pairs.filter(Boolean).length;
+        const byLength = pairs.filter((p) => p?.how === "length").length;
+        const left = new Set(tracks.filter((_, i) => !pairs[i]).map((t) => t.id));
+        setMissed(left);
+        setPicked(a.cover ? { url: a.cover, thumb: m.cover || a.cover, source: SOURCE[m.source] } : null);
+        const source = SOURCE[m.source];
+        setFilled(`Filled in from ${source}: ${matched} of ${tracks.length} songs matched`
+          + (byLength ? (byLength === matched ? " by their length" : ` (${byLength} by their length)`) : "")
+          + (left.size ? `. ${left.size} kept ${left.size === 1 ? "its" : "their"} own (marked): no song on ${source} is as long` : "")
+          + (a.cover ? ". Its cover comes too" : `. ${source} has no cover for it, so the current one stays`) + ". Check them, then save.");
         return;
       } catch (e) {
         notify((e as Error).message, "error");
@@ -141,6 +207,14 @@ export function EditDialog({ kind, id, onClose }: { kind: ItemKind; id: number; 
           <header className="edit-head">
             <div className="kicker">Edit {NOUN[kind]}{d.hidden ? " · hidden" : ""}</div>
             <h2 className="h2 ellipsis">{String(d.title ?? d.name ?? "")}</h2>
+            {d.last_edit && (
+              <div className="edit-last">
+                <span className="faint">Edited {ago(d.last_edit.created_at)}: {d.last_edit.summary || "changes"}.</span>
+                <button className="btn small" onClick={async () => { if (await undoEdit(d.last_edit!.id)) onClose(); }}>
+                  <RotateCcw size={13} /> Undo that edit
+                </button>
+              </div>
+            )}
           </header>
           <div className="edit-grid">
             <section className="edit-main">
@@ -156,14 +230,16 @@ export function EditDialog({ kind, id, onClose }: { kind: ItemKind; id: number; 
                   </div>
                 ))}
               </div>
-              {kind === "album" && <TrackTable tracks={tracks} onChange={setTracks} />}
+              {kind === "album" && <TrackTable tracks={tracks} missed={missed} onChange={setTracks} />}
               {filled && <p className="edit-filled">{filled}</p>}
               <p className="faint edit-where">{savedWhere(d)}</p>
             </section>
             <aside className="edit-side">
-              {ready && LOOKUP[kind] && <Matches kind={LOOKUP[kind]!} form={form} onUse={use} />}
+              {ready && LOOKUP[kind] && <Matches kind={LOOKUP[kind]!} form={form} onUse={use} onResults={setMatches} />}
               {ready && (["album", "track", "artist", "book", "podcast", "station"] as ItemKind[]).includes(kind)
-                && !(kind === "track" && !d.album_id) && <Covers kind={kind} id={id} d={d} form={form} />}
+                && !(kind === "track" && !d.album_id)
+                && <Covers kind={kind} id={id} d={d} form={form} picked={picked} onUnpick={() => setPicked(null)}
+                           search={!LOOKUP[kind] || matches === 0} />}
             </aside>
           </div>
           <footer className="edit-foot">
@@ -178,13 +254,14 @@ export function EditDialog({ kind, id, onClose }: { kind: ItemKind; id: number; 
   );
 }
 
-function TrackTable({ tracks, onChange }: { tracks: TrackEdit[]; onChange: (t: TrackEdit[]) => void }) {
+function TrackTable({ tracks, missed, onChange }: { tracks: TrackEdit[]; missed: Set<number>; onChange: (t: TrackEdit[]) => void }) {
   const set = (i: number, patch: Partial<TrackEdit>) => onChange(tracks.map((t, j) => (j === i ? { ...t, ...patch } : t)));
   return (
     <div className="edit-tracks" role="table" aria-label="Songs">
       <div className="edit-track head" role="row"><span>Disc</span><span>#</span><span>Title</span><span>Artist</span><span /></div>
       {tracks.map((t, i) => (
-        <div key={t.id} className="edit-track" role="row">
+        <div key={t.id} className={`edit-track ${missed.has(t.id) ? "missed" : ""}`} role="row"
+             title={missed.has(t.id) ? "No song of this length in the picked album: kept as it was" : undefined}>
           <input className="input" type="number" aria-label="Disc" value={t.disc_no || ""} onChange={(e) => set(i, { disc_no: Number(e.target.value) || 0 })} />
           <input className="input" type="number" aria-label="Track" value={t.track_no || ""} onChange={(e) => set(i, { track_no: Number(e.target.value) || 0 })} />
           <input className="input" aria-label="Title" value={t.title} onChange={(e) => set(i, { title: e.target.value })} />
@@ -196,7 +273,9 @@ function TrackTable({ tracks, onChange }: { tracks: TrackEdit[]; onChange: (t: T
   );
 }
 
-function Matches({ kind, form, onUse }: { kind: "album" | "track" | "artist"; form: Form; onUse: (m: Match) => Promise<void> }) {
+function Matches({ kind, form, onUse, onResults }: {
+  kind: "album" | "track" | "artist"; form: Form; onUse: (m: Match) => Promise<void>; onResults: (n: number) => void;
+}) {
   const first = { artist: String((kind === "artist" ? form.name : form.artist) ?? ""), title: kind === "artist" ? "" : String(form.title ?? ""),
     album: kind === "track" ? String(form.album ?? "") : "" };
   const [input, setInput] = useState(first);
@@ -208,6 +287,10 @@ function Matches({ kind, form, onUse }: { kind: "album" | "track" | "artist"; fo
     queryKey: ["lookup", kind, ask], enabled: ready, staleTime: 600_000,
     queryFn: () => api.get<Found<Match>>("/api/manage/lookup", { kind, ...ask }),
   });
+  const count = r.data?.results.length;
+  useEffect(() => {
+    if (count !== undefined) onResults(count);
+  }, [count, onResults]);
   const submit = (e: FormEvent) => {
     e.preventDefault();
     setAsk(input);
@@ -221,7 +304,7 @@ function Matches({ kind, form, onUse }: { kind: "album" | "track" | "artist"; fo
                                      onChange={(e) => setInput({ ...input, title: e.target.value })} />}
         <button className="btn small" aria-label="Search"><Search size={14} /></button>
       </form>
-      {r.isFetching ? <div className="dim edit-wait"><Loader2 size={14} className="spin" /> Asking MusicBrainz, Deezer, iTunes and Spotify…</div> : (
+      {r.isFetching ? <div className="dim edit-wait"><Loader2 size={14} className="spin" /> Asking MusicBrainz, Discogs, Deezer, iTunes and Spotify…</div> : (
         <ul className="edit-matches">
           {sorted(r.data?.results || []).slice(0, all ? undefined : SHOWN).map((m) => (
             <li key={`${m.source}-${m.id}`}>
@@ -255,32 +338,43 @@ function Matches({ kind, form, onUse }: { kind: "album" | "track" | "artist"; fo
   );
 }
 
+/** Each source's best first, then their second best, and so on: one source's many editions
+ * of an album don't push the others out of sight. The fullest metadata leads each round. */
 function sorted(results: Match[]): Match[] {
-  return [...results].sort((a, b) => ORDER.indexOf(a.source) - ORDER.indexOf(b.source));
+  const seen: Record<string, number> = {};
+  const rank = new Map(results.map((m) => [m, (seen[m.source] = (seen[m.source] ?? -1) + 1)]));
+  return [...results].sort((a, b) => rank.get(a)! - rank.get(b)! || ORDER.indexOf(a.source) - ORDER.indexOf(b.source));
 }
 
 function CoverTile({ c, busy, onUse }: { c: Cover; busy: string; onUse: (url: string) => void }) {
+  const [src, setSrc] = useState(c.thumb);
   const [failed, setFailed] = useState(false);
   if (failed) return null;
   return (
     <button className={`edit-cover ${busy === c.url ? "busy" : ""}`} disabled={!!busy}
             title={`${c.source}: ${c.title}${c.width ? ` (${c.width}×${c.height})` : ""}`} onClick={() => onUse(c.url)}>
-      <img src={c.thumb} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} />
+      <img src={src} alt="" loading="lazy" referrerPolicy="no-referrer"
+           onError={() => (src !== c.url ? setSrc(c.url) : setFailed(true))} />
       <span>{c.source}{c.width ? ` · ${c.width}` : ""}</span>
       {busy === c.url && <Loader2 size={18} className="spin" />}
     </button>
   );
 }
 
-function Covers({ kind, id, d, form }: { kind: ItemKind; id: number; d: Details; form: Form }) {
+/** The cover: the one an album picked from a source brings along, or one to choose. The sources are
+ * only asked for covers when the album wasn't found (`search`) or the admin asks for others. */
+function Covers({ kind, id, d, form, picked, onUnpick, search }: {
+  kind: ItemKind; id: number; d: Details; form: Form; picked: Picked | null; onUnpick: () => void; search: boolean;
+}) {
   const notify = useUi((s) => s.notify);
   const cover = kind === "track" ? "album" : kind;
   const music = cover === "album" || cover === "artist";
   const urlOnly = kind === "podcast" || kind === "station";
-  const [{ artist, title }] = useState(() => ({
+  const names = () => ({        // the form as it is now: an album picked from a source has its names
     artist: String((kind === "artist" ? form.name : kind === "album" ? form.artist : form.albumartist || form.artist) ?? ""),
     title: String((kind === "track" ? form.album : kind === "artist" ? "" : form.title ?? form.name) ?? ""),
-  }));
+  });
+  const [{ artist, title }] = useState(names);
   const suggest = { album: `${artist} ${title} album cover`, artist: `${artist} band photo`, book: `${title} ${form.author ?? ""} audiobook cover`,
     podcast: `${title} podcast`, station: `${form.name ?? ""} radio logo` }[cover as "album"] || title;
   const [webInput, setWebInput] = useState(suggest.trim());
@@ -289,9 +383,14 @@ function Covers({ kind, id, d, form }: { kind: ItemKind; id: number; d: Details;
   const [busy, setBusy] = useState("");
   const [version, setVersion] = useState(0);
   const [current, setCurrent] = useState<string | null>((d.art as string) || d.image || d.favicon || null);
+  const [ask, setAsk] = useState<{ artist: string; title: string } | null>(null);
+  useEffect(() => {
+    if (search) setAsk((a) => a ?? names());
+  }, [search]);     // the names as they were when the sources found nothing
+  const item = kind === "track" ? d.album_id : id;      // its MusicBrainz id finds it on fanart.tv
   const found = useQuery({
-    queryKey: ["covers", cover, artist, title], enabled: music && !!(artist || title), staleTime: 600_000,
-    queryFn: () => api.get<Found<Cover>>("/api/manage/covers", { kind: cover, artist, title }),
+    queryKey: ["covers", cover, ask, item], enabled: music && !!(ask?.artist || ask?.title), staleTime: 600_000,
+    queryFn: () => api.get<Found<Cover>>("/api/manage/covers", { kind: cover, ...ask!, item: item ?? 0 }),
   });
   const webFound = useQuery({
     queryKey: ["covers-web", web], enabled: !!web, staleTime: 600_000,
@@ -299,6 +398,7 @@ function Covers({ kind, id, d, form }: { kind: ItemKind; id: number; d: Details;
   });
 
   const done = (url?: string) => {
+    onUnpick();
     notify(kind === "track" ? "Album cover saved" : "Cover saved");
     if (url && urlOnly) setCurrent(url);
     else setCurrent(kind === "artist" ? `/api/art/artist/${id}` : kind === "book" ? `/api/art/book/${id}`
@@ -340,8 +440,15 @@ function Covers({ kind, id, d, form }: { kind: ItemKind; id: number; d: Details;
     <section className="edit-panel">
       <h3 className="edit-panel-title">{kind === "track" ? "Album cover" : kind === "station" ? "Logo" : kind === "artist" ? "Picture" : "Cover"}</h3>
       <div className="edit-current">
-        {shown ? <img src={shown} alt="" /> : <span className="edit-nocover big"><ImagePlus size={22} /></span>}
+        {picked ? <img src={picked.thumb} alt="" referrerPolicy="no-referrer" />
+          : shown ? <img src={shown} alt="" /> : <span className="edit-nocover big"><ImagePlus size={22} /></span>}
         <div className="edit-own">
+          {picked && (
+            <div className="edit-picked">
+              <span>{picked.source}'s cover, saved with the album.</span>
+              <button className="btn small ghost" onClick={onUnpick}>Keep the current one</button>
+            </div>
+          )}
           <form onSubmit={(e) => { e.preventDefault(); if (paste) use(paste); }}>
             <input className="input" placeholder="Paste a picture's address" value={paste} onChange={(e) => setPaste(e.target.value)} />
             <button className="btn small" disabled={!paste || !!busy}>Use</button>
@@ -354,6 +461,9 @@ function Covers({ kind, id, d, form }: { kind: ItemKind; id: number; d: Details;
           )}
         </div>
       </div>
+      {music && !ask && (
+        <button className="btn small edit-others" onClick={() => setAsk(names())}><Search size={14} /> Find other covers</button>
+      )}
       {music && (found.isFetching ? <div className="dim edit-wait"><Loader2 size={14} className="spin" /> Looking for covers…</div>
         : found.data && (found.data.results.length ? grid(found.data.results) : <p className="dim">No covers found in the music sources.</p>))}
       <form className="edit-search" onSubmit={(e) => { e.preventDefault(); setWeb(webInput); }}>

@@ -1,8 +1,9 @@
 """Metadata and cover art from outside: what an admin compares a library item with when editing it.
 
 MusicBrainz (with the Cover Art Archive), Deezer and iTunes need no account; Spotify is asked
-through the admin's own linked account; Brave Search finds plain web images with an API key from
-the admin page. VGMdb isn't here: its API mirror is gone and the site sits behind a bot check.
+through the admin's own linked account; Discogs (a personal token), fanart.tv (pictures found by
+MusicBrainz id) and Brave Search (plain web images) use keys from the admin page. VGMdb isn't here:
+its API mirror is gone and the site sits behind a bot check.
 
 `search(kind, ...)` asks every source at once and returns what each found (or why it couldn't);
 `details(source, kind, id)` fills in a picked result's track list; `covers(...)` gathers pictures.
@@ -64,7 +65,7 @@ def _get(c: httpx.Client, url: str, params: dict | None = None, mb: bool = False
 
 def search(kind: str, artist: str = "", title: str = "", album: str = "", user=None, db=None) -> dict:
     """{results: [...], errors: {source: why}} for kind album | track | artist."""
-    jobs = {"musicbrainz": _musicbrainz, "deezer": _deezer, "itunes": _itunes}
+    jobs = {"musicbrainz": _musicbrainz, "discogs": _discogs, "deezer": _deezer, "itunes": _itunes}
     if user is not None and db is not None:
         jobs["spotify"] = _spotify
     results, errors = [], {}
@@ -147,6 +148,78 @@ def _deezer(kind, artist, title, album, user, db) -> list[dict]:
     return out
 
 
+def _dc_name(name: str) -> str:
+    """Discogs tells namesakes apart with a number: "Nirvana (2)"; an asterisk marks a name variation."""
+    return re.sub(r"\s*\(\d+\)$", "", (name or "").strip().rstrip("*"))
+
+
+def _dc_artists(artists) -> str:
+    out = ""
+    for a in artists or []:
+        join = (a.get("join") or "").strip()
+        out += _dc_name(a.get("anv") or a.get("name", "")) + (", " if join == "," else f" {join} " if join else ", ")
+    return out.strip(" ,")
+
+
+def _dc_get(c: httpx.Client, path: str, params: dict | None = None) -> dict:
+    token = settings.get("discogs_token")
+    if not token:
+        raise SourceError("needs a personal access token on the admin page")
+    return _get(c, f"https://api.discogs.com/{path}", params, headers={"Authorization": f"Discogs token={token}"})
+
+
+def _dc_search(kind: str, artist: str, title: str, per_page: int = LIMIT) -> list[dict]:
+    """Albums as masters (one per album, all its versions behind it), or releases when no master fits."""
+    with _client() as c:
+        if kind == "artist":
+            return _dc_get(c, "database/search", {"type": "artist", "q": artist or title, "per_page": per_page})["results"]
+        ask = {"artist": artist, "release_title": title} if artist and title else {"q": artist or title}
+        found = _dc_get(c, "database/search", {"type": "master", **ask, "per_page": per_page})["results"]
+        if len(found) < 3:
+            found += _dc_get(c, "database/search", {"type": "release", **ask, "per_page": per_page})["results"]
+        return found
+
+
+def _dc_split(r: dict) -> tuple[str, str]:
+    """A search result's "Artist - Album" title."""
+    artist, _, album = r.get("title", "").partition(" - ")
+    return (_dc_name(artist), album) if album else ("", artist)
+
+
+def _discogs(kind, artist, title, album, user, db) -> list[dict]:
+    if kind == "track":
+        return []       # Discogs lists releases, not songs
+    out = []
+    for r in _dc_search(kind, artist, title):
+        url = "https://www.discogs.com" + r.get("uri", "")
+        if kind == "artist":
+            out.append({"source": "discogs", "kind": "artist", "id": str(r["id"]), "title": _dc_name(r.get("title", "")),
+                        "cover": r.get("thumb") or None, "url": url})
+            continue
+        name, album_title = _dc_split(r)
+        out.append({"source": "discogs", "kind": "album", "id": f"{r['type']}/{r['id']}", "title": album_title,
+                    "artist": name, "year": _year(r.get("year")), "genre": (r.get("genre") or [""])[0],
+                    "country": r.get("country", ""), "label": (r.get("label") or [""])[0],
+                    "format": ", ".join(dict.fromkeys(r.get("format") or [])), "cover": r.get("thumb") or None, "url": url})
+    return out[:LIMIT]
+
+
+def _dc_tracks(rows: list[dict], artist: str) -> list[dict]:
+    """Discogs positions are A1, B2 on vinyl, 1-03 or CD2-3 on several discs: numbered again per disc."""
+    out, count = [], {}
+    for t in rows:
+        if t.get("type_") not in ("track", "index"):
+            continue        # side and section headings
+        m = re.match(r"^(?:CD|DVD|Disc|D)?\s*(\d+)[-.](\d+)$", t.get("position", ""), re.I)
+        disc = int(m.group(1)) if m else 1
+        count[disc] = count.get(disc, 0) + 1
+        parts = (t.get("duration") or "").split(":")       # "5:00", "1:02:03" or nothing
+        length = sum(int(p) * 60 ** i for i, p in enumerate(reversed(parts))) if all(p.isdigit() for p in parts) else 0
+        out.append({"disc": disc, "no": count[disc], "title": t.get("title", ""),
+                    "artist": _dc_artists(t.get("artists")) or artist, "length": length})
+    return out
+
+
 def _art(url: str | None, size: int) -> str:
     """An iTunes artwork address at another size."""
     return re.sub(r"/\d+x\d+bb\.", f"/{size}x{size}bb.", url or "")
@@ -220,7 +293,8 @@ def _spotify(kind, artist, title, album, user, db) -> list[dict]:
 # ---------------------------------------------------------------- a picked album, in full
 
 def details(source: str, kind: str, id_: str, user=None, db=None) -> dict:
-    """An album's fields and track list from one source: {title, artist, year, genre, tracks: [...]}."""
+    """An album's fields and track list from one source: {title, artist, year, genre, tracks: [...], cover},
+    where cover is the source's own picture of it at full size (None when it has none)."""
     if kind != "album":
         raise SourceError("only albums have details")
     with _client() as c:
@@ -231,8 +305,27 @@ def details(source: str, kind: str, id_: str, user=None, db=None) -> dict:
             tracks = [{"disc": m.get("position") or 1, "no": t.get("position") or 0, "title": t.get("title", ""),
                        "artist": _artists(t.get("artist-credit")), "length": round((t.get("length") or 0) / 1000)}
                       for m in r.get("media", []) for t in m.get("tracks", [])]
+            cover = None
+            if (r.get("cover-art-archive") or {}).get("front"):
+                try:
+                    art = _get(c, f"https://coverartarchive.org/release/{r['id']}")
+                    front = next((i for i in art.get("images", []) if i.get("front")), None)
+                    cover = front and ((front.get("thumbnails") or {}).get("1200") or front.get("image"))
+                except httpx.HTTPError:
+                    pass        # the album without its cover is still worth having
             return {"title": r.get("title", ""), "artist": _artists(r.get("artist-credit")), "year": _year(r.get("date")),
-                    "genre": genres[0]["name"].title() if genres else "", "tracks": tracks, "mbid": r["id"]}
+                    "genre": genres[0]["name"].title() if genres else "", "tracks": tracks, "mbid": r["id"], "cover": cover}
+        if source == "discogs":
+            what, _, num = id_.partition("/")
+            if what not in ("master", "release") or not num.isdigit():
+                raise SourceError("doesn't know that album")
+            r = _dc_get(c, f"{what}s/{num}")
+            artist = _dc_artists(r.get("artists"))
+            images = r.get("images") or []
+            front = next((i for i in images if i.get("type") == "primary"), images[0] if images else {})
+            return {"title": r.get("title", ""), "artist": artist, "year": _year(str(r.get("year") or "")),
+                    "genre": (r.get("genres") or [""])[0], "tracks": _dc_tracks(r.get("tracklist") or [], artist),
+                    "cover": front.get("uri") or None}
         if source == "deezer":
             r = _get(c, f"https://api.deezer.com/album/{id_}")
             data = r.get("tracks", {}).get("data", [])
@@ -241,7 +334,8 @@ def details(source: str, kind: str, id_: str, user=None, db=None) -> dict:
                       for i, t in enumerate(data)]
             genres = r.get("genres", {}).get("data", [])
             return {"title": r.get("title", ""), "artist": r.get("artist", {}).get("name", ""),
-                    "year": _year(r.get("release_date")), "genre": genres[0]["name"] if genres else "", "tracks": tracks}
+                    "year": _year(r.get("release_date")), "genre": genres[0]["name"] if genres else "", "tracks": tracks,
+                    "cover": r.get("cover_xl") or None}
         if source == "itunes":
             r = _get(c, "https://itunes.apple.com/lookup", {"id": id_, "entity": "song"})
             rows = r.get("results", [])
@@ -250,7 +344,8 @@ def details(source: str, kind: str, id_: str, user=None, db=None) -> dict:
                        "artist": x.get("artistName", ""), "length": round((x.get("trackTimeMillis") or 0) / 1000)}
                       for x in rows if x.get("wrapperType") == "track"]
             return {"title": head.get("collectionName", ""), "artist": head.get("artistName", ""),
-                    "year": _year(head.get("releaseDate")), "genre": head.get("primaryGenreName", ""), "tracks": tracks}
+                    "year": _year(head.get("releaseDate")), "genre": head.get("primaryGenreName", ""), "tracks": tracks,
+                    "cover": _art(head.get("artworkUrl100"), 1400) or None}
         if source == "spotify":
             token = _spotify_token(user, db)
             r = _get(c, f"https://api.spotify.com/v1/albums/{id_}", headers={"Authorization": f"Bearer {token}"})
@@ -258,15 +353,17 @@ def details(source: str, kind: str, id_: str, user=None, db=None) -> dict:
                        "artist": ", ".join(a["name"] for a in t.get("artists", [])),
                        "length": round((t.get("duration_ms") or 0) / 1000)} for t in r.get("tracks", {}).get("items", [])]
             return {"title": r.get("name", ""), "artist": ", ".join(a["name"] for a in r.get("artists", [])),
-                    "year": _year(r.get("release_date")), "genre": "", "tracks": tracks}
+                    "year": _year(r.get("release_date")), "genre": "", "tracks": tracks,
+                    "cover": (r.get("images") or [{}])[0].get("url")}
     raise SourceError(f"unknown source {source}")
 
 
 # ---------------------------------------------------------------- cover art
 
-def covers(kind: str, artist: str = "", title: str = "", web: str = "", user=None, db=None) -> dict:
+def covers(kind: str, artist: str = "", title: str = "", web: str = "", user=None, db=None, mbid: str = "") -> dict:
     """{results: [{source, thumb, url, title, width, height}], errors} for kind album | artist | book | podcast.
-    Pictures from the music sources (albums and artists), and web images when `web` is a query."""
+    Pictures from the music sources (albums and artists), and web images when `web` is a query.
+    `mbid` is the item's own MusicBrainz id (an album's release, an artist), when its tags have one."""
     out, errors = [], {}
     music = kind in ("album", "artist")
 
@@ -298,6 +395,67 @@ def covers(kind: str, artist: str = "", title: str = "", web: str = "", user=Non
         return [{"source": "iTunes", "thumb": r["cover"], "url": _art(r["cover"], 1400), "title": f"{r['title']} · {r['artist']}",
                  "width": 1400, "height": 1400} for r in _itunes("album", artist, title, "", None, None) if r.get("cover")]
 
+    def dc():
+        found = []
+        for r in _dc_search(kind, artist, title, per_page=12):
+            if not r.get("cover_image") or r["cover_image"].endswith("/spacer.gif"):
+                continue
+            if kind == "artist":
+                label = _dc_name(r.get("title", ""))
+            else:
+                bits = [r.get("year"), r.get("country"), ", ".join(dict.fromkeys(r.get("format") or []))[:30]]
+                label = f"{_dc_split(r)[1]} ({', '.join(b for b in bits if b) or '?'})"
+            found.append({"source": "Discogs", "thumb": r.get("thumb") or r["cover_image"], "url": r["cover_image"],
+                          "title": label})
+        return found[:12]
+
+    def fa():
+        key = settings.get("fanarttv_api_key")
+        if not key:
+            raise SourceError("needs an API key on the admin page")
+        with _client() as c:
+            def ask(path: str) -> dict:
+                for header in ("api-key", "client-key"):      # a project key, or the admin's personal one
+                    r = c.get(f"https://webservice.fanart.tv/v3/music/{path}", headers={header: key})
+                    if r.status_code != 401:
+                        break
+                if r.status_code == 401:
+                    raise SourceError("doesn't accept the API key")
+                if r.status_code == 404:
+                    return {}       # nothing for this one yet
+                r.raise_for_status()
+                return r.json()
+
+            def pictures(rows, label):
+                return [{"source": "fanart.tv", "thumb": p["url"].replace("/fanart/", "/preview/", 1), "url": p["url"],
+                         "title": label, "width": 1000, "height": 1000}
+                        for p in sorted(rows or [], key=lambda p: -int(p.get("likes") or 0)) if p.get("url")]
+
+            if kind == "artist":
+                aid = mbid
+                if not aid:     # the namesake MusicBrainz ranks first, unless one is spelled exactly so
+                    named = _musicbrainz("artist", artist, "", "", None, None)
+                    aid = next((a["id"] for a in named if a["title"].casefold() == artist.casefold()),
+                               named[0]["id"] if named else "")
+                data = ask(aid) if aid else {}
+                return pictures(data.get("artistthumb"), data.get("name") or artist)
+            # fanart.tv files covers under the release group, the album over all its editions
+            groups = []
+            if mbid:
+                r = _get(c, f"https://musicbrainz.org/ws/2/release/{mbid}", {"inc": "release-groups", "fmt": "json"}, mb=True)
+                groups = [r["release-group"]["id"]] if r.get("release-group") else []
+            if not groups:
+                v = lambda x: x.replace('"', "")
+                query = " AND ".join(x for x in (f'releasegroup:"{v(title)}"' if title else "",
+                                                 f'artist:"{v(artist)}"' if artist else "") if x)
+                r = _get(c, "https://musicbrainz.org/ws/2/release-group", {"query": query, "fmt": "json", "limit": 3}, mb=True)
+                groups = [g["id"] for g in r.get("release-groups", []) if (g.get("score") or 0) >= 90][:2]
+            found = []
+            for g in groups:
+                data = ask(f"albums/{g}")
+                found += pictures(((data.get("albums") or {}).get(g) or {}).get("albumcover"), title)
+            return found
+
     def sp():
         rows = _spotify(kind, artist, title, "", user, db)
         return [{"source": "Spotify", "thumb": r["cover"], "url": r["cover"], "title": r["title"]} for r in rows if r.get("cover")]
@@ -323,7 +481,7 @@ def covers(kind: str, artist: str = "", title: str = "", web: str = "", user=Non
 
     jobs = {}
     if music:
-        jobs.update({"musicbrainz": mb, "deezer": dz, "itunes": it})
+        jobs.update({"musicbrainz": mb, "fanarttv": fa, "discogs": dc, "deezer": dz, "itunes": it})
         if user is not None and db is not None:
             jobs["spotify"] = sp
     if web:

@@ -29,6 +29,20 @@ const DELETE_SAYS: Record<ItemKind, string> = {
   station: "The station is removed from the saved stations. This can't be undone.",
 };
 
+/** Puts back what an edit changed: from the message after saving, the edit window or Admin → Edits. */
+export async function undoEdit(id: number): Promise<boolean> {
+  const notify = useUi.getState().notify;
+  try {
+    await api.post(`/api/manage/edits/${id}/undo`);
+    notify("Undone: everything is as it was before that edit");
+    refreshAll();
+    return true;
+  } catch (e) {
+    notify((e as Error).message, "error");
+    return false;
+  }
+}
+
 interface Target { kind: ItemKind; id: number; title: string }
 
 interface AdminDialogs {

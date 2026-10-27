@@ -87,13 +87,21 @@ SCHEMA: list[Spec] = [
     Spec("upload_fetch_art", "bool", True, "Uploads", "Find cover art"),
     Spec("upload_genre_folders", "bool", True, "Uploads", "File into genre folders",
          "Genre/Artist/Artist - Year - Album, like the rest of the library."),
-    # spotify
+    # admin mode's edit window
+    Spec("discogs_token", "secret", "", "Library", "Discogs personal access token",
+         "Album and artist matches and pictures from Discogs when editing in admin mode. Free: sign in at "
+         "https://www.discogs.com/settings/developers and press \"Generate new token\"."),
+    Spec("fanarttv_api_key", "secret", "", "Library", "fanart.tv API key",
+         "Artist pictures and album covers from fanart.tv when editing in admin mode, found by the "
+         "MusicBrainz ids in your tags. Free from https://fanart.tv/get-an-api-key/ (a project key or "
+         "your personal key)."),
     Spec("brave_api_key", "secret", "", "Library", "Brave Search API key",
-         "For the web image search when changing a cover in admin mode. A free key comes from "
-         "https://brave.com/search/api/ (the \"Data for Search\" plan)."),
+         "For the web image search when changing a cover in admin mode. Brave's Search plan at "
+         "https://brave.com/search/api/ gives $5 of searches a month (about 1,000) but asks for a card."),
     Spec("modarchive_api_key", "secret", "", "Online archives", "The Mod Archive API key",
          "Lets VGM → Online archives browse modarchive.org. Keys are personal: ask for one in the API "
          "section of The Mod Archive's forum (https://modarchive.org/forums), then paste it here."),
+    # spotify
     Spec("spotify_client_id", "str", "", "Spotify", "Client ID",
          "From developer.spotify.com → your app. Redirect URI: <public URL>/api/spotify/callback"),
 ]

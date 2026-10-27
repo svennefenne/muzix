@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from .. import manage, providers
 from ..db import get_db
-from ..models import User
+from ..models import Album, Artist, User
 from ..security import admin_user
 
 router = APIRouter(prefix="/api/manage", tags=["manage"], dependencies=[Depends(admin_user)])
@@ -52,6 +52,18 @@ def empty_all():
     return {"emptied": manage.empty_trash()}
 
 
+# ---------------------------------------------------------------- edits, to undo
+
+@router.get("/edits")
+def edits(limit: int = 100):
+    return manage.edit_list(min(max(limit, 1), 500))
+
+
+@router.post("/edits/{edit_id}/undo")
+def undo(edit_id: int):
+    return _do(manage.undo_edit, edit_id)
+
+
 # ---------------------------------------------------------------- other sources
 
 @router.get("/lookup")
@@ -73,9 +85,13 @@ def lookup_details(source: str, kind: str, id_: str, db: Session = Depends(get_d
 
 
 @router.get("/covers")
-def covers(kind: str, artist: str = "", title: str = "", web: str = "",
+def covers(kind: str, artist: str = "", title: str = "", web: str = "", item: int = 0,
            db: Session = Depends(get_db), user: User = Depends(admin_user)):
-    return providers.covers(kind, artist.strip(), title.strip(), web.strip(), user=user, db=db)
+    """`item` is the album or artist the cover is for: its MusicBrainz id finds it on fanart.tv."""
+    row = db.get(Album if kind == "album" else Artist, item, execution_options={"include_hidden": True}) \
+        if item and kind in ("album", "artist") else None
+    return providers.covers(kind, artist.strip(), title.strip(), web.strip(), user=user, db=db,
+                            mbid=row.mbid if row else "")
 
 
 # ---------------------------------------------------------------- one item
@@ -87,6 +103,7 @@ class Edit(BaseModel):
 
 class CoverUrl(BaseModel):
     url: str
+    edit_id: int | None = None      # the edit it was picked with: undoing that puts the old cover back
 
 
 @router.get("/{kind}/{id_}")
@@ -127,7 +144,7 @@ def cover_from_url(kind: str, id_: int, body: CoverUrl):
     if kind in ("podcast", "station"):
         field = "image" if kind == "podcast" else "favicon"
         return _do(manage.edit_simple, kind, id_, {field: body.url})
-    return _do(lambda: manage.set_cover(kind, id_, manage.fetch_image(body.url)))
+    return _do(lambda: manage.set_cover(kind, id_, manage.fetch_image(body.url), body.edit_id))
 
 
 @router.post("/{kind}/{id_}/cover/upload")

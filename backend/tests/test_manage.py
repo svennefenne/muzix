@@ -2,6 +2,7 @@
 undone, and editing writes the tags and files the album the way the library is filed."""
 import os
 import tempfile
+import threading
 import wave
 
 import pytest
@@ -34,8 +35,10 @@ def song(path, **fields):
 
 
 @pytest.fixture
-def library():
-    """A music folder filed like the real one, scanned."""
+def library(monkeypatch):
+    """A music folder filed like the real one, scanned. No background scans (putting back from the
+    trash asks for one), and the tidying after an edit is waited for, so tests can't overlap."""
+    monkeypatch.setattr(manage.jobs, "submit", lambda *a, **k: None)
     top = tempfile.mkdtemp(prefix="muzix-manage-")
     album = os.path.join(top, "Metal", "Old Artist", "Old Artist - 1990 - Old Album")
     for n, title in ((1, "First"), (2, "Second")):
@@ -61,10 +64,14 @@ def library():
     with db.session() as s:
         album_id = s.scalar(select(Album.id).where(Album.title == "Old Album"))
     yield top, album, album_id
+    for t in threading.enumerate():
+        if t.name == "manage-tidy":
+            t.join(10)
     with db.session() as s:
         s.execute(text("DELETE FROM tracks"))
         s.execute(text("DELETE FROM albums"))
         s.execute(text("DELETE FROM trash"))
+        s.execute(text("DELETE FROM edits"))
         s.execute(text("DELETE FROM roots"))
 
 
@@ -174,3 +181,136 @@ def test_files_without_tags_keep_their_edits_in_muzix():
 def test_file_names_are_cleaned_like_beets_does():
     assert manage.clean('AC/DC: "Live"?') == "AC_DC_ _Live__"
     assert manage.clean(".hidden.") == "_hidden"
+
+
+def raw_pictures(path):
+    import mutagen
+    return [k for k in mutagen.File(path).tags.keys() if k.startswith("APIC")]
+
+
+def raw(path):
+    """The file's own tag frames, as mutagen has them."""
+    import mutagen
+    t = mutagen.File(path).tags
+    return {k: str(t[k]) for k in sorted(t.keys()) if not k.startswith("APIC")}
+
+
+def test_undoing_an_album_edit_puts_tags_names_and_folder_back(library):
+    top, album, album_id = library
+    before = {f: raw(os.path.join(album, f)) for f in os.listdir(album) if f.endswith(".wav")}
+    assert all("TPOS" not in r for r in before.values())
+    with db.session() as s:
+        ids = {t.title: t.id for t in s.scalars(select(Track).where(Track.album_id == album_id))}
+    r = manage.edit_album(album_id, {"title": "Better Album", "artist": "New Artist", "year": 1992, "genre": "Metal"},
+                          [{"id": ids["First"], "title": "Opener", "artist": "New Artist", "track_no": 1, "disc_no": 1},
+                           {"id": ids["Second"], "title": "Second", "artist": "New Artist", "track_no": 2, "disc_no": 1}])
+    assert not os.path.exists(album) and r["edit_id"]
+    edit = manage.edit_list()[0]
+    assert (edit["kind"], edit["item_id"], edit["undone_at"]) == ("album", album_id, None)
+    assert edit["title"] == "Better Album (was Old Album)"
+    assert edit["summary"] == "Title, album artist and year; 2 songs; filed in New Artist / New Artist - 1992 - Better Album"
+    assert manage.details("album", album_id)["last_edit"]["id"] == r["edit_id"]
+
+    manage.undo_edit(r["edit_id"])
+    assert sorted(os.listdir(album)) == sorted(before) + ["cover.jpg"]
+    assert {f: raw(os.path.join(album, f)) for f in before} == before       # disc numbers they never had: gone again
+    assert not os.path.exists(r["moved_to"])
+    with db.session() as s:
+        alb = s.get(Album, album_id)        # the same album, back in its own folder
+        assert (alb.title, alb.artist_name, alb.year, alb.art) == ("Old Album", "Old Artist", 1990, os.path.join(album, "cover.jpg"))
+        assert s.get(Track, ids["First"]).path == os.path.join(album, "1. Old Artist - Old Album - First (1990).wav")
+        assert s.get(Track, ids["First"]).title == "First"
+    assert manage.edit_list()[0]["undone_at"] and manage.details("album", album_id)["last_edit"] is None
+    with pytest.raises(manage.ManageError, match="already"):
+        manage.undo_edit(r["edit_id"])
+
+
+def test_an_edit_made_later_has_to_be_undone_first(library):
+    top, album, album_id = library
+    with db.session() as s:
+        ids = {t.title: t.id for t in s.scalars(select(Track).where(Track.album_id == album_id))}
+    first = manage.edit_album(album_id, {"title": "Better Album"}, [])
+    song_edit = manage.edit_track(ids["Second"], {"title": "Second Thoughts"})
+    assert song_edit["edit_id"] and song_edit["renamed_to"]
+    with pytest.raises(manage.ManageError, match="changed since"):
+        manage.undo_edit(first["edit_id"])
+    assert os.path.exists(song_edit["renamed_to"])          # nothing was touched
+    manage.undo_edit(song_edit["edit_id"])
+    manage.undo_edit(first["edit_id"])
+    assert sorted(os.listdir(album)) == ["1. Old Artist - Old Album - First (1990).wav",
+                                         "2. Old Artist - Old Album - Second (1990).wav", "cover.jpg"]
+    assert tags.read(os.path.join(album, "2. Old Artist - Old Album - Second (1990).wav")).album == "Old Album"
+
+
+def test_undoing_an_artist_rename(library):
+    top, album, album_id = library
+    with db.session() as s:
+        artist_id = s.scalar(select(Artist.id).where(Artist.name == "Old Artist"))
+    manage.rename_artist_job(Ctx(), artist_id, "Renamed Artist")
+    moved = os.path.join(top, "Metal", "Renamed Artist", "Renamed Artist - 1990 - Old Album")
+    assert os.path.isdir(moved) and not os.path.exists(album)
+    edit = manage.edit_list()[0]
+    assert (edit["kind"], edit["item_id"], edit["title"]) == ("artist", artist_id, "Renamed Artist (was Old Artist)")
+    manage.undo_edit(edit["id"])
+    assert os.path.isdir(album) and not os.path.exists(moved)
+    assert tags.read(os.path.join(album, "1. Old Artist - Old Album - First (1990).wav")).albumartist == "Old Artist"
+    with db.session() as s:
+        assert s.get(Artist, artist_id).name == "Old Artist"
+
+
+def test_undoing_a_station_rename():
+    from muzix.models import Station, User
+    with db.session() as s:
+        user = User(username="undo-test", password_hash="-")
+        s.add(user)
+        s.flush()
+        st = Station(user_id=user.id, name="Old FM", url="http://example.com/stream")
+        s.add(st)
+        s.flush()
+        sid = st.id
+    r = manage.edit_simple("station", sid, {"name": "New FM"})
+    assert manage.edit_list()[0]["summary"] == "Name"
+    manage.undo_edit(r["edit_id"])
+    with db.session() as s:
+        assert s.get(Station, sid).name == "Old FM"
+        s.delete(s.get(Station, sid))
+        s.delete(s.scalar(select(User).where(User.username == "undo-test")))
+
+
+def test_putting_a_cover_back_swaps_it_with_the_newer_one(library):
+    from io import BytesIO
+    from PIL import Image
+    top, album, album_id = library
+    img = BytesIO()
+    Image.new("RGB", (50, 50), (200, 30, 30)).save(img, "PNG")
+    manage.set_cover("album", album_id, img.getvalue())
+    first = os.path.join(album, "1. Old Artist - Old Album - First (1990).wav")
+    assert "APIC:Cover" in raw_pictures(first)
+    trash = manage.trash_items()
+    assert trash[0]["kind"] == "cover"
+    manage.restore(trash[0]["id"])
+    assert raw_pictures(first) == []            # the files had no picture before it
+    with open(os.path.join(album, "cover.jpg"), "rb") as f:
+        assert f.read() == b"\xff\xd8not really a picture"
+    now = manage.trash_items()
+    assert len(now) == 1 and now[0]["kind"] == "cover"         # the newer one, put back in its place
+
+
+def test_undoing_an_edit_puts_back_the_cover_picked_with_it(library):
+    from io import BytesIO
+    from PIL import Image
+    top, album, album_id = library
+    r = manage.edit_album(album_id, {"title": "Better Album"}, [])
+    img = BytesIO()
+    Image.new("RGB", (50, 50), (20, 90, 200)).save(img, "PNG")
+    manage.set_cover("album", album_id, img.getvalue(), r["edit_id"])
+    manage.undo_edit(r["edit_id"])
+    with open(os.path.join(album, "cover.jpg"), "rb") as f:
+        assert f.read() == b"\xff\xd8not really a picture"
+    assert not os.path.exists(r["moved_to"])
+    import mutagen
+    assert not [k for f in os.listdir(album) if f.endswith(".wav")
+                for k in mutagen.File(os.path.join(album, f)).tags.keys() if k.startswith("APIC")]   # none, as before
+    assert [t["kind"] for t in manage.trash_items()] == ["cover"]       # the picked one, to put back if wanted
+    with db.session() as s:
+        assert s.get(Album, album_id).art == os.path.join(album, "cover.jpg")

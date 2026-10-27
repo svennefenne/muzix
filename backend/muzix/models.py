@@ -154,6 +154,19 @@ class TrashItem(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class EditRecord(Base):
+    """An admin's edit and what it changed (tags, file names, folders, fields), so it can be undone."""
+    __tablename__ = "edits"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16))             # album | track | artist | book | ...
+    item_id: Mapped[int] = mapped_column(Integer, index=True)
+    title: Mapped[str] = mapped_column(String(512), default="")
+    summary: Mapped[str] = mapped_column(String(1024), default="")
+    undo: Mapped[dict] = mapped_column(JSON, default=dict)     # what was there before, see manage.py
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+    undone_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class Playlist(Base):
     __tablename__ = "playlists"
     id: Mapped[int] = mapped_column(primary_key=True)

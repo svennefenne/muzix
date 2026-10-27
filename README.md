@@ -68,12 +68,20 @@ you choose from 98 colour schemes, each with a light and a dark version.
 - **Admin mode** (the wrench in the top bar, admins only): a cog on every album,
   song, artist, audiobook, podcast, playlist and station, with
   - *Edit metadata*: the fields (an album with all its songs) side by side with
-    what MusicBrainz, Deezer, iTunes and your linked Spotify know, to fill in with
-    one click, and a cover from those sources, a web image search (needs a free
-    Brave Search API key on the admin page), a picture's address or a file. Tags
+    what MusicBrainz, Discogs, Deezer, iTunes and your linked Spotify know, to
+    fill in with one click; a picked album brings that source's cover along.
+    Otherwise covers come from those sources, fanart.tv, a web image search, a
+    picture's address or a file. Discogs (a free personal token), fanart.tv (a
+    free API key) and the web search (a Brave Search API key, $5 of free
+    searches a month) need keys on the admin page. An album's songs are paired
+    with the picked album's by their length, so a title can't land on the wrong
+    song. Tags
     are written into the files, and an album in a music folder is filed again by
     its new tags; chip and tracker files, audiobooks and podcasts keep their
     edits in Muzix.
+  - *Undo*: every saved edit can be undone, from the message after saving, the
+    edit window or Admin → Edits: tags, file names, folders and covers go back
+    exactly as they were, unless something has changed them since.
   - *Hide from library*: gone from every page for everyone; Admin → Hidden &
     trash shows it again.
   - *Delete*: the files move to a `.muzix-trash` folder on their share, to put
