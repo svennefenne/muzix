@@ -382,10 +382,12 @@ def finish_scan(ctx):
             DELETE FROM artists WHERE id NOT IN (SELECT artist_id FROM tracks WHERE artist_id IS NOT NULL)
               AND id NOT IN (SELECT artist_id FROM albums WHERE artist_id IS NOT NULL)
         """))
+        # Various Artists has none: its compilations are of every genre, and the most common one
+        # would be shown on (and file new imports under) all of them
         s.execute(text("""
-            UPDATE artists SET genre = coalesce((
+            UPDATE artists SET genre = CASE WHEN lower(name) IN ('various artists', '[unknown]') THEN '' ELSE coalesce((
               SELECT genre FROM albums a WHERE a.artist_id = artists.id AND a.genre != ''
-              GROUP BY genre ORDER BY count(*) DESC LIMIT 1), '')
+              GROUP BY genre ORDER BY count(*) DESC LIMIT 1), '') END
         """))
         # covers
         rows = s.execute(select(Album.id, Album.folder, Album.art)).all()
