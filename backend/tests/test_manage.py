@@ -246,16 +246,54 @@ def test_undoing_an_artist_rename(library):
     top, album, album_id = library
     with db.session() as s:
         artist_id = s.scalar(select(Artist.id).where(Artist.name == "Old Artist"))
-    manage.rename_artist_job(Ctx(), artist_id, "Renamed Artist")
+    d = manage.details("artist", artist_id)
+    assert (d["albums"], d["songs"], d["folders"]) == (1, 2, [os.path.join("Metal", "Old Artist")])
+    assert manage.namesake(artist_id, "Renamed Artist") is None and manage.namesake(artist_id, "old artist") is None
+    assert manage.namesake(artist_id, " neighbour ")["name"] == "Neighbour"
+    report = manage.rename_artist_job(Ctx(), artist_id, "Renamed Artist")
     moved = os.path.join(top, "Metal", "Renamed Artist", "Renamed Artist - 1990 - Old Album")
     assert os.path.isdir(moved) and not os.path.exists(album)
     edit = manage.edit_list()[0]
+    assert report == {"old": "Old Artist", "name": "Renamed Artist", "albums": 1, "songs": 2, "folders": ["Metal / Renamed Artist"],
+                      "failed": [], "merged": False, "edit_id": edit["id"], "artist_id": artist_id, "picture": False}
     assert (edit["kind"], edit["item_id"], edit["title"]) == ("artist", artist_id, "Renamed Artist (was Old Artist)")
     manage.undo_edit(edit["id"])
     assert os.path.isdir(album) and not os.path.exists(moved)
     assert tags.read(os.path.join(album, "1. Old Artist - Old Album - First (1990).wav")).albumartist == "Old Artist"
     with db.session() as s:
         assert s.get(Artist, artist_id).name == "Old Artist"
+
+
+def test_an_album_goes_to_its_new_album_artist(library):
+    top, album, album_id = library
+    with db.session() as s:
+        neighbour = s.scalar(select(Artist.id).where(Artist.name == "Neighbour"))
+    r = manage.edit_album(album_id, {"artist": "Neighbour"}, [])
+    with db.session() as s:
+        assert s.get(Album, album_id).artist_id == neighbour
+    manage.undo_edit(r["edit_id"])
+    with db.session() as s:       # back with their old artist (a new row, when the emptied one was tidied away)
+        assert s.get(Artist, s.get(Album, album_id).artist_id).name == "Old Artist"
+
+
+def test_a_picture_picked_with_a_new_name_goes_to_whoever_has_it(library, monkeypatch):
+    """Renaming onto a name the library has makes the two one: the picture goes to that one."""
+    from io import BytesIO
+    from PIL import Image
+    img = BytesIO()
+    Image.new("RGB", (40, 40), (10, 200, 30)).save(img, "PNG")
+    monkeypatch.setattr(manage, "fetch_image", lambda url: img.getvalue())
+    with db.session() as s:
+        old_id = s.scalar(select(Artist.id).where(Artist.name == "Old Artist"))
+        neighbour = s.scalar(select(Artist.id).where(Artist.name == "Neighbour"))
+    report = manage.rename_artist_job(Ctx(), old_id, "Neighbour", picture="https://pictures/neighbour.jpg")
+    assert report["merged"] and report["artist_id"] == neighbour and report["picture"]
+    with db.session() as s:
+        assert s.get(Artist, neighbour).image and os.path.isfile(s.get(Artist, neighbour).image)
+        assert s.scalar(select(func.count()).select_from(Album).where(Album.artist_id == neighbour)) == 2
+    manage.undo_edit(report["edit_id"])
+    # the same name and a picture: set at once, no job
+    assert manage.edit_simple("artist", neighbour, {"name": "Neighbour"}, "https://pictures/n2.jpg") == {"picture": True}
 
 
 def test_undoing_a_station_rename():

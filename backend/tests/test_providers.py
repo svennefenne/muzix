@@ -162,3 +162,23 @@ def test_a_picked_album_brings_its_cover(web):
     answers["https://itunes.apple.com/lookup"] = {"results": [
         {"wrapperType": "collection", "collectionName": "N", "artworkUrl100": "https://is1/x/100x100bb.jpg"}]}
     assert providers.details("itunes", "album", "7")["cover"] == "https://is1/x/1400x1400bb.jpg"
+
+
+def test_a_picked_artist_brings_their_picture(web):
+    _, answers = web
+    settings.set_many({"discogs_token": "tok", "fanarttv_api_key": "key"})
+    answers["https://api.discogs.com/artists/69866"] = {"name": "Alice Cooper (2)", "images": [
+        {"type": "secondary", "uri": "https://i.discogs.com/live.jpeg"}, {"type": "primary", "uri": "https://i.discogs.com/alice.jpeg"}]}
+    assert providers.details("discogs", "artist", "69866") == {"name": "Alice Cooper", "cover": "https://i.discogs.com/alice.jpeg"}
+    answers["https://api.deezer.com/artist/5"] = {"name": "Alice Cooper", "picture_xl": "https://e-cdns-images.dzcdn.net/images/artist/abc/1000x1000-000000-80-0-0.jpg"}
+    assert providers.details("deezer", "artist", "5")["cover"].endswith("/abc/1000x1000-000000-80-0-0.jpg")
+    answers["https://api.deezer.com/artist/6"] = {"name": "Nobody", "picture_xl": "https://e-cdns-images.dzcdn.net/images/artist//1000x1000-000000-80-0-0.jpg"}
+    assert providers.details("deezer", "artist", "6")["cover"] is None       # Deezer's blank face
+    # MusicBrainz has the name; fanart.tv the picture, by the same id
+    answers["https://musicbrainz.org/ws/2/artist/ee58c59f"] = {"id": "ee58c59f", "name": "Alice Cooper"}
+    answers["https://webservice.fanart.tv/v3/music/ee58c59f"] = {"artistthumb": [
+        {"url": "https://assets.fanart.tv/fanart/music/ee58c59f/artistthumb/a.jpg", "likes": "1"},
+        {"url": "https://assets.fanart.tv/fanart/music/ee58c59f/artistthumb/b.jpg", "likes": "4"}]}
+    assert providers.details("musicbrainz", "artist", "ee58c59f")["cover"].endswith("/b.jpg")
+    settings.set_many({"fanarttv_api_key": ""})
+    assert providers.details("musicbrainz", "artist", "ee58c59f") == {"name": "Alice Cooper", "cover": None, "mbid": "ee58c59f"}

@@ -1,14 +1,15 @@
 /** The admin's edit window: an item's metadata (an album with its songs), what MusicBrainz,
- * Discogs, Deezer, iTunes and Spotify know about it, and its cover. An album picked from a source
- * brings that source's cover, saved with the rest; otherwise covers come from the sources,
- * fanart.tv, a web image search, a picture's address or a file, and are saved at once. */
+ * Discogs, Deezer, iTunes and Spotify know about it, and its cover. An album or artist picked from
+ * a source brings that source's cover or picture, saved with the rest; otherwise covers come from
+ * the sources, fanart.tv, a web image search, a picture's address or a file, and are saved at once. */
 
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink, ImagePlus, Loader2, RotateCcw, Search, Upload } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 import { ago, api, fmtTime } from "../api";
 import { useUi } from "../store/ui";
-import { type ItemKind, refreshAll, undoEdit } from "./AdminMode";
+import type { Job } from "../types";
+import { type ItemKind, refreshAll, undoEdit, whenDone } from "./AdminMode";
 import { Modal } from "./ui";
 
 interface TrackEdit { id: number; title: string; artist: string; track_no: number; disc_no: number; duration?: number }
@@ -24,6 +25,12 @@ interface Found<T> { results: T[]; errors: Record<string, string> }
 interface Cover { source: string; thumb: string; url: string; title: string; width?: number; height?: number }
 interface Song { disc: number; no: number; title: string; artist: string; length?: number }
 interface AlbumDetails { title: string; artist: string; year: number; genre: string; cover?: string | null; tracks: Song[] }
+interface ArtistDetails { name: string; cover?: string | null }
+interface Namesake { id: number; name: string; albums: number }
+interface Renamed {
+  songs?: number; albums?: number; folders?: string[]; failed?: string[]; merged?: boolean; edit_id?: number | null;
+  artist_id?: number; picture?: boolean;
+}
 type Pairing = { song: Song; how: "length" | "number" | "order" } | undefined;
 interface Picked { url: string; thumb: string; source: string }
 type Form = Record<string, string | number>;
@@ -94,8 +101,50 @@ function pair(files: TrackEdit[], songs: Song[]): Pairing[] {
   return out;
 }
 
+const count = (n: unknown, what: string) => `${Number(n) || 0} ${what}${Number(n) === 1 ? "" : "s"}`;
+
+/** Their albums' folders (Genre/Artist) under a new name: Rock / New Name. */
+const refiled = (folders: unknown, name: string) =>
+  ((folders as string[] | undefined) || []).map((f) => [...f.split("/").slice(0, -1), name].join(" / "));
+
+/** What renaming an artist does, before it's saved. */
+function renameSays(d: Details, name: string, other: Namesake | null): string {
+  const songs = count(d.songs, "song");
+  if (!name || name === d.name) {
+    return `A new name goes into the tags of all ${songs} and their albums are filed under it.`;
+  }
+  const to = refiled(d.folders, name);
+  return `Saving renames ${String(d.name)} to ${name} in the tags of ${songs}`
+    + (to.length ? `, and ${Number(d.albums) === 1 ? "their album moves" : `their ${count(d.albums, "album")} move`} to ${to.join(" and ")}` : "")
+    + (other ? `. The library already has ${other.name} (${count(other.albums, "album")}): the two become one artist` : "")
+    + ". It runs in the background (a minute or two for someone with many albums); Muzix tells you when it's done, with an Undo.";
+}
+
+/** How an artist's rename went, once its job is over. */
+function sayRenamed(j: Job, from: string, to: string, picture: string) {
+  const notify = useUi.getState().notify;
+  refreshAll();
+  if (j.status !== "done") {
+    notify(`Renaming ${from} to ${to} ${j.status === "cancelled" ? "was cancelled" : "stopped with an error"} partway. `
+      + "What was renamed can be undone from Admin → Edits.", "error", { label: "See why", to: "/admin/jobs" });
+    return;
+  }
+  const r = j.result as Renamed;
+  const failed = r.failed?.length || 0;
+  // two artists become one: the old page empties, so the message leads to the one left (Undo is in Admin → Edits)
+  const action = failed ? { label: "See why", to: "/admin/jobs" }
+    : r.merged ? { label: `Open ${to}`, to: `/artist/${r.artist_id}` }
+    : r.edit_id ? { label: "Undo", run: () => void undoEdit(r.edit_id!) } : undefined;
+  notify(`${from} is now ${to}: ${count(r.songs, "song")} renamed`
+    + (r.folders?.length ? `, filed in ${r.folders.join(" and ")}` : "")
+    + (r.merged ? `, together with the ${to} already in the library (undo it from Admin → Edits)` : "")
+    + (r.picture ? `, with the picture from ${picture}` : "")
+    + (failed ? `. ${count(failed, "thing")} couldn't be changed (Admin → Jobs says why)` : ""),
+    failed ? "error" : "info", action);
+}
+
 /** Where the changes end up, in a sentence. */
-function savedWhere(d: Details): string {
+function savedWhere(d: Details, form: Form, other: Namesake | null): string {
   if (d.kind === "album" || d.kind === "track") {
     if (d.tags === "muzix") return "These files have no tags to write, so Muzix keeps the changes and uses them on every scan.";
     if (d.writable === false) return "The folder is read-only for Muzix: the changes can't be saved into the files.";
@@ -104,7 +153,7 @@ function savedWhere(d: Details): string {
         : "the file is renamed to match"}.`
       : "Saved into the files' tags; the files stay where they are.";
   }
-  if (d.kind === "artist") return "A new name goes into the tags of all their songs, and their albums are filed under it (in the background).";
+  if (d.kind === "artist") return renameSays(d, String(form.name ?? "").trim(), other);
   if (d.kind === "book" || d.kind === "podcast") return `Muzix keeps these over ${d.kind === "book" ? "rescans" : "refreshes of the feed"}.`;
   if (d.kind === "fileplaylist") return "The playlist file is renamed.";
   return "";
@@ -122,6 +171,18 @@ export function EditDialog({ kind, id, onClose }: { kind: ItemKind; id: number; 
   const [missed, setMissed] = useState<Set<number>>(new Set());    // songs no source song was as long as
   const [matches, setMatches] = useState<number | null>(null);     // how many the sources found, once they answer
   const d = q.data;
+  // a new name someone in the library already has: say before saving that the two become one
+  const typed = kind === "artist" ? String(form.name ?? "").trim() : "";
+  const [asked, setAsked] = useState("");
+  useEffect(() => {
+    const t = window.setTimeout(() => setAsked(typed), 400);
+    return () => window.clearTimeout(t);
+  }, [typed]);
+  const namesake = useQuery({
+    queryKey: ["namesake", id, asked], enabled: !!asked && asked !== d?.name, staleTime: 30_000,
+    queryFn: () => api.get<{ other: Namesake | null }>(`/api/manage/artist/${id}/namesake`, { name: asked }),
+  }).data?.other;
+  const other = namesake && asked === typed ? namesake : null;
   useEffect(() => {
     if (!d) return;
     setForm(Object.fromEntries(FIELDS[kind].map(([k]) => [k, (d[k] as string | number | undefined) ?? ""])));
@@ -132,22 +193,31 @@ export function EditDialog({ kind, id, onClose }: { kind: ItemKind; id: number; 
   const save = async () => {
     setSaving(true);
     try {
-      const r = await api.put<{ notes?: string[]; job_id?: number; moved_to?: string | null; renamed_to?: string | null; edit_id?: number | null }>(
-        `/api/manage/${kind}/${id}`, { fields: form, tracks });
-      const said = r.job_id ? "Renaming in the background: see Admin → Jobs"
-        : r.moved_to ? `Saved, and filed in ${r.moved_to.split("/").slice(-3).join(" / ")}`
-        : r.renamed_to ? "Saved, and the file renamed" : "Saved";
-      let cover = "";
-      if (picked) {
-        try {
-          await api.post(`/api/manage/album/${id}/cover`, { url: picked.url, edit_id: r.edit_id });
-          cover = `with the cover from ${picked.source}`;
-        } catch (e) {
-          cover = `but the cover from ${picked.source} couldn't be saved: ${(e as Error).message}`;
+      // an artist's picture goes with the save: a new name sets it once all their files have it
+      const r = await api.put<{ notes?: string[]; job_id?: number; moved_to?: string | null; renamed_to?: string | null;
+        edit_id?: number | null; picture?: boolean }>(
+        `/api/manage/${kind}/${id}`, { fields: form, tracks, picture: kind === "artist" ? picked?.url ?? "" : "" });
+      if (r.job_id) {
+        const from = String(d!.name), to = String(form.name ?? "").trim();
+        notify(`Renaming ${from} to ${to} (${count(d!.songs, "song")}) in the background`
+          + (picked ? `, with the picture from ${picked.source}` : "") + ". Muzix tells you here when it's done",
+          "info", { label: "Show progress", to: "/admin/jobs" });
+        whenDone(r.job_id, (j) => sayRenamed(j, from, to, picked?.source ?? ""));
+      } else {
+        const said = r.moved_to ? `Saved, and filed in ${r.moved_to.split("/").slice(-3).join(" / ")}`
+          : r.renamed_to ? "Saved, and the file renamed" : "Saved";
+        let cover = r.picture ? `with the picture from ${picked?.source}` : "";
+        if (picked && kind !== "artist") {
+          try {
+            await api.post(`/api/manage/${kind}/${id}/cover`, { url: picked.url, edit_id: r.edit_id });
+            cover = `with the cover from ${picked.source}`;
+          } catch (e) {
+            cover = `but the cover from ${picked.source} couldn't be saved: ${(e as Error).message}`;
+          }
         }
+        notify([cover ? `${said}, ${cover}` : said, ...(r.notes || [])].join(". "), cover.startsWith("but") ? "error" : "info",
+          r.edit_id ? { label: "Undo", run: () => void undoEdit(r.edit_id!) } : undefined);
       }
-      notify([cover ? `${said}, ${cover}` : said, ...(r.notes || [])].join(". "), cover.startsWith("but") ? "error" : "info",
-        r.edit_id ? { label: "Undo", run: () => void undoEdit(r.edit_id!) } : undefined);
       refreshAll();
       onClose();
     } catch (e) {
@@ -159,7 +229,17 @@ export function EditDialog({ kind, id, onClose }: { kind: ItemKind; id: number; 
 
   const use = async (m: Match) => {
     if (kind === "artist") {
-      setForm({ ...form, name: m.title });
+      const source = SOURCE[m.source];
+      try {
+        const a = await api.get<ArtistDetails>(`/api/manage/lookup/${m.source}/artist/${encodeURIComponent(m.id)}`);
+        setForm({ ...form, name: a.name || m.title });
+        setPicked(a.cover ? { url: a.cover, thumb: m.cover || a.cover, source } : null);
+        setFilled(`Filled in from ${source}` + (a.cover ? ", with its picture of them" : `. ${source} has no picture of them, so the current one stays`)
+          + ". Check it, then save.");
+      } catch (e) {
+        notify((e as Error).message, "error");
+      }
+      return;
     } else if (kind === "track") {
       setForm({ ...form, title: m.title, artist: m.artist || form.artist, album: m.album || form.album,
         year: m.year || form.year, genre: m.genre || form.genre, track_no: m.no || form.track_no, disc_no: m.disc || form.disc_no });
@@ -232,7 +312,7 @@ export function EditDialog({ kind, id, onClose }: { kind: ItemKind; id: number; 
               </div>
               {kind === "album" && <TrackTable tracks={tracks} missed={missed} onChange={setTracks} />}
               {filled && <p className="edit-filled">{filled}</p>}
-              <p className="faint edit-where">{savedWhere(d)}</p>
+              <p className="faint edit-where">{savedWhere(d, form, other)}</p>
             </section>
             <aside className="edit-side">
               {ready && LOOKUP[kind] && <Matches kind={LOOKUP[kind]!} form={form} onUse={use} onResults={setMatches} />}
@@ -445,7 +525,7 @@ function Covers({ kind, id, d, form, picked, onUnpick, search }: {
         <div className="edit-own">
           {picked && (
             <div className="edit-picked">
-              <span>{picked.source}'s cover, saved with the album.</span>
+              <span>{picked.source}'s {kind === "artist" ? "picture, saved with the artist" : "cover, saved with the album"}.</span>
               <button className="btn small ghost" onClick={onUnpick}>Keep the current one</button>
             </div>
           )}

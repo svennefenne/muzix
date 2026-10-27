@@ -33,8 +33,8 @@ interface UiState {
   notify: (text: string, kind?: "info" | "error", action?: ToastAction) => void;
 }
 
-/** A button in the message, such as Undo after saving an edit. */
-export interface ToastAction { label: string; run: () => void }
+/** A button in the message, such as Undo after saving an edit, or a link to a page. */
+export interface ToastAction { label: string; run?: () => void; to?: string }
 
 const LOCAL = "muzix.prefs";
 

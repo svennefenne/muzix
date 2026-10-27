@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, Heart, History, ListMusic, Pause, Play, Plus, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api, fmtNumber, fmtTime } from "../api";
 import { playTracks, queryClient, toggleLike, usePlaylistPicker } from "../actions";
 import { CastButton, CastNote } from "../components/CastButton";
@@ -317,12 +317,17 @@ export function PlaylistPicker() {
 
 export function Toast() {
   const toast = useUi((s) => s.toast);
+  const navigate = useNavigate();
   if (!toast) return null;
   const act = toast.action;
   return (
     <div className={`toast ${toast.kind}`} role="status">
       {toast.text}
-      {act && <button className="toast-action" onClick={() => { useUi.setState({ toast: null }); act.run(); }}>{act.label}</button>}
+      {act && <button className="toast-action" onClick={() => {
+        useUi.setState({ toast: null });
+        if (act.to) navigate(act.to);
+        act.run?.();
+      }}>{act.label}</button>}
     </div>
   );
 }

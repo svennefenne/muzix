@@ -7,6 +7,7 @@ import { create } from "zustand";
 import { queryClient } from "../actions";
 import { api } from "../api";
 import { useUi } from "../store/ui";
+import type { Job } from "../types";
 import { EditDialog } from "./EditDialog";
 import { Modal, useMenu } from "./ui";
 
@@ -41,6 +42,20 @@ export async function undoEdit(id: number): Promise<boolean> {
     notify((e as Error).message, "error");
     return false;
   }
+}
+
+/** Waits for a background job (an artist's new name takes a while), then hands it over. */
+export function whenDone(jobId: number, then: (j: Job) => void) {
+  const look = async () => {
+    try {
+      const j = await api.get<Job>(`/api/admin/jobs/${jobId}`);
+      if (j.status !== "queued" && j.status !== "running") return then(j);
+    } catch {
+      /* a moment without the server: look again */
+    }
+    window.setTimeout(look, 2000);
+  };
+  window.setTimeout(look, 1500);
 }
 
 interface Target { kind: ItemKind; id: number; title: string }

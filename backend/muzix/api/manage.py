@@ -99,11 +99,17 @@ def covers(kind: str, artist: str = "", title: str = "", web: str = "", item: in
 class Edit(BaseModel):
     fields: dict = {}
     tracks: list[dict] = []      # an album's songs: {id, title, artist, track_no, disc_no}
+    picture: str = ""            # an artist's: the picture of them from the source they were picked from
 
 
 class CoverUrl(BaseModel):
     url: str
     edit_id: int | None = None      # the edit it was picked with: undoing that puts the old cover back
+
+
+@router.get("/artist/{id_}/namesake")
+def namesake(id_: int, name: str):
+    return {"other": manage.namesake(id_, name)}
 
 
 @router.get("/{kind}/{id_}")
@@ -118,7 +124,7 @@ def edit(kind: str, id_: int, body: Edit):
         return _do(manage.edit_album, id_, body.fields, body.tracks)
     if kind == "track":
         return _do(manage.edit_track, id_, body.fields)
-    return _do(manage.edit_simple, kind, id_, body.fields)
+    return _do(manage.edit_simple, kind, id_, body.fields, body.picture)
 
 
 @router.post("/{kind}/{id_}/hide")

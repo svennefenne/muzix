@@ -433,8 +433,19 @@ def _details(s, kind: str, id_: int) -> dict:
                 "art": f"/api/art/album/{row.album_id}" if row.album_id else None,
                 "writable": _writable(row.path), "tags": "files" if _taggable(row) else "muzix"}
     if kind == "artist":
-        n = s.scalar(select(func.count()).select_from(Track).where(Track.artist_id == id_))
-        return {"kind": kind, "id": id_, "name": row.name, "songs": n, "hidden": row.hidden,
+        # what a new name changes: their albums, and their songs on no album of theirs
+        theirs = select(Album.id).where(Album.artist_id == id_)
+        albums = s.scalar(select(func.count()).select_from(theirs.subquery()))
+        n = s.scalar(select(func.count()).select_from(Track).where(
+            or_(Track.album_id.in_(theirs), (Track.artist_id == id_) & ~Track.album_id.in_(theirs))))
+        # where their albums are filed (Genre / Artist), for saying where a new name moves them
+        folders = {}
+        for path, root in s.execute(select(Track.path, Root.path).join(Root, Root.id == Track.root_id)
+                                    .where(Track.album_id.in_(theirs), Root.kind == "music")):
+            folder = os.path.relpath(os.path.dirname(os.path.dirname(path)), root)
+            folders[folder] = folders.get(folder, 0) + 1
+        return {"kind": kind, "id": id_, "name": row.name, "songs": n, "albums": albums, "hidden": row.hidden,
+                "folders": sorted(folders, key=lambda f: -folders[f])[:3] if "." not in folders else [],
                 "art": f"/api/art/artist/{id_}"}
     if kind == "book":
         return {"kind": kind, "id": id_, "title": row.title, "author": row.author, "narrator": row.narrator,
@@ -616,6 +627,7 @@ def _summarize(s, album_ids: set[int]):
         alb.genre = common("genre") or alb.genre
         alb.artist_name = max({t.albumartist or t.artist for t in tracks},
                               key=lambda v: sum((t.albumartist or t.artist) == v for t in tracks))
+        alb.artist_id = common("artist_id") or alb.artist_id     # a new album artist: the album goes to them
         alb.title = common("album") or alb.title
         alb.formats = ",".join(sorted({t.format for t in tracks}))
         alb.folder = os.path.dirname(tracks[0].path)
@@ -857,8 +869,9 @@ def edit_track(id_: int, fields: dict, remember: bool = True) -> dict:
 
 
 @jobs.job("rename_artist")
-def rename_artist_job(ctx: jobs.JobContext, artist_id: int, name: str):
-    """An artist's new name into all their songs (as artist or album artist), their albums filed again."""
+def rename_artist_job(ctx: jobs.JobContext, artist_id: int, name: str, picture: str = ""):
+    """An artist's new name into all their songs (as artist or album artist), their albums filed again.
+    `picture` (a web address) is set at the end, on whoever has the name then: two artists can become one."""
     with db.session() as s:
         a = _row(s, "artist", artist_id)
         old = a.name
@@ -870,54 +883,96 @@ def rename_artist_job(ctx: jobs.JobContext, artist_id: int, name: str):
         loose = list(s.scalars(select(Track).where(Track.artist_id == artist_id, ~Track.album_id.in_(albums))))
     ctx.log(f"{old} → {name}: {len(albums)} albums")
     parts = []      # what undoes each album and song, in the order they were done
-    for i, aid in enumerate(albums):
-        ctx.check()
+    report = {"old": old, "name": name, "albums": 0, "songs": 0, "folders": [], "failed": [], "merged": False, "edit_id": None,
+              "artist_id": artist_id, "picture": False}
+    try:
+        for i, aid in enumerate(albums):
+            ctx.check()
+            with db.session() as s:
+                alb = s.get(Album, aid, execution_options={"include_hidden": True})
+                label = alb.title if alb else f"album {aid}"
+                rows = list(s.scalars(select(Track).where(Track.album_id == aid)))
+                per = [{"id": t.id, **({"artist": name} if t.artist == old else {})} for t in rows]
+            ctx.update(i / max(1, len(albums) + len(loose)), f"Album {i + 1} of {len(albums)}: {label}")
+            try:
+                r = edit_album(aid, {"artist": name}, per, remember=False)
+                parts += [r["undo"]] if r["undo"] else []
+                report["albums"] += 1
+                report["songs"] += len(per)        # all theirs now, rewritten or already so
+                if r["moved_to"]:
+                    folder = " / ".join(os.path.dirname(r["moved_to"]).split(os.sep)[-2:])
+                    report["folders"] += [] if folder in report["folders"] else [folder]
+                ctx.log(f"  {label}: {r['written']} files" + (f", now in {r['moved_to']}" if r["moved_to"] else ""))
+            except ManageError as e:
+                report["failed"].append(f"{label}: {e}")
+                ctx.log(f"  {label}: {e}")
+        for t in loose:
+            try:
+                r = edit_track(t.id, {k: name for k in ("artist", "albumartist") if getattr(t, k) == old}, remember=False)
+                parts += [r["undo"]] if r["undo"] else []
+                report["songs"] += 1
+            except ManageError as e:
+                report["failed"].append(f"{os.path.basename(t.path)}: {e}")
+                ctx.log(f"  {t.path}: {e}")
+    finally:        # cancelled halfway: what was renamed can still be undone
         with db.session() as s:
-            rows = list(s.scalars(select(Track).where(Track.album_id == aid)))
-            per = [{"id": t.id, **({"artist": name} if t.artist == old else {})} for t in rows]
+            new = s.scalar(select(Artist).where(Artist.name == name))
+            if new is not None and new.id != artist_id:
+                report["merged"], report["artist_id"] = True, new.id
+                ctx.log(f"merged into the existing artist {name}")
+            if parts or renamed_row:
+                n = len(parts)
+                report["edit_id"] = _remember(s, "artist", artist_id, f"{name} (was {old})",
+                                              f"Renamed; {n} album{'s' if n != 1 else ''} and songs",
+                                              {"artist_id": artist_id, "name": old, "new": name, "row": renamed_row, "parts": parts})
+    report["folders"] = report["folders"][:3]
+    if picture:
         try:
-            r = edit_album(aid, {"artist": name}, per, remember=False)
-            parts += [r["undo"]] if r["undo"] else []
-            ctx.log(f"  album {aid}: {r['written']} files" + (f", now in {r['moved_to']}" if r["moved_to"] else ""))
+            set_cover("artist", report["artist_id"], fetch_image(picture))
+            report["picture"] = True
         except ManageError as e:
-            ctx.log(f"  album {aid}: {e}")
-        ctx.update((i + 1) / max(1, len(albums) + len(loose)))
-    for t in loose:
-        try:
-            r = edit_track(t.id, {k: name for k in ("artist", "albumartist") if getattr(t, k) == old}, remember=False)
-            parts += [r["undo"]] if r["undo"] else []
-        except ManageError as e:
-            ctx.log(f"  {t.path}: {e}")
+            report["failed"].append(f"the picture: {e}")
+    ctx.update(1, f"{old} is now {name}: {report['songs']} songs" + (f", {len(report['failed'])} couldn't be changed" if report["failed"] else ""))
+    return report
+
+
+def namesake(id_: int, name: str) -> dict | None:
+    """Another artist the library already has by this name (the scanner matches names regardless of
+    case): renaming to it makes the two one."""
     with db.session() as s:
-        new = s.scalar(select(Artist).where(Artist.name == name))
-        if new is not None and new.id != artist_id:
-            ctx.log(f"merged into the existing artist {name}")
-        if parts or renamed_row:
-            n = len(parts)
-            _remember(s, "artist", artist_id, f"{name} (was {old})", f"Renamed; {n} album{'s' if n != 1 else ''} and songs",
-                      {"artist_id": artist_id, "name": old, "new": name, "row": renamed_row, "parts": parts})
+        other = s.scalar(select(Artist).where(func.lower(Artist.name) == name.strip().lower(), Artist.id != id_)
+                         .execution_options(include_hidden=True))
+        if other is None:
+            return None
+        albums = s.scalar(select(func.count()).select_from(Album).where(Album.artist_id == other.id))
+        return {"id": other.id, "name": other.name, "albums": albums}
 
 
-def edit_simple(kind: str, id_: int, fields: dict) -> dict:
+def edit_simple(kind: str, id_: int, fields: dict, picture: str = "") -> dict:
     """Books, podcasts, playlists, playlist files and stations: their own fields in the database
-    (books and podcasts keep them over rescans and refreshes)."""
+    (books and podcasts keep them over rescans and refreshes). An artist's new name is a job (all
+    their files), which sets `picture` too once it's done; without one, the picture is set at once."""
+    if kind == "artist":
+        name = str(fields.get("name") or "").strip()
+        if not name:
+            raise ManageError("The artist needs a name")
+        with db.session() as s:
+            old = _row(s, kind, id_).name
+        if name != old:
+            return {"job_id": jobs.submit("rename_artist", f"Rename {old} to {name}", artist_id=id_, name=name, picture=picture)}
+        if picture:
+            set_cover("artist", id_, fetch_image(picture))
+        return {"picture": bool(picture)}
     with db.session() as s:
         row = _row(s, kind, id_)
         allowed = {"book": ("title", "author", "narrator", "series", "year", "description"),
                    "podcast": ("title", "author", "description", "image"),
                    "playlist": ("name", "description"), "fileplaylist": ("name",),
-                   "station": ("name", "favicon"), "artist": ("name",)}[kind]
+                   "station": ("name", "favicon")}[kind]
         changes = {k: (int(v or 0) if k == "year" else str(v or "").strip()) for k, v in fields.items() if k in allowed}
-        before = {k: getattr(row, k) for k in changes if kind != "artist"}
+        before = {k: getattr(row, k) for k in changes}
         path_before = getattr(row, "path", None)
         custom_before = dict(row.custom or {}) if kind in ("book", "podcast") else None
-        if kind == "artist":
-            name = changes.get("name", "")
-            if not name:
-                raise ManageError("The artist needs a name")
-            if name == row.name:
-                return {}
-            return {"job_id": jobs.submit("rename_artist", f"Rename {row.name} to {name}", artist_id=id_, name=name)}
         if kind == "fileplaylist" and changes.get("name") and changes["name"] != row.name:
             if not _writable(row.path):
                 raise ManageError("That playlist's folder is read-only for Muzix")

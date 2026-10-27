@@ -290,14 +290,72 @@ def _spotify(kind, artist, title, album, user, db) -> list[dict]:
     return out
 
 
-# ---------------------------------------------------------------- a picked album, in full
+def _fa_get(c: httpx.Client, path: str) -> dict:
+    """fanart.tv with the admin's key: a project key, or a personal one. {} when it has nothing yet."""
+    key = settings.get("fanarttv_api_key")
+    if not key:
+        raise SourceError("needs an API key on the admin page")
+    for header in ("api-key", "client-key"):
+        r = c.get(f"https://webservice.fanart.tv/v3/music/{path}", headers={header: key})
+        if r.status_code != 401:
+            break
+    if r.status_code == 401:
+        raise SourceError("doesn't accept the API key")
+    if r.status_code == 404:
+        return {}
+    r.raise_for_status()
+    return r.json()
+
+
+def _fa_liked(rows) -> list[dict]:
+    return sorted((p for p in rows or [] if p.get("url")), key=lambda p: -int(p.get("likes") or 0))
+
+
+# ---------------------------------------------------------------- a picked album or artist, in full
+
+def _artist(c: httpx.Client, source: str, id_: str, user, db) -> dict:
+    """{name, cover}: an artist as one source has them, with its own picture of them (None when it has none).
+    MusicBrainz has no pictures; fanart.tv has them by its ids, when the admin has a key."""
+    if source == "musicbrainz":
+        r = _get(c, f"https://musicbrainz.org/ws/2/artist/{id_}", {"fmt": "json"}, mb=True)
+        cover = None
+        if settings.get("fanarttv_api_key"):
+            try:
+                cover = next((p["url"] for p in _fa_liked(_fa_get(c, id_).get("artistthumb"))), None)
+            except (SourceError, httpx.HTTPError, ValueError):
+                pass        # the name without a picture is still worth having
+        return {"name": r.get("name", ""), "cover": cover, "mbid": id_}
+    if source == "discogs":
+        if not id_.isdigit():
+            raise SourceError("doesn't know that artist")
+        r = _dc_get(c, f"artists/{id_}")
+        images = r.get("images") or []
+        front = next((i for i in images if i.get("type") == "primary"), images[0] if images else {})
+        return {"name": _dc_name(r.get("name", "")), "cover": front.get("uri") or None}
+    if source == "deezer":
+        r = _get(c, f"https://api.deezer.com/artist/{id_}")
+        if "error" in r:
+            raise SourceError(r["error"].get("message", "error"))
+        cover = r.get("picture_xl") or None
+        return {"name": r.get("name", ""), "cover": None if cover and "/artist//" in cover else cover}   # its blank face
+    if source == "spotify":
+        token = _spotify_token(user, db)
+        r = _get(c, f"https://api.spotify.com/v1/artists/{id_}", headers={"Authorization": f"Bearer {token}"})
+        return {"name": r.get("name", ""), "cover": (r.get("images") or [{}])[0].get("url")}
+    if source == "itunes":
+        r = _get(c, "https://itunes.apple.com/lookup", {"id": id_})
+        return {"name": (r.get("results") or [{}])[0].get("artistName", ""), "cover": None}
+    raise SourceError(f"unknown source {source}")
+
 
 def details(source: str, kind: str, id_: str, user=None, db=None) -> dict:
     """An album's fields and track list from one source: {title, artist, year, genre, tracks: [...], cover},
-    where cover is the source's own picture of it at full size (None when it has none)."""
-    if kind != "album":
-        raise SourceError("only albums have details")
+    where cover is the source's own picture of it at full size (None when it has none). An artist: {name, cover}."""
+    if kind not in ("album", "artist"):
+        raise SourceError("only albums and artists have details")
     with _client() as c:
+        if kind == "artist":
+            return _artist(c, source, id_, user, db)
         if source == "musicbrainz":
             r = _get(c, f"https://musicbrainz.org/ws/2/release/{id_}",
                      {"inc": "recordings+artist-credits+genres+release-groups", "fmt": "json"}, mb=True)
@@ -410,26 +468,14 @@ def covers(kind: str, artist: str = "", title: str = "", web: str = "", user=Non
         return found[:12]
 
     def fa():
-        key = settings.get("fanarttv_api_key")
-        if not key:
+        if not settings.get("fanarttv_api_key"):
             raise SourceError("needs an API key on the admin page")
         with _client() as c:
-            def ask(path: str) -> dict:
-                for header in ("api-key", "client-key"):      # a project key, or the admin's personal one
-                    r = c.get(f"https://webservice.fanart.tv/v3/music/{path}", headers={header: key})
-                    if r.status_code != 401:
-                        break
-                if r.status_code == 401:
-                    raise SourceError("doesn't accept the API key")
-                if r.status_code == 404:
-                    return {}       # nothing for this one yet
-                r.raise_for_status()
-                return r.json()
+            ask = lambda path: _fa_get(c, path)
 
             def pictures(rows, label):
                 return [{"source": "fanart.tv", "thumb": p["url"].replace("/fanart/", "/preview/", 1), "url": p["url"],
-                         "title": label, "width": 1000, "height": 1000}
-                        for p in sorted(rows or [], key=lambda p: -int(p.get("likes") or 0)) if p.get("url")]
+                         "title": label, "width": 1000, "height": 1000} for p in _fa_liked(rows)]
 
             if kind == "artist":
                 aid = mbid
