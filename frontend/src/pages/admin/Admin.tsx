@@ -119,7 +119,7 @@ function FolderBrowser({ onPick, onClose }: { onPick: (p: string) => void; onClo
         {q.data?.parent && <button className="list-row" onClick={() => setPath(q.data!.parent!)}><FolderOpen size={16} /> ..</button>}
         {q.data?.folders.map((f) => (
           <button key={f} className="list-row" style={{ textAlign: "left", cursor: "pointer" }} onClick={() => setPath(`${path.replace(/\/$/, "")}/${f}`)}>
-            <Folder size={16} /> {f}
+            <Folder size={16} /> <span className="grow">{f}</span>
           </button>
         ))}
       </div>

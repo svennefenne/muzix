@@ -639,12 +639,14 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
 .stat { padding: 14px 16px; border-radius: var(--radius); border: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 82%, transparent); }
 .stat .v { font: 900 30px/1 var(--font-display); }
 .stat .k { font: 500 10px/1 var(--font-mono); letter-spacing: .16em; text-transform: uppercase; color: var(--text-faint); margin-top: 6px; }
-.list { display: grid; gap: 8px; }
-.list-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; background: color-mix(in srgb, var(--surface) 80%, transparent); }
+/* rows keep to the list's width: a long log line, path or message wraps (or is cut short) instead of
+   widening the column past the frame */
+.list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.list-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; background: color-mix(in srgb, var(--surface) 80%, transparent); overflow-wrap: break-word; }
 .list-row .grow { flex: 1; min-width: 0; }
 .progressbar { height: 6px; border-radius: 6px; background: var(--surface-3); overflow: hidden; }
 .progressbar > div { height: 100%; background: var(--primary); transition: width .4s; }
-.log { margin: 10px 0 0; max-height: 320px; overflow: auto; padding: 12px; border-radius: 8px; background: var(--bg-deep); font: 500 11.5px/1.5 var(--font-mono); white-space: pre-wrap; color: var(--text-dim); }
+.log { margin: 10px 0 0; max-height: 320px; overflow: auto; padding: 12px; border-radius: 8px; background: var(--bg-deep); font: 500 11.5px/1.5 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-dim); }
 .dropzone {
   display: grid; place-items: center; gap: 10px; min-height: 220px; padding: 30px; text-align: center;
   border: 2px dashed var(--border-strong); border-radius: 14px; transition: .2s; cursor: pointer;
@@ -1204,7 +1206,7 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
   .edit-track > :nth-child(4), .edit-track > :nth-child(5) { display: none; }
 }
 
-.admin-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 6px; }
+.admin-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
 .admin-list li { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); }
 .admin-list .grow { flex: 1; min-width: 0; }
 .admin-list li.undone { opacity: .6; }
