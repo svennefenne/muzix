@@ -74,7 +74,7 @@ def lookup(kind: str, artist: str = "", title: str = "", album: str = "",
     return providers.search(kind, artist.strip(), title.strip(), album.strip(), user=user, db=db)
 
 
-@router.get("/lookup/{source}/{kind}/{id_}")
+@router.get("/lookup/{source}/{kind}/{id_:path}")       # Discogs ids are master/N or release/N
 def lookup_details(source: str, kind: str, id_: str, db: Session = Depends(get_db), user: User = Depends(admin_user)):
     try:
         return providers.details(source, kind, id_, user=user, db=db)

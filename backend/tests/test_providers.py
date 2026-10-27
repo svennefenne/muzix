@@ -2,8 +2,12 @@
 MusicBrainz ids, and each source's own cover coming along with a picked album."""
 import httpx
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from muzix import providers, settings
+from muzix.api import manage as manage_api
+from muzix.security import admin_user
 
 
 class NoWait:
@@ -97,6 +101,20 @@ def test_discogs_track_list_and_cover(web):
         (2, 1, "Disc Two", "Orbital & Guest", 195), (2, 2, "Suite", "Orbital & Guest", 0)]
     with pytest.raises(providers.SourceError):
         providers.details("discogs", "album", "label/5")
+
+
+def test_a_discogs_album_reaches_its_details_by_the_route(web):
+    """The edit window asks for master%2F99: the slash in the id mustn't stop the route."""
+    _, answers = web
+    settings.set_many({"discogs_token": "tok"})
+    answers["https://api.discogs.com/masters/99"] = {"title": "Live Set", "artists": [{"name": "Orbital (2)", "join": ""}],
+                                                     "tracklist": [{"type_": "track", "position": "1", "title": "One"}]}
+    app = FastAPI()
+    app.include_router(manage_api.router)
+    app.dependency_overrides[admin_user] = lambda: None
+    app.dependency_overrides[manage_api.get_db] = lambda: None
+    r = TestClient(app).get("/api/manage/lookup/discogs/album/master%2F99")
+    assert r.status_code == 200 and r.json()["title"] == "Live Set" and r.json()["tracks"][0]["title"] == "One"
 
 
 def test_fanart_album_covers_by_release_group(web):
