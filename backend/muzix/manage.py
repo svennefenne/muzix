@@ -17,6 +17,7 @@ them, file and folder names, an item's own fields. `undo_edit` puts those back, 
 has changed the same files or fields since (then the later edit has to be undone first).
 """
 
+import functools
 import hashlib
 import io
 import json
@@ -26,6 +27,7 @@ import re
 import shutil
 import threading
 import time
+from collections import Counter
 from datetime import datetime, timezone
 
 import httpx
@@ -475,10 +477,86 @@ def clean(name: str) -> str:
     return name[:200] or "_"
 
 
-def _plan(root: str, folder: str, album: dict, tracks: list[dict]) -> tuple[str, dict[str, str]]:
-    """(the album's new folder, {old path: new path}) under root/<Genre>/<Album artist>/<Artist - Year - Album>."""
+UNSORTED = "uncategorized"
+KEEP_PLACE = {"duplicates", "other formats"}      # albums in these stay there when edited
+
+
+@functools.cache
+def _genre_rules():
+    """The genre rules uploads are filed by. They come with beets (the organize extra); without
+    it only a genre named like a folder finds one."""
+    try:
+        from .organize.beetsplug import musicorg
+        return musicorg, musicorg.GenreMapper()
+    except (ImportError, OSError):
+        return None
+
+
+def broad_genre(genre: str) -> str | None:
+    """The main genre uploads would file a genre under ("Doom Metal": Metal), if any."""
+    rules = _genre_rules()
+    if not rules:
+        return None
+    mo, mapper = rules
+    scores, ambiguous = Counter(), []
+    for tag in mo.split_genre_string(genre):
+        weight = 0.5 if mo.hk(mapper.normalize(tag)) in mo.GENERIC else 1.0
+        shares, amb = mapper.map(tag)
+        for g, share in shares.items():
+            scores[g] += weight * share
+        if amb:
+            ambiguous.append((amb, weight))
+    for candidates, weight in ambiguous:      # as for uploads: to whichever already leads
+        best = max(candidates, key=lambda g: scores[g])
+        if scores[best] > 0:
+            scores[best] += weight
+    return max(scores, key=scores.get) if scores else None
+
+
+def genre_folder(root: str, genre: str) -> str | None:
+    """The library's folder for albums of this genre: the one named like it, or the one uploads
+    would file it in. None when none fits."""
+    genre = genre.strip()
+    try:
+        tops = [f for f in os.listdir(root) if os.path.isdir(os.path.join(root, f))]
+    except OSError:
+        return None
+    folders = {f.casefold(): f for f in tops if f.casefold() not in KEEP_PLACE | {UNSORTED}}
+    if not genre:
+        return None
+    return folders.get(genre.casefold()) or folders.get((broad_genre(genre) or "").casefold())
+
+
+def _filed_under(root: str, folder: str, genre: str, changed: bool) -> tuple[str, bool]:
+    """(the genre folder an edited album is filed in, whether it looked for one and none fits):
+    its genre's when the edit changes its genre or it's in Uncategorized, otherwise where it is.
+    Duplicates and Other formats keep theirs."""
+    top = os.path.relpath(folder, root).split(os.sep)[0]
+    if top.casefold() in KEEP_PLACE or not (changed or top.casefold() == UNSORTED):
+        return top, False
+    to = genre_folder(root, genre)
+    return to or top, to is None
+
+
+def filing(id_: int, genre: str) -> dict:
+    """Where saving the album with this genre files it: {"now", "then", "no_fit"} (genre folders)."""
+    with db.session() as s:
+        alb = _row(s, "album", id_)
+        rows = s.execute(select(Track.path, Track.root_id).where(Track.album_id == id_)).all()
+        root = s.get(Root, rows[0].root_id) if rows else None
+        current = alb.genre
+    if root is None or root.kind != "music":
+        return {"now": None, "then": None, "no_fit": False}
+    folder = album_dir(sorted({r.path for r in rows}))
+    then, no_fit = _filed_under(root.path, folder, genre, genre.strip() != current)
+    return {"now": os.path.relpath(folder, root.path).split(os.sep)[0], "then": then, "no_fit": no_fit}
+
+
+def _plan(root: str, folder: str, album: dict, tracks: list[dict], top: str | None = None) -> tuple[str, dict[str, str]]:
+    """(the album's new folder, {old path: new path}) under root/<Genre>/<Album artist>/<Artist - Year - Album>:
+    the genre folder `top`, or the one it's in."""
     parts = os.path.relpath(folder, root).split(os.sep)
-    top = parts[0]
+    top = top or parts[0]
     artist = album["artist"] or parts[1]
     year = album["year"]
     name = clean(f"{artist} - {year} - {album['title']}" if year else f"{artist} - {album['title']}")
@@ -721,10 +799,11 @@ def _remember(s, kind: str, item_id: int, title: str, summary: str, undo: dict) 
     return rec.id
 
 
-def edit_album(id_: int, fields: dict, tracks: list[dict], remember: bool = True) -> dict:
+def edit_album(id_: int, fields: dict, tracks: list[dict], remember: bool = True, by_genre: bool = True) -> dict:
     """The album's fields (title, artist, year, genre) and its songs' (title, artist, track_no,
-    disc_no): into the files, then the album filed by its new tags. With `remember`, the edit is
-    kept in the list of edits to undo; otherwise what undoes it comes back as "undo"."""
+    disc_no): into the files, then the album filed by its new tags (`by_genre`: in the folder of
+    a new genre, or of its genre when it's in Uncategorized). With `remember`, the edit is kept in
+    the list of edits to undo; otherwise what undoes it comes back as "undo"."""
     album_level = {"album": fields.get("title"), "albumartist": fields.get("artist"),
                    "year": fields.get("year"), "genre": fields.get("genre")}
     album_level = _clean_fields({k: v for k, v in album_level.items() if v is not None})
@@ -772,7 +851,9 @@ def edit_album(id_: int, fields: dict, tracks: list[dict], remember: bool = True
                                 "track_no": per_track.get(t.id, {}).get("track_no", t.track_no),
                                 "disc_no": per_track.get(t.id, {}).get("disc_no", t.disc_no),
                                 "year": album_level.get("year", t.year)} for t in rows]
-                target, moves = _plan(root.path, folder, new, plan_tracks)
+                top = _filed_under(root.path, folder, album_level.get("genre", alb.genre),
+                                   "genre" in album_level)[0] if by_genre else None
+                target, moves = _plan(root.path, folder, new, plan_tracks, top)
                 if os.path.normpath(target) != os.path.normpath(folder) or any(a != b for a, b in moves.items()):
                     _refile(folder, target, moves)
                     refiled = (folder, target, moves)
@@ -795,10 +876,11 @@ def edit_album(id_: int, fields: dict, tracks: list[dict], remember: bool = True
             new_id = s.scalar(select(Track.album_id).where(Track.id == rows[0].id))
             labels = {"album": "title", "albumartist": "album artist", "year": "year", "genre": "genre"}
             songs = sum(1 for f in files if set(f.get("fields", [])) - set(album_level))
+            shown = 3 if moved_to and moved_to.split(os.sep)[-3] != folder.split(os.sep)[-3] else 2   # with a new genre folder
             summary = "; ".join(x for x in (
                 _and([labels[k] for k in album_level]).capitalize(),
                 f"{songs} song{'s' if songs != 1 else ''}" if songs else "",
-                "filed in " + " / ".join(moved_to.split(os.sep)[-2:]) if moved_to else "") if x)
+                "filed in " + " / ".join(moved_to.split(os.sep)[-shown:]) if moved_to else "") if x)
             title = new["title"] + (f" (was {title_before})" if new["title"] != title_before else "")
             edit_id = _remember(s, "album", new_id or id_, title, summary, undo) if remember and files else None
         except Exception as err:
@@ -895,7 +977,7 @@ def rename_artist_job(ctx: jobs.JobContext, artist_id: int, name: str, picture: 
                 per = [{"id": t.id, **({"artist": name} if t.artist == old else {})} for t in rows]
             ctx.update(i / max(1, len(albums) + len(loose)), f"Album {i + 1} of {len(albums)}: {label}")
             try:
-                r = edit_album(aid, {"artist": name}, per, remember=False)
+                r = edit_album(aid, {"artist": name}, per, remember=False, by_genre=False)   # they stay in their genre folders
                 parts += [r["undo"]] if r["undo"] else []
                 report["albums"] += 1
                 report["songs"] += len(per)        # all theirs now, rewritten or already so

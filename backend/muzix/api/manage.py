@@ -112,6 +112,11 @@ def namesake(id_: int, name: str):
     return {"other": manage.namesake(id_, name)}
 
 
+@router.get("/album/{id_}/filing")
+def filing(id_: int, genre: str = ""):
+    return _do(manage.filing, id_, genre)
+
+
 @router.get("/{kind}/{id_}")
 def details(kind: str, id_: int):
     return _do(manage.details, _kind(kind), id_)

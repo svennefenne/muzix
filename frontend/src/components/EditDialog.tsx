@@ -27,6 +27,8 @@ interface Song { disc: number; no: number; title: string; artist: string; length
 interface AlbumDetails { title: string; artist: string; year: number; genre: string; cover?: string | null; tracks: Song[] }
 interface ArtistDetails { name: string; cover?: string | null }
 interface Namesake { id: number; name: string; albums: number }
+/** The genre folder an album is in, the one saving files it in, and whether its genre fits none. */
+interface Filing { now: string | null; then: string | null; no_fit: boolean }
 interface Renamed {
   songs?: number; albums?: number; folders?: string[]; failed?: string[]; merged?: boolean; edit_id?: number | null;
   artist_id?: number; picture?: boolean;
@@ -143,13 +145,22 @@ function sayRenamed(j: Job, from: string, to: string, picture: string) {
     failed ? "error" : "info", action);
 }
 
+/** Where saving files an album: a new genre's folder, or the one it's in. */
+function albumFiled(f: Filing | undefined, genre: string): string {
+  const rest = "Artist / Artist - Year - Album, with its songs renamed";
+  if (!f?.now) return `the album is filed again as Genre / ${rest}`;
+  if (f.then !== f.now) return `the album moves from ${f.now} to ${f.then} / ${rest}`;
+  if (f.no_fit) return `${genre ? `no genre folder fits ${genre}` : "it has no genre"}, so the album stays in ${f.now} / ${rest}`;
+  return `the album is filed again as ${f.now} / ${rest}`;
+}
+
 /** Where the changes end up, in a sentence. */
-function savedWhere(d: Details, form: Form, other: Namesake | null): string {
+function savedWhere(d: Details, form: Form, other: Namesake | null, filing: Filing | undefined): string {
   if (d.kind === "album" || d.kind === "track") {
     if (d.tags === "muzix") return "These files have no tags to write, so Muzix keeps the changes and uses them on every scan.";
     if (d.writable === false) return "The folder is read-only for Muzix: the changes can't be saved into the files.";
     return d.files === "music"
-      ? `Saved into the files' tags; ${d.kind === "album" ? "the album is filed again as Genre / Artist / Artist - Year - Album, with its songs renamed"
+      ? `Saved into the files' tags; ${d.kind === "album" ? albumFiled(filing, String(form.genre ?? "").trim())
         : "the file is renamed to match"}.`
       : "Saved into the files' tags; the files stay where they are.";
   }
@@ -171,18 +182,24 @@ export function EditDialog({ kind, id, onClose }: { kind: ItemKind; id: number; 
   const [missed, setMissed] = useState<Set<number>>(new Set());    // songs no source song was as long as
   const [matches, setMatches] = useState<number | null>(null);     // how many the sources found, once they answer
   const d = q.data;
-  // a new name someone in the library already has: say before saving that the two become one
-  const typed = kind === "artist" ? String(form.name ?? "").trim() : "";
+  // what saving does, asked once the typing stops: a new name someone in the library already has
+  // (the two become one), an album's genre (the genre folder it's filed in)
+  const typed = String((kind === "artist" ? form.name : kind === "album" ? form.genre : "") ?? "").trim();
   const [asked, setAsked] = useState("");
   useEffect(() => {
     const t = window.setTimeout(() => setAsked(typed), 400);
     return () => window.clearTimeout(t);
   }, [typed]);
   const namesake = useQuery({
-    queryKey: ["namesake", id, asked], enabled: !!asked && asked !== d?.name, staleTime: 30_000,
+    queryKey: ["namesake", id, asked], enabled: kind === "artist" && !!asked && asked !== d?.name, staleTime: 30_000,
     queryFn: () => api.get<{ other: Namesake | null }>(`/api/manage/artist/${id}/namesake`, { name: asked }),
   }).data?.other;
   const other = namesake && asked === typed ? namesake : null;
+  const filing = useQuery({
+    queryKey: ["filing", id, asked], enabled: kind === "album" && ready && asked === typed && d?.files === "music",
+    staleTime: 30_000, placeholderData: (before) => before,
+    queryFn: () => api.get<Filing>(`/api/manage/album/${id}/filing`, { genre: asked }),
+  }).data;
   useEffect(() => {
     if (!d) return;
     setForm(Object.fromEntries(FIELDS[kind].map(([k]) => [k, (d[k] as string | number | undefined) ?? ""])));
@@ -312,7 +329,7 @@ export function EditDialog({ kind, id, onClose }: { kind: ItemKind; id: number; 
               </div>
               {kind === "album" && <TrackTable tracks={tracks} missed={missed} onChange={setTracks} />}
               {filled && <p className="edit-filled">{filled}</p>}
-              <p className="faint edit-where">{savedWhere(d, form, other)}</p>
+              <p className="faint edit-where">{savedWhere(d, form, other, filing)}</p>
             </section>
             <aside className="edit-side">
               {ready && LOOKUP[kind] && <Matches kind={LOOKUP[kind]!} form={form} onUse={use} onResults={setMatches} />}

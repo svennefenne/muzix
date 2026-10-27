@@ -162,6 +162,50 @@ def test_editing_an_album_writes_the_tags_and_files_it_again(library):
         assert s.get(Track, ids["First"]).path.startswith(new + "/")
 
 
+def test_a_new_genre_files_the_album_in_that_genre_folder(library, monkeypatch):
+    top, album, album_id = library
+    os.makedirs(os.path.join(top, "Rock"))
+    # the rules uploads are filed by need beets; here, two of what they say
+    monkeypatch.setattr(manage, "broad_genre", lambda g: {"Hard Rock": "Rock", "Doom Metal": "Metal"}.get(g))
+    assert manage.filing(album_id, "Metal") == {"now": "Metal", "then": "Metal", "no_fit": False}
+    assert manage.filing(album_id, "rock") == {"now": "Metal", "then": "Rock", "no_fit": False}
+    assert manage.filing(album_id, "Doom Metal") == {"now": "Metal", "then": "Metal", "no_fit": False}
+    assert manage.filing(album_id, "Nothing Like It") == {"now": "Metal", "then": "Metal", "no_fit": True}
+    r = manage.edit_album(album_id, {"genre": "Hard Rock"}, [])
+    new = os.path.join(top, "Rock", "Old Artist", "Old Artist - 1990 - Old Album")
+    assert r["moved_to"] == new and sorted(os.listdir(new))[0] == "1. Old Artist - Old Album - First (1990).wav"
+    assert os.path.isdir(os.path.join(top, "Metal", "Old Artist"))       # empty folders stay
+    assert manage.edit_list()[0]["summary"] == "Genre; filed in Rock / Old Artist / Old Artist - 1990 - Old Album"
+    manage.undo_edit(r["edit_id"])
+    assert os.path.isdir(album) and not os.path.exists(new)
+
+
+def test_uncategorized_albums_are_filed_by_their_genre_and_filed_ones_stay(library):
+    top, album, album_id = library
+    os.makedirs(os.path.join(top, "Rock"))
+    lost = os.path.join(top, "Uncategorized", "Loner", "Loner - 2000 - Lost")
+    song(os.path.join(lost, "1. Loner - Lost - Alone (2000).wav"), title="Alone", artist="Loner",
+         albumartist="Loner", album="Lost", track_no=1, year=2000, genre="Rock")
+    twin = os.path.join(top, "Duplicates", "Neighbour", "Neighbour - 2001 - Next Door")
+    song(os.path.join(twin, "1. Neighbour - Next Door - Hello (2001).wav"), title="Hello", artist="Neighbour",
+         albumartist="Neighbour", album="Next Door", track_no=1, year=2001, genre="Metal")
+    for f in os.listdir(album):        # a genre that isn't its folder's: an edit of something else leaves it there
+        if f.endswith(".wav"):
+            tagwrite.write(os.path.join(album, f), {"genre": "Rock"})
+    with db.session() as s:
+        scanner.scan_root(Ctx(), s.scalar(select(Root).where(Root.path == top)), full=True)
+    scanner.finish_scan(Ctx())
+    with db.session() as s:
+        lost_id = s.scalar(select(Track.album_id).where(Track.title == "Alone"))
+        twin_id = s.scalar(select(Track.album_id).where(Track.path.startswith(twin)))
+    assert manage.filing(twin_id, "Rock") == {"now": "Duplicates", "then": "Duplicates", "no_fit": False}
+    assert manage.edit_album(lost_id, {}, [], by_genre=False)["moved_to"] is None      # an artist's new name
+    r = manage.edit_album(lost_id, {}, [])
+    assert r["moved_to"] == os.path.join(top, "Rock", "Loner", "Loner - 2000 - Lost")
+    r = manage.edit_album(album_id, {"title": "Better Album"}, [])
+    assert r["moved_to"] == os.path.join(top, "Metal", "Old Artist", "Old Artist - 1990 - Better Album")
+
+
 def test_editing_a_song_renames_its_file_in_place(library):
     top, album, album_id = library
     with db.session() as s:

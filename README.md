@@ -76,11 +76,15 @@ you choose from 98 colour schemes, each with a light and a dark version.
     Brave Search API key, $5 of free searches a month) need keys on the admin
     page. An album's songs are paired with the picked album's by their length,
     so a title can't land on the wrong song. Tags are written into the files,
-    and an album in a music folder is filed again by its new tags; chip and
-    tracker files, audiobooks and podcasts keep their edits in Muzix. A new
-    artist name goes into all their songs in the background: the edit window
-    says beforehand which folders move and whether the name joins an artist
-    already there, and Muzix says when it's done.
+    and an album in a music folder is filed again by its new tags: a new genre
+    (or any save of an album in Uncategorized) moves it to that genre's folder,
+    found the way uploads are filed ("Doom Metal" goes to Metal), and the edit
+    window says beforehand where it goes; Duplicates and Other formats keep
+    theirs. Chip and tracker files, audiobooks and podcasts keep their edits
+    in Muzix. A new artist name goes into all their songs in the background
+    (their albums stay in their genre folders): the edit window says
+    beforehand which folders move and whether the name joins an artist already
+    there, and Muzix says when it's done.
   - *Undo*: every saved edit can be undone, from the message after saving, the
     edit window or Admin → Edits: tags, file names, folders and covers go back
     exactly as they were, unless something has changed them since.
