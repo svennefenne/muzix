@@ -71,7 +71,7 @@ img { display: block; }
 /* names when there's room, icons when not, a sideways scroll at the very least */
 .topnav {
   container: topnav / inline-size; flex: 0 0.02 424px; min-width: 0; display: flex; align-items: center; gap: 4px;
-  overflow-x: auto; scrollbar-width: none;
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
 }
 .topnav-pill {
   flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 11px;
@@ -311,7 +311,9 @@ input[type="range"].range::-moz-range-thumb { width: 13px; height: 13px; border:
 .section-toggle[aria-expanded="false"] svg { transform: rotate(-90deg); }
 .see-all { font: 700 11px/1 var(--font-ui); letter-spacing: .12em; text-transform: uppercase; color: var(--text-dim); }
 .see-all:hover { color: var(--primary); }
-.scroller { display: grid; grid-auto-flow: column; grid-auto-columns: 168px; gap: 16px; overflow-x: auto; padding-bottom: 10px; scroll-snap-type: x proximity; }
+/* rows scroll sideways only: a card's hover bleed must not make them scroll up and down too, or an
+   up-and-down swipe that starts on a row moves the row by a few pixels instead of the page */
+.scroller { display: grid; grid-auto-flow: column; grid-auto-columns: 168px; gap: 16px; overflow-x: auto; overflow-y: hidden; padding-bottom: 10px; scroll-snap-type: x proximity; }
 .scroller > * { scroll-snap-align: start; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(166px, 1fr)); gap: 18px; }
 .grid.small { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
@@ -996,7 +998,7 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
   .t-actions .t-like { display: none; }
   .t-actions .t-more { width: 32px; height: 40px; }
   .split { grid-template-columns: 1fr; }
-  .sidenav { position: static; grid-auto-flow: column; overflow-x: auto; }
+  .sidenav { position: static; grid-auto-flow: column; overflow-x: auto; overflow-y: hidden; }
   .nowplaying-body { grid-template-columns: 1fr; padding: 20px; }
   .footer .hide-sm { display: none; }
   .qsearch { display: none; }
@@ -1046,7 +1048,7 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
   .h2 { font-size: 21px; }
   .section { margin-top: 26px; }
   .section-head .kicker { display: none; }
-  .scroller { grid-auto-columns: 140px; gap: 12px; margin: 0 -16px; padding: 0 16px 6px; scroll-padding: 0 16px; }
+  .scroller { grid-auto-columns: 140px; gap: 12px; margin: 0 -16px; padding: 0 16px 10px; scroll-padding: 0 16px; }   /* room for the cards' hover background */
   .searchbox { height: 48px; font-size: 16px; margin: 8px 0 4px; }
 
   /* mini-player floating above the tab bar */
@@ -1126,11 +1128,11 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
   .toast { bottom: calc(140px + env(safe-area-inset-bottom)); }
 
   /* long chip rows swipe sideways instead of piling up */
-  .subnav.swipe { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-left: -16px; margin-right: -16px; padding: 0 16px; }
+  .subnav.swipe { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; margin-left: -16px; margin-right: -16px; padding: 0 16px; }
   .subnav.swipe > * { flex-shrink: 0; }
 
   /* Home: section chips swipe, quick tiles in two columns */
-  .home-chips { flex-wrap: nowrap; margin: 0 -16px 16px; padding: 0 16px; overflow-x: auto; scrollbar-width: none; }
+  .home-chips { flex-wrap: nowrap; margin: 0 -16px 16px; padding: 0 16px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
   .hero { margin-bottom: 12px; }
   .quick-grid { grid-template-columns: 1fr 1fr; margin-bottom: 0; }
   .quick { grid-template-columns: 52px minmax(0, 1fr); height: 52px; }

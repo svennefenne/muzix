@@ -47,6 +47,9 @@ class Engine {
   private lastTick = 0;
 
   constructor() {
+    // tells iOS this page plays music, so its audio keeps going with the screen off (Safari 17+)
+    const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
+    if (session) session.type = "playback";
     this.el = new Audio();
     this.el.preload = "auto";
     const el = this.el;
@@ -427,7 +430,9 @@ class Engine {
       this.lastEnd = 0;
       return;
     }
-    // a song ended and the next never started, or playback stopped moving
+    // iOS may have stopped the audio graph the music plays through (no captureStream there)
+    if (this.ctx && this.ctx.state !== "running" && !this.el.paused) this.ctx.resume().catch(() => {});
+    // a song ended and the next never started, the music went silent, or playback stopped moving
     if (this.hiddenAt && (this.stalled || (this.lastEnd && !this.el.ended))) {
       const away = Math.round((Date.now() - this.hiddenAt) / 1000);
       report("background", `Playback stalled while the page was hidden (${away}s)`, `\n${this.trace.join("\n")}`);
@@ -455,10 +460,11 @@ class Engine {
   /** The analyser behind the visualizer. Where the browser can copy the element's sound
    * (captureStream), the analyser listens to the copy and the element plays to the speakers
    * itself: a phone that pauses Web Audio with the screen off then doesn't stop the music.
-   * Elsewhere the element plays through the audio graph. */
+   * Elsewhere (Safari, so every iPhone and iPad) the element plays through the audio graph,
+   * which the "playback" audio session keeps running with the screen off. */
   ensureAudioGraph() {
     if (this.ctx) {
-      if (this.ctx.state === "suspended") this.ctx.resume().catch(() => {});
+      if (this.ctx.state !== "running") this.ctx.resume().catch(() => {});   // iOS also has "interrupted"
       return;
     }
     try {
@@ -468,7 +474,11 @@ class Engine {
       this.analyser.fftSize = 512;
       this.analyser.smoothingTimeConstant = 0.78;
       this.freq = new Uint8Array(this.analyser.frequencyBinCount);
-      ctx.addEventListener("statechange", () => this.note(`audio graph ${ctx.state}`));
+      ctx.addEventListener("statechange", () => {
+        this.note(`audio graph ${ctx.state}`);
+        // the music itself plays through the graph here: stopping it silenced the music
+        if (this.hiddenAt && !this.copy && ctx.state !== "running" && !this.el.paused) this.stalled = true;
+      });
       const el = this.el as HTMLAudioElement & { captureStream?: () => MediaStream };
       if (typeof el.captureStream === "function") {
         this.copy = el.captureStream();
