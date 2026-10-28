@@ -26,7 +26,7 @@ Muzix is a self-hosted, Spotify-style player for everything you own: your music 
 ## Operating Context
 
 - **Desktop at home:** big screen, mouse and keyboard (Space, arrows, N/P, M, Q/E, `/`), often fullscreen (F11).
-- **Phone:** used as an app installed on the home screen, on the go or around the house, with a Spotify-style phone layout (tab bar, mini player).
+- **Phone:** used as an app installed on the home screen, on the go or around the house, with a Spotify-style phone layout (tab bar, mini player). On Android it can also be the Muzix app in `android/`, a WebView wrapper around the same web interface that adds native playback and casting, so the design language stays web.
 - **Lean-back:** left running on a screen as a now-playing display (full-screen player, visualizer, skins).
 - **Administration:** library folders, scans and jobs, uploads, users and settings are handled by whoever runs the server, usually only the owner.
 - **Hosting:** one Docker container, usually behind a reverse proxy with HTTPS (Spotify playback needs it). Libraries live on NAS shares, so scans and folder listings can be slow.
