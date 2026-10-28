@@ -55,6 +55,7 @@ export function NowPanel() {
             <p className="np-skin"><b>{theme.skin.name}</b> skin · {theme.skin.blurb}</p>
           )}
           {cur.albumId && <Link className="np-albumlink" to={`/album/${cur.albumId}`}>Go to the album</Link>}
+          {cur.kind === "episode" && <Link className="np-albumlink" to={`/podcasts/episode/${cur.id}`}>Go to the episode</Link>}
           {cur.kind === "radio" && (
             <button className="np-link np-albumlink" onClick={() => showHistory(String(cur.id), cur.title)}>
               <History size={14} /> Played on this station

@@ -5,10 +5,12 @@ import logging
 import os
 import re
 from datetime import datetime, timedelta, timezone
+from html import escape
+from html.parser import HTMLParser
 
 import feedparser
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from . import __version__, db, env, jobs, settings
 from .models import Episode, Feed, Subscription
@@ -42,12 +44,142 @@ def _strip_html(s: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", s or "")).strip()
 
 
+# ---------------------------------------------------------------- show notes
+
+_TOKEN = re.compile(r"(?P<url>https?://[^\s<>\"']+)|(?<![\d:.])(?P<t>(?:(?P<h>\d{1,2}):)?(?P<m>\d{1,2}):(?P<s>[0-5]\d))(?![\d:])")
+_BREAK = {"p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "tr", "ul", "ol", "table", "section", "article"}
+_SKIP = {"script", "style", "iframe", "object", "embed", "noscript", "template", "svg", "head", "title", "form"}
+_INLINE = {"b": "b", "strong": "b", "i": "i", "em": "i"}
+
+
+class _Notes(HTMLParser):
+    """Rebuilds show notes from a few known pieces, so nothing of the feed's own markup reaches
+    the page: paragraphs, line breaks, list items, bold and italics, links to the web, and
+    timestamps (as buttons the episode page makes seek)."""
+
+    def __init__(self, duration: float):
+        super().__init__(convert_charrefs=True)
+        self.duration = duration
+        self.out: list[str] = []
+        self.para = False
+        self.inline: list[str] = []
+        self.link = False
+        self.skip = 0
+
+    def _open(self):
+        if not self.para:
+            self.out.append("<p>")
+            self.para = True
+
+    def _close(self):
+        self._end_link()
+        while self.inline:
+            self.out.append(f"</{self.inline.pop()}>")
+        if self.para:
+            self.out.append("</p>")
+            self.para = False
+
+    def _end_link(self):
+        if self.link:
+            self.out.append("</a>")
+            self.link = False
+
+    def handle_starttag(self, tag, attrs):
+        if tag in _SKIP:
+            self.skip += 1
+        elif self.skip:
+            return
+        elif tag in _BREAK:
+            self._close()
+        elif tag == "li":
+            self._close()
+            self._open()
+            self.out.append("• ")
+        elif tag == "br":
+            if self.para:
+                self.out.append("<br>")
+        elif tag in _INLINE and not self.link:
+            self._open()
+            self.inline.append(_INLINE[tag])
+            self.out.append(f"<{_INLINE[tag]}>")
+        elif tag == "a" and not self.link:
+            href = (dict(attrs).get("href") or "").strip()
+            if re.match(r"(https?://|mailto:)", href, re.I):
+                self._open()
+                self.out.append(f'<a href="{escape(href)}" target="_blank" rel="noopener noreferrer nofollow">')
+                self.link = True
+
+    def handle_endtag(self, tag):
+        if tag in _SKIP:
+            self.skip = max(0, self.skip - 1)
+        elif self.skip:
+            return
+        elif tag in _BREAK or tag == "li":
+            self._close()
+        elif tag == "a":
+            self._end_link()
+        elif tag in _INLINE and _INLINE[tag] in self.inline:
+            self._end_link()
+            while self.inline:
+                closed = self.inline.pop()
+                self.out.append(f"</{closed}>")
+                if closed == _INLINE[tag]:
+                    break
+
+    def handle_data(self, data):
+        if self.skip or (not self.para and not data.strip()):
+            return
+        self._open()
+        text = re.sub(r"\s+", " ", data)
+        if self.link:
+            self.out.append(escape(text))
+            return
+        pos = 0
+        for m in _TOKEN.finditer(text):
+            self.out.append(escape(text[pos:m.start()]))
+            pos = m.end()
+            if m["url"]:
+                url = m["url"].rstrip(".,;:!?)")
+                self.out.append(f'<a href="{escape(url)}" target="_blank" rel="noopener noreferrer nofollow">{escape(url)}</a>')
+                self.out.append(escape(m["url"][len(url):]))
+                continue
+            secs = int(m["h"] or 0) * 3600 + int(m["m"]) * 60 + int(m["s"])
+            if (m["h"] is None or int(m["m"]) < 60) and (not self.duration or secs <= self.duration):
+                self.out.append(f'<button type="button" class="ts" data-t="{secs}">{escape(m["t"])}</button>')
+            else:
+                self.out.append(escape(m[0]))
+        self.out.append(escape(text[pos:]))
+
+
+def show_notes(source: str, duration: float = 0) -> str:
+    """An episode's show notes (HTML or plain text) as safe HTML for its page."""
+    source = (source or "")[:100_000]
+    if not re.search(r"<\s*(p|br|div|li)\b", source, re.I):    # plain text: its blank lines are paragraphs
+        source = re.sub(r"<(?!/?(a|b|i|em|strong|span)\b)", "&lt;", source)    # and a "<" is just that
+        source = "".join(f"<p>{p.replace(chr(10), '<br>')}</p>" for p in re.split(r"\n\s*\n", source.strip()))
+    parser = _Notes(duration)
+    parser.feed(source)
+    parser.close()
+    parser._close()
+    html = "".join(parser.out)
+    return re.sub(r"<p>(\s|<br>|• )*</p>", "", html).strip()
+
+
+def _notes_of(entry, duration: float) -> str:
+    content = max((c.get("value", "") for c in entry.get("content", [])), key=len, default="")
+    summary = entry.get("summary", "")
+    return show_notes(content if len(_strip_html(content)) >= len(_strip_html(summary)) else summary, duration)
+
+
 def fetch(feed: Feed, client: httpx.Client) -> bool:
     """Refresh one feed in place. Returns True when anything changed."""
+    with db.session() as s:     # episodes read before their show notes were kept
+        unread = dict(s.execute(select(Episode.guid, Episode.id)
+                                .where(Episode.feed_id == feed.id, Episode.notes.is_(None))).all())
     headers = {}
-    if feed.etag:
+    if feed.etag and not unread:     # with some to fill in, the whole feed is read once more
         headers["If-None-Match"] = feed.etag
-    if feed.modified:
+    if feed.modified and not unread:
         headers["If-Modified-Since"] = feed.modified
     r = client.get(feed.url, headers=headers, follow_redirects=True)
     feed.last_checked = datetime.now(timezone.utc)
@@ -71,7 +203,7 @@ def fetch(feed: Feed, client: httpx.Client) -> bool:
         setattr(feed, k, v)
     with db.session() as s:
         known = set(s.scalars(select(Episode.guid).where(Episode.feed_id == feed.id)))
-    new = []
+    new, notes = [], {}
     for e in parsed.entries:
         enclosure = next((l for l in e.get("links", []) if l.get("rel") == "enclosure"
                           and (l.get("type", "").startswith(("audio", "video")) or l.get("href", "").lower()
@@ -80,18 +212,31 @@ def fetch(feed: Feed, client: httpx.Client) -> bool:
             continue
         guid = e.get("id") or enclosure["href"]
         if guid in known:
+            if guid in unread:
+                notes[unread.pop(guid)] = _notes_of(e, _duration(e.get("itunes_duration")))
             continue
         known.add(guid)
         new.append(Episode(
             feed_id=feed.id, guid=guid[:1024], title=e.get("title", "")[:1024],
             description=_strip_html(e.get("summary", ""))[:8000], published=_when(e),
+            notes=_notes_of(e, _duration(e.get("itunes_duration"))),
             duration=_duration(e.get("itunes_duration")), audio_url=enclosure["href"],
             mime=enclosure.get("type", ""), size=int(enclosure.get("length") or 0) if str(enclosure.get("length", "")).isdigit() else 0,
             image=(e.get("image") or {}).get("href", "")))
-    if new:
-        with db.session() as s:
-            s.add_all(new)
+    notes.update({ep_id: "" for ep_id in unread.values()})     # gone from the feed: their summary stands in
+    with db.session() as s:
+        s.add_all(new)
+        for ep_id, html in notes.items():
+            s.execute(update(Episode).where(Episode.id == ep_id).values(notes=html))
     return bool(new)
+
+
+def read_now(feed_id: int):
+    """Reads a feed straight away (an episode page wanting show notes that were never kept)."""
+    with db.session() as s:
+        feed = s.get(Feed, feed_id)
+        with httpx.Client(headers={"User-Agent": UA}, timeout=20) as client:
+            fetch(feed, client)
 
 
 def open_feed(url: str, fresh: bool = True) -> int:

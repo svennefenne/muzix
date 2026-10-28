@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { Check, Download, Play, Plus, RefreshCw, Rss, Upload } from "lucide-react";
+import { Check, CircleCheck, Download, Pause, Play, Plus, RefreshCw, Rss, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ago, api, fmtTime } from "../api";
+import { ago, api, fmtLong, fmtTime } from "../api";
 import { queryClient } from "../actions";
 import { AdminCog } from "../components/AdminMode";
 import { Segmented } from "../components/Browse";
@@ -10,7 +10,7 @@ import { Art, Display, Empty, Kicker, Loading, Modal, NewDot, Section, Switch } 
 import { engine } from "../player/engine";
 import { fromEpisode, usePlayer } from "../store/player";
 import { useUi } from "../store/ui";
-import type { Episode, Feed, PodcastHit } from "../types";
+import type { Episode, EpisodeDetail, Feed, PodcastHit } from "../types";
 
 function EpisodeRow({ e, feed }: { e: Episode; feed?: Feed }) {
   const notify = useUi((s) => s.notify);
@@ -18,7 +18,7 @@ function EpisodeRow({ e, feed }: { e: Episode; feed?: Feed }) {
   // started here: its dot goes now rather than when the list is next fetched
   const started = usePlayer((s) => s.queue.slice(0, s.index + 1).some((q) => q.key === `episode:${e.id}`));
   return (
-    <div className="list-row" style={{ alignItems: "flex-start" }}>
+    <div className="list-row ep-row" style={{ alignItems: "flex-start" }}>
       <button className="btn round" style={{ width: 42, height: 42 }} aria-label={`Play ${e.title}`}
               onClick={() => engine.play([fromEpisode(e, feed?.title, feed?.image)])}>
         <Play size={16} fill="currentColor" />
@@ -28,7 +28,8 @@ function EpisodeRow({ e, feed }: { e: Episode; feed?: Feed }) {
           {e.new && !started && <NewDot label="New episode" />}
           {[e.feed_title, e.published && ago(e.published), e.duration ? fmtTime(e.duration) : null].filter(Boolean).join(" · ")}
         </div>
-        <div style={{ fontWeight: 700 }}>{e.title}</div>
+        {/* the title's link covers the whole row: a click anywhere but the buttons opens the episode */}
+        <Link className="ep-open" to={`/podcasts/episode/${e.id}`}>{e.title}</Link>
         <div className="dim" style={{ fontSize: 13, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{e.description}</div>
         {pct > 0 && !e.finished && <div className="progressbar" style={{ marginTop: 8, maxWidth: 260 }}><div style={{ width: `${pct}%` }} /></div>}
       </div>
@@ -267,6 +268,73 @@ export function PodcastPage() {
           {q.isFetching ? "Loading…" : `Show more (${listed - eps.length} left)`}
         </button>
       )}
+    </div>
+  );
+}
+
+export function EpisodePage() {
+  const { eid } = useParams();
+  const notify = useUi((s) => s.notify);
+  const q = useQuery({ queryKey: ["episode", Number(eid)], queryFn: () => api.get<EpisodeDetail>(`/api/podcasts/episodes/${eid}`) });
+  const here = usePlayer((s) => s.current()?.key === `episode:${eid}`);
+  const playing = usePlayer((s) => s.playing);
+  if (q.isError) return <div className="page"><Empty title="No such episode" /></div>;
+  if (!q.data) return <div className="page"><Loading /></div>;
+  const e = q.data;
+  const f = e.feed;
+  const pct = e.duration ? Math.min(100, (e.position / e.duration) * 100) : 0;
+  const play = () => (here ? engine.toggle() : engine.play([fromEpisode(e, f.title, f.image)]));
+  // a timestamp in the notes: there, in this episode
+  const playAt = (t: number) => (here ? engine.seek(t, true) : engine.play([{ ...fromEpisode(e, f.title, f.image), resume: t }]));
+  const changed = () => {
+    q.refetch();
+    for (const key of ["podcast", "podcasts", "podcasts-latest", "sidebar"]) queryClient.invalidateQueries({ queryKey: [key] });
+  };
+  const when = e.published && new Date(e.published).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+  return (
+    <div className="page">
+      <div className="detail-head ep-head">
+        <Art src={e.image || f.image} name={f.title} size={600} />
+        <div>
+          <Kicker parts={["Podcast episode"]} />
+          <Display l1={e.title} small />
+          <div className="detail-meta">
+            <Link to={`/podcasts/${f.id}`}><b>{f.title}</b></Link>
+            {when && <span className="dotsep">{when}</span>}
+            {e.duration > 0 && <span className="dotsep">{fmtLong(e.duration)}</span>}
+            {e.finished ? <span className="dotsep">Played</span>
+              : pct > 0 ? <span className="dotsep">{fmtLong(e.duration - e.position)} left</span>
+              : e.new && <span className="dotsep"><NewDot label="New episode" />New</span>}
+          </div>
+          {pct > 0 && !e.finished && <div className="progressbar" style={{ maxWidth: 320, marginBottom: 18 }}><div style={{ width: `${pct}%` }} /></div>}
+          <div className="row-actions">
+            <button className="btn accent" onClick={play}>
+              {here && playing ? <><Pause size={15} fill="currentColor" /> Pause</>
+                : <><Play size={15} fill="currentColor" /> {here ? "Continue" : e.finished ? "Play again" : pct > 0 ? "Resume" : "Play"}</>}
+            </button>
+            {e.downloaded ? <span className="badge">Saved</span> : (
+              <button className="btn" onClick={async () => {
+                await api.post(`/api/podcasts/episodes/${e.id}/download`);
+                notify("Downloading in the background");
+              }}><Download size={15} /> Download</button>
+            )}
+            <button className="btn ghost" onClick={async () => {
+              await api.put(`/api/podcasts/episodes/${e.id}/progress`, { position: e.finished ? 0 : e.duration, finished: !e.finished });
+              changed();
+            }}><CircleCheck size={15} /> {e.finished ? "Mark as unplayed" : "Mark as played"}</button>
+          </div>
+        </div>
+      </div>
+      <Section title="Episode description">
+        {e.notes ? (
+          // the server rebuilds the notes from a short list of safe tags, attributes and links
+          <div className="show-notes" dangerouslySetInnerHTML={{ __html: e.notes }} onClick={(ev) => {
+            const ts = (ev.target as HTMLElement).closest<HTMLElement>("button.ts");
+            if (ts) playAt(Number(ts.dataset.t));
+          }} />
+        ) : <p className="dim">This episode has no description.</p>}
+        <Link className="btn" style={{ marginTop: 24 }} to={`/podcasts/${f.id}`}>See all episodes</Link>
+      </Section>
     </div>
   );
 }

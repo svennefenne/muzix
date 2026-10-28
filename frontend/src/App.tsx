@@ -30,6 +30,7 @@ const Books = lazy(() => import("./pages/Books"));
 const BookPage = lazy(() => import("./pages/Books").then((m) => ({ default: m.BookPage })));
 const Podcasts = lazy(() => import("./pages/Podcasts"));
 const PodcastPage = lazy(() => import("./pages/Podcasts").then((m) => ({ default: m.PodcastPage })));
+const EpisodePage = lazy(() => import("./pages/Podcasts").then((m) => ({ default: m.EpisodePage })));
 const Radio = lazy(() => import("./pages/Radio"));
 const Spotify = lazy(() => import("./pages/Spotify"));
 const Settings = lazy(() => import("./pages/Settings"));
@@ -144,6 +145,7 @@ function Shell() {
               <Route path="/audiobooks/:id" element={<BookPage />} />
               <Route path="/podcasts" element={<Podcasts />} />
               <Route path="/podcasts/:id" element={<PodcastPage />} />
+              <Route path="/podcasts/episode/:eid" element={<EpisodePage />} />
               <Route path="/radio" element={<Radio />} />
               <Route path="/spotify/*" element={<Spotify />} />
               <Route path="/settings" element={<Settings />} />

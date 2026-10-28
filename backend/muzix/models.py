@@ -312,6 +312,7 @@ class Episode(Base):
     image: Mapped[str] = mapped_column(String(2048), default="")
     local_path: Mapped[str] = mapped_column(String(1024), default="")
     added_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=now)   # first read
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)   # show notes as safe HTML; None: not read yet
     __table_args__ = (UniqueConstraint("feed_id", "guid", name="uq_episode_guid"),)
 
 

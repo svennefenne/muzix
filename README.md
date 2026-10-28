@@ -59,7 +59,8 @@ you choose from 98 colour schemes, each with a light and a dark version.
   A blue dot, as on Spotify, marks episodes out since you subscribed that you
   haven't started, and podcasts with new ones until you open their page.
   Each podcast remembers its own order (newest or oldest first) and whether
-  finished episodes are hidden.
+  finished episodes are hidden. An episode opens its own page with the full
+  show notes: links work and timestamps (12:34) play from there.
 - **Internet radio**: tens of thousands of stations from radio-browser.info,
   saved stations, live "now playing" titles.
 - **Spotify**: your playlists, saved albums and liked songs in Muzix style,

@@ -653,6 +653,25 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
 .list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .list-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; background: color-mix(in srgb, var(--surface) 80%, transparent); overflow-wrap: break-word; }
 .list-row .grow { flex: 1; min-width: 0; }
+
+/* podcast episodes: the whole row opens the episode, whose page has the show notes */
+.ep-row { position: relative; transition: border-color .15s; }
+.ep-row:hover { border-color: var(--border-strong); }
+.ep-open { display: block; font-weight: 700; color: var(--text); }
+.ep-open::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+.ep-row:hover .ep-open { color: var(--primary); }
+.ep-open:focus-visible { outline: none; }
+.ep-open:focus-visible::after { outline: 2px solid var(--primary); outline-offset: 2px; }
+.ep-row button, .ep-row .badge { position: relative; z-index: 1; }
+.ep-head .display.small { font-size: clamp(28px, 3.8cqi, 48px); line-height: 1; }
+.show-notes { max-width: 760px; font-size: 15px; line-height: 1.6; color: var(--text-dim); }
+.show-notes p { margin: 0 0 12px; }
+.show-notes a { color: var(--text); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
+.show-notes a:hover { color: var(--primary); }
+.show-notes .ts {
+  padding: 0; border: 0; background: none; font: inherit; color: var(--primary); cursor: pointer;
+  text-decoration: underline; text-underline-offset: 2px;
+}
 .progressbar { height: 6px; border-radius: 6px; background: var(--surface-3); overflow: hidden; }
 .progressbar > div { height: 100%; background: var(--primary); transition: width .4s; }
 .log { margin: 10px 0 0; max-height: 320px; overflow: auto; padding: 12px; border-radius: 8px; background: var(--bg-deep); font: 500 11.5px/1.5 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-dim); }

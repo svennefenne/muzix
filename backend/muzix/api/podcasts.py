@@ -1,3 +1,4 @@
+import logging
 import os
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
@@ -16,6 +17,7 @@ from ..models import Episode, EpisodeProgress, Feed, Subscription, User
 from ..security import current_user, stream_user
 from .proxy import check_url, relay
 
+log = logging.getLogger("muzix.podcasts")
 router = APIRouter(prefix="/api/podcasts", tags=["podcasts"])
 
 
@@ -219,6 +221,27 @@ def unsubscribe(feed_id: int, db: Session = Depends(get_db), user: User = Depend
 @router.post("/refresh")
 def refresh(user: User = Depends(current_user)):
     return {"job_id": jobs.submit("refresh_feeds", "Refresh podcasts")}
+
+
+@router.get("/episodes/{episode_id}")
+def episode(episode_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """One episode for its page: with its podcast and its show notes."""
+    e = db.get(Episode, episode_id)
+    f = db.get(Feed, e.feed_id) if e else None
+    if e is None or f is None:
+        raise HTTPException(404, "No such episode")
+    if e.notes is None and not f.error:     # read before show notes were kept: the feed is read again for them
+        try:
+            podcasts.read_now(f.id)
+        except (httpx.HTTPError, ValueError) as err:
+            log.info("show notes of %s: %s", f.url, err)
+            f.error = str(err)[:500]      # not again until a refresh reads it
+            db.commit()
+        db.refresh(e)
+    prog = db.get(EpisodeProgress, (user.id, e.id))
+    return {**episode_json(e, prog, f, db.get(Subscription, (user.id, f.id))),
+            "notes": e.notes or podcasts.show_notes(e.description, e.duration),
+            "feed": {"id": f.id, "title": f.title or f.url, "author": f.author, "image": f.image}}
 
 
 @router.get("/episodes/{episode_id}/stream")

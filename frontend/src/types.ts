@@ -199,6 +199,12 @@ export interface Feed {
   finished?: number;            // the ones you've finished
 }
 
+/** An episode's own page: its podcast and its show notes (safe HTML, built by the server). */
+export interface EpisodeDetail extends Episode {
+  notes: string;
+  feed: { id: number; title: string; author: string; image: string };
+}
+
 export interface Episode {
   id: number;
   feed_id: number;

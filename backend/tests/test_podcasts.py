@@ -82,3 +82,52 @@ def test_a_podcast_page_sorts_hides_finished_and_counts():
     assert titles(order="oldest")[0] == ["Part 1", "Part 2", "Part 3", "Part 4", "Part 5", "Part 6", "Part 7", "Undated"]
     assert titles(order="oldest", hide_finished=True)[0] == ["Part 3", "Part 4", "Part 6", "Part 7", "Undated"]
     assert titles(order="oldest", hide_finished=True, limit=2) == (["Part 3", "Part 4"], 8, 3)
+
+
+def test_show_notes_keep_paragraphs_links_and_timestamps_and_nothing_else():
+    from muzix.podcasts import show_notes
+    html = show_notes('<p>Hi <b>there <a href="https://x.org/?a=1&b=2">site</a></b> at 12:34.</p>'
+                      '<script>alert(1)</script><ul><li><a href="javascript:alert(1)" onclick="x">bad</a>'
+                      '<img src=x onerror=alert(1)> see https://ex.com/p).</li></ul><p>99:59:59 is too long</p>', 3600)
+    assert html == ('<p>Hi <b>there <a href="https://x.org/?a=1&amp;b=2" target="_blank" rel="noopener noreferrer nofollow">site</a></b>'
+                    ' at <button type="button" class="ts" data-t="754">12:34</button>.</p>'
+                    '<p>• bad see <a href="https://ex.com/p" target="_blank" rel="noopener noreferrer nofollow">https://ex.com/p</a>).</p>'
+                    '<p>99:59:59 is too long</p>')
+    assert show_notes("One\ntwo\n\n2 < 3 & <tag>", 0) == "<p>One<br>two</p><p>2 &lt; 3 &amp; &lt;tag&gt;</p>"
+
+
+def test_episodes_read_before_show_notes_were_kept_get_them_from_the_whole_feed():
+    import httpx
+    from muzix import podcasts
+    rss = b"""<?xml version="1.0"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel>
+      <title>Notes</title>
+      <item><guid>n1</guid><title>Old one</title><description>Short.</description>
+        <content:encoded><![CDATA[<p>Long notes with <a href="https://ex.org">a link</a>.</p><p>At 1:30 the music.</p>]]></content:encoded>
+        <enclosure url="https://ex.org/1.mp3" type="audio/mpeg" length="1"/></item>
+      <item><guid>n2</guid><title>New one</title><description>Plain text notes.</description>
+        <enclosure url="https://ex.org/2.mp3" type="audio/mpeg" length="1"/></item>
+    </channel></rss>"""
+    asked = []
+
+    def answer(request):
+        asked.append(request.headers.get("if-none-match"))
+        return httpx.Response(200, content=rss, headers={"etag": '"v1"'})
+
+    with db.session() as s:
+        f = Feed(url="https://ex.org/notes.xml", etag='"v0"')
+        s.add(f)
+        s.flush()
+        s.add(Episode(feed_id=f.id, guid="n1", title="Old one", description="Short."))     # notes None: from before
+        s.add(Episode(feed_id=f.id, guid="gone", title="Gone from the feed"))
+        fid = f.id
+    with httpx.Client(transport=httpx.MockTransport(answer)) as client, db.session() as s:
+        podcasts.fetch(s.get(Feed, fid), client)
+    assert asked == [None]       # read whole, not "if changed", to fill them in
+    with db.session() as s:
+        notes = {e.guid: e.notes for e in s.query(Episode).filter_by(feed_id=fid)}
+    assert notes == {"n1": '<p>Long notes with <a href="https://ex.org" target="_blank" rel="noopener noreferrer nofollow">a link</a>.</p>'
+                           '<p>At <button type="button" class="ts" data-t="90">1:30</button> the music.</p>',
+                     "n2": "<p>Plain text notes.</p>", "gone": ""}
+    with httpx.Client(transport=httpx.MockTransport(answer)) as client, db.session() as s:
+        podcasts.fetch(s.get(Feed, fid), client)
+    assert asked == [None, '"v1"']     # all filled in: back to asking only for changes

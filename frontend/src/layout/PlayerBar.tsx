@@ -59,7 +59,8 @@ export function PlayerBar() {
             <Art src={cur.art} name={cur.album || cur.title} size={160} onClick={() => setNowPlayingOpen(true)} />
             <div className="np-text">
               <div className="np-title ellipsis">
-                {cur.albumId ? <Link to={`/album/${cur.albumId}`}>{s.liveTitle || cur.title}</Link> : (s.liveTitle || cur.title)}
+                {cur.albumId ? <Link to={`/album/${cur.albumId}`}>{s.liveTitle || cur.title}</Link>
+                  : cur.kind === "episode" ? <Link to={`/podcasts/episode/${cur.id}`}>{cur.title}</Link> : (s.liveTitle || cur.title)}
               </div>
               <div className="np-sub ellipsis">
                 {s.liveTitle ? cur.title : cur.artistId ? <Link to={`/artist/${cur.artistId}`}>{cur.artist}</Link> : cur.artist}
