@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { ago, api, fmtTime } from "../api";
 import { queryClient } from "../actions";
 import { AdminCog } from "../components/AdminMode";
+import { Segmented } from "../components/Browse";
 import { Art, Display, Empty, Kicker, Loading, Modal, NewDot, Section, Switch } from "../components/ui";
 import { engine } from "../player/engine";
 import { fromEpisode, usePlayer } from "../store/player";
@@ -61,6 +62,8 @@ export default function Podcasts() {
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState("");
   const opml = useRef<HTMLInputElement>(null);
+  const latestOpen = !useUi((s) => s.browse["podcasts-latest"]?.collapsed);
+  const setBrowse = useUi((s) => s.setBrowse);
 
   const subscribe = async (feedUrl: string) => {
     setBusy(feedUrl);
@@ -153,7 +156,8 @@ export default function Podcasts() {
       </Section>
 
       {latest.data && latest.data.length > 0 && (
-        <Section kicker="Fresh episodes" title="Latest">
+        <Section kicker="Fresh episodes" title="Latest" open={latestOpen}
+                 onToggle={() => setBrowse("podcasts-latest", { collapsed: latestOpen })}>
           <div className="list">{latest.data.slice(0, 12).map((e) => <EpisodeRow key={e.id} e={e} />)}</div>
         </Section>
       )}
@@ -182,10 +186,23 @@ export default function Podcasts() {
   );
 }
 
+const ORDERS = [{ value: "newest", label: "Newest" }, { value: "oldest", label: "Oldest" }] as const;
+const PAGE = 200;
+
 export function PodcastPage() {
   const { id } = useParams();
   const nav = useNavigate();
-  const q = useQuery({ queryKey: ["podcast", Number(id)], queryFn: () => api.get<Feed>(`/api/podcasts/${id}`) });
+  // the order and "hide finished" are remembered per podcast: a serial is heard from the start, news from the top
+  const pref = useUi((s) => s.browse[`podcast:${id}`]);
+  const setBrowse = useUi((s) => s.setBrowse);
+  const order = pref?.sort === "oldest" ? "oldest" : "newest";
+  const hideFinished = !!pref?.hide_finished;
+  const [limit, setLimit] = useState(PAGE);
+  useEffect(() => setLimit(PAGE), [id, order, hideFinished]);
+  const q = useQuery({
+    queryKey: ["podcast", Number(id), order, hideFinished, limit], placeholderData: (before) => before,
+    queryFn: () => api.get<Feed>(`/api/podcasts/${id}`, { order, hide_finished: hideFinished, limit }),
+  });
   const subscribed = !!q.data?.subscribed;
   // opening the page is seeing what's new: the podcast's dot goes from the library
   useEffect(() => {
@@ -198,17 +215,19 @@ export function PodcastPage() {
   const f = q.data;
   const eps = f.episodes || [];
   const next = eps.find((e) => !e.finished);
+  const total = f.total ?? eps.length;
+  const listed = hideFinished ? total - (f.finished || 0) : total;
   return (
     <div className="page">
       <div className="detail-head">
         <Art src={f.image} name={f.title} size={600} />
         <div>
-          <Kicker parts={["Podcast", f.categories[0], `${eps.length} episodes`]} />
+          <Kicker parts={["Podcast", f.categories[0], `${total} episodes`]} />
           <Display l1={f.title} small />
           <div className="detail-meta"><b>{f.author}</b>{f.last_checked && <span className="dotsep">Checked {ago(f.last_checked)}</span>}</div>
           {f.error && <p className="error-text">Last refresh failed: {f.error}</p>}
           <div className="row-actions">
-            {next && <button className="btn accent" onClick={() => engine.play([fromEpisode(next, f.title, f.image)])}><Play size={15} fill="currentColor" /> Play latest unplayed</button>}
+            {next && <button className="btn accent" onClick={() => engine.play([fromEpisode(next, f.title, f.image)])}><Play size={15} fill="currentColor" /> Play {order === "oldest" ? "oldest" : "latest"} unplayed</button>}
             <AdminCog kind="podcast" id={f.id} title={f.title} className="inline" />
             {f.subscribed ? (
               <>
@@ -233,7 +252,21 @@ export function PodcastPage() {
         </div>
       </div>
       {f.description && <p className="lede" style={{ maxWidth: 820 }}>{f.description}</p>}
-      <div className="list">{eps.map((e) => <EpisodeRow key={e.id} e={e} feed={f} />)}</div>
+      <div className="toolbar browsebar">
+        <Segmented label="Sort" value={order} options={[...ORDERS]} onChange={(v) => setBrowse(`podcast:${id}`, { sort: v })} />
+        <label className="row-actions dim" style={{ gap: 8 }}>
+          <Switch checked={hideFinished} onChange={(v) => setBrowse(`podcast:${id}`, { hide_finished: v })} />
+          Hide finished
+        </label>
+        {hideFinished && !!f.finished && <span className="faint" style={{ fontSize: 13 }}>{f.finished} finished hidden</span>}
+      </div>
+      {eps.length ? <div className="list">{eps.map((e) => <EpisodeRow key={e.id} e={e} feed={f} />)}</div>
+        : <Empty title={hideFinished ? "You've finished every episode" : "No episodes yet"} />}
+      {eps.length < listed && (
+        <button className="btn" style={{ marginTop: 16 }} disabled={q.isFetching} onClick={() => setLimit(limit + PAGE)}>
+          {q.isFetching ? "Loading…" : `Show more (${listed - eps.length} left)`}
+        </button>
+      )}
     </div>
   );
 }

@@ -24,7 +24,7 @@ export interface Prefs {
 
 export type LibraryView = "genres" | "artists" | "albums";
 export type DisplayMode = "list" | "grid" | "gallery";
-export interface BrowsePref { display?: DisplayMode; sort?: string }
+export interface BrowsePref { display?: DisplayMode; sort?: string; hide_finished?: boolean; collapsed?: boolean }
 
 export interface AuthState {
   needs_setup: boolean;
@@ -194,7 +194,9 @@ export interface Feed {
   unplayed: number | null;
   new: boolean;                 // a new episode since its page was last opened
   last_checked: string | null;
-  episodes?: Episode[];
+  episodes?: Episode[];         // a podcast's page: the first of them, in its order
+  total?: number;               // all its episodes
+  finished?: number;            // the ones you've finished
 }
 
 export interface Episode {

@@ -302,6 +302,13 @@ input[type="range"].range::-moz-range-thumb { width: 13px; height: 13px; border:
 .section { margin-top: 38px; }
 .section-head { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
 .section-head .kicker { margin-bottom: 4px; }
+.section-toggle {
+  display: inline-flex; align-items: center; gap: 8px; padding: 0; border: 0; background: none; cursor: pointer;
+  font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit;
+}
+.section-toggle svg { color: var(--text-dim); transition: transform .2s, color .15s; }
+.section-toggle:hover svg { color: var(--primary); }
+.section-toggle[aria-expanded="false"] svg { transform: rotate(-90deg); }
 .see-all { font: 700 11px/1 var(--font-ui); letter-spacing: .12em; text-transform: uppercase; color: var(--text-dim); }
 .see-all:hover { color: var(--primary); }
 .scroller { display: grid; grid-auto-flow: column; grid-auto-columns: 168px; gap: 16px; overflow-x: auto; padding-bottom: 10px; scroll-snap-type: x proximity; }

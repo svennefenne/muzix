@@ -55,3 +55,30 @@ def test_new_episodes_and_podcasts_get_a_blue_dot():
             s.add(EpisodeProgress(user_id=uid, episode_id=ep.id, position=5))
     assert dots(uid) == (False, False)
     assert not any(e["new"] for e in page(uid)["episodes"])
+
+
+def test_a_podcast_page_sorts_hides_finished_and_counts():
+    t0 = datetime.now(timezone.utc) - timedelta(days=100)
+    with db.session() as s:
+        u = User(username="serial-fan", password_hash="x")
+        f = Feed(url="https://example.com/serial.xml", title="Serial")
+        s.add_all([u, f])
+        s.flush()
+        eps = [Episode(feed_id=f.id, guid=f"s{n}", title=f"Part {n}", published=t0 + timedelta(days=n)) for n in range(1, 8)]
+        eps.append(Episode(feed_id=f.id, guid="undated", title="Undated"))
+        s.add_all(eps)
+        s.flush()
+        for n in (1, 2, 5):
+            s.add(EpisodeProgress(user_id=u.id, episode_id=eps[n - 1].id, position=900, finished=True))
+        s.add(EpisodeProgress(user_id=u.id, episode_id=eps[2].id, position=60))       # Part 3: started
+        uid, fid = u.id, f.id
+
+    def titles(**kw):
+        with db.session() as s:
+            page = api.feed(fid, db=s, user=s.get(User, uid), **kw)
+            return [e["title"] for e in page["episodes"]], page["total"], page["finished"]
+
+    assert titles() == (["Part 7", "Part 6", "Part 5", "Part 4", "Part 3", "Part 2", "Part 1", "Undated"], 8, 3)
+    assert titles(order="oldest")[0] == ["Part 1", "Part 2", "Part 3", "Part 4", "Part 5", "Part 6", "Part 7", "Undated"]
+    assert titles(order="oldest", hide_finished=True)[0] == ["Part 3", "Part 4", "Part 6", "Part 7", "Undated"]
+    assert titles(order="oldest", hide_finished=True, limit=2) == (["Part 3", "Part 4"], 8, 3)

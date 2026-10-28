@@ -159,15 +159,28 @@ def top(genre: int | None = None, user: User = Depends(current_user)):
 
 
 @router.get("/{feed_id}")
-def feed(feed_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def feed(feed_id: int, order: str = "newest", hide_finished: bool = False, limit: int = 200,
+         db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """A podcast and its episodes, newest or oldest first: the first `limit` of them."""
     f = db.get(Feed, feed_id)
     if f is None:
         raise HTTPException(404, "No such podcast")
-    rows = db.execute(select(Episode, EpisodeProgress).outerjoin(
-        EpisodeProgress, (EpisodeProgress.episode_id == Episode.id) & (EpisodeProgress.user_id == user.id))
-        .where(Episode.feed_id == feed_id).order_by(Episode.published.desc()).limit(500)).all()
+    mine = (EpisodeProgress.episode_id == Episode.id) & (EpisodeProgress.user_id == user.id)
+    done = func.coalesce(EpisodeProgress.finished, False)
+    q = select(Episode, EpisodeProgress).outerjoin(EpisodeProgress, mine).where(Episode.feed_id == feed_id)
+    if hide_finished:
+        q = q.where(done.is_(False))
+    oldest = order == "oldest"
+    rows = db.execute(q.order_by(Episode.published.is_(None),       # undated ones last either way
+                                 Episode.published.asc() if oldest else Episode.published.desc(),
+                                 Episode.id.asc() if oldest else Episode.id.desc())
+                      .limit(min(max(limit, 1), 5000))).all()
+    total = db.scalar(select(func.count()).select_from(Episode).where(Episode.feed_id == feed_id))
+    finished = db.scalar(select(func.count()).select_from(Episode).join(EpisodeProgress, mine)
+                         .where(Episode.feed_id == feed_id, EpisodeProgress.finished.is_(True)))
     sub = db.get(Subscription, (user.id, feed_id))
-    return {**feed_json(f, sub), "episodes": [episode_json(e, p, sub=sub) for e, p in rows]}
+    return {**feed_json(f, sub), "total": total, "finished": finished,
+            "episodes": [episode_json(e, p, sub=sub) for e, p in rows]}
 
 
 @router.post("/{feed_id}/seen")

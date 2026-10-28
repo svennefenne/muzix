@@ -1,3 +1,4 @@
+import { ChevronDown } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { create } from "zustand";
 
@@ -62,17 +63,26 @@ export function Stripes() {
   return <div className="stripes">{Array.from({ length: 6 }, (_, i) => <span key={i} />)}</div>;
 }
 
-export function Section({ kicker, title, more, children }: { kicker?: string; title: string; more?: ReactNode; children: ReactNode }) {
+/** A titled section; with `onToggle` its title folds it away and opens it again. */
+export function Section({ kicker, title, more, children, open = true, onToggle }: {
+  kicker?: string; title: string; more?: ReactNode; children: ReactNode; open?: boolean; onToggle?: () => void;
+}) {
   return (
     <section className="section">
       <div className="section-head">
         <div>
           {kicker && <div className="kicker">{kicker}</div>}
-          <h2 className="h2">{title}</h2>
+          <h2 className="h2">
+            {onToggle ? (
+              <button className="section-toggle" aria-expanded={open} onClick={onToggle}>
+                {title}<ChevronDown size={22} aria-hidden />
+              </button>
+            ) : title}
+          </h2>
         </div>
         {more}
       </div>
-      {children}
+      {open && children}
     </section>
   );
 }
