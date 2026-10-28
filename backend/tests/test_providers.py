@@ -1,5 +1,7 @@
 """The edit window's outside sources: Discogs with the admin's token, fanart.tv found through
-MusicBrainz ids, and each source's own cover coming along with a picked album."""
+MusicBrainz ids, Bandcamp, and each source's own cover coming along with a picked album."""
+import json
+
 import httpx
 import pytest
 from fastapi import FastAPI
@@ -182,3 +184,44 @@ def test_a_picked_artist_brings_their_picture(web):
     assert providers.details("musicbrainz", "artist", "ee58c59f")["cover"].endswith("/b.jpg")
     settings.set_many({"fanarttv_api_key": ""})
     assert providers.details("musicbrainz", "artist", "ee58c59f") == {"name": "Alice Cooper", "cover": None, "mbid": "ee58c59f"}
+
+
+def test_bandcamp_albums_artists_and_compilations(web):
+    asked, answers = web
+    search = "https://bandcamp.com/api/bcsearch_public_api/1/autocomplete_elastic"
+    answers[search] = lambda req: {"auto": {"results": {
+        "a": [{"type": "a", "id": 2034387072, "art_id": 3288844013, "name": "Transitus", "band_id": 400780041,
+              "band_name": "Ayreon", "item_url_path": "https://ayreon.bandcamp.com/album/transitus"}],
+        "b": [{"type": "b", "id": 400780041, "img_id": 42651066, "name": "Ayreon", "location": "Netherlands",
+                "item_url_root": "https://ayreon.bandcamp.com"},
+               {"type": "b", "id": 9, "name": "Mascot Label Group", "is_label": True}]}[json.loads(req.content)["search_filter"]]}}
+    found = providers._bandcamp("album", "Ayreon", "Transitus", "", None, None)
+    assert found == [{"source": "bandcamp", "kind": "album", "id": "400780041/2034387072", "title": "Transitus", "artist": "Ayreon",
+                      "cover": "https://f4.bcbits.com/img/a3288844013_9.jpg", "url": "https://ayreon.bandcamp.com/album/transitus"}]
+    assert json.loads(asked[-1].content)["search_text"] == "Ayreon Transitus"      # one line, as its search box takes
+    artists = providers._bandcamp("artist", "Ayreon", "", "", None, None)
+    assert [(a["id"], a["country"], a["cover"]) for a in artists] == [
+        ("400780041", "Netherlands", "https://f4.bcbits.com/img/0042651066_9.jpg")]       # not the label
+
+    answers["https://bandcamp.com/api/mobile/24/tralbum_details"] = lambda req: {
+        "title": "Transitus", "tralbum_artist": "Ayreon", "art_id": 3288844013, "release_date": 1600992000,
+        "tags": [{"name": "Melodic Metal"}, {"name": "rock opera"}],
+        "tracks": [{"track_num": 1, "title": "Fatum Horrificum", "duration": 623.28},
+                   {"track_num": 2, "title": "This Human Equation", "duration": 159.6}]} if req.url.params["tralbum_id"] == "2034387072" else {
+        "title": "Vimukti", "tralbum_artist": "Samana Records", "art_id": 1, "release_date": None, "tags": [],
+        "tracks": [{"track_num": 1, "title": "Argyria - Magic Realms", "duration": 250.4},
+                   {"track_num": 2, "title": "Oblium - Letame - Live", "duration": 518}]}
+    album = providers.details("bandcamp", "album", "400780041/2034387072")
+    assert album == {"title": "Transitus", "artist": "Ayreon", "year": 2020, "genre": "Melodic Metal",
+                     "cover": "https://f4.bcbits.com/img/a3288844013_10.jpg", "tracks": [
+                         {"disc": 1, "no": 1, "title": "Fatum Horrificum", "artist": "Ayreon", "length": 623},
+                         {"disc": 1, "no": 2, "title": "This Human Equation", "artist": "Ayreon", "length": 160}]}
+    comp = providers.details("bandcamp", "album", "542550141/2762363630")       # a label's: "Artist - Title"
+    assert comp["artist"] == "Various Artists" and comp["year"] == 0
+    assert [(t["artist"], t["title"]) for t in comp["tracks"]] == [("Argyria", "Magic Realms"), ("Oblium", "Letame - Live")]
+    with pytest.raises(providers.SourceError):
+        providers.details("bandcamp", "album", "../../elsewhere")
+
+    answers["https://bandcamp.com/api/mobile/24/band_details"] = {"name": "Ayreon", "bio_image_id": 42651066}
+    assert providers.details("bandcamp", "artist", "400780041") == {
+        "name": "Ayreon", "cover": "https://f4.bcbits.com/img/0042651066_10.jpg"}

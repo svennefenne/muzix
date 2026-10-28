@@ -1,5 +1,5 @@
 /** The admin's edit window: an item's metadata (an album with its songs), what MusicBrainz,
- * Discogs, Deezer, iTunes and Spotify know about it, and its cover. An album or artist picked from
+ * Discogs, Deezer, iTunes, Bandcamp and Spotify know about it, and its cover. An album or artist picked from
  * a source brings that source's cover or picture, saved with the rest; otherwise covers come from
  * the sources, fanart.tv, a web image search, a picture's address or a file, and are saved at once. */
 
@@ -55,8 +55,8 @@ const NOUN: Record<ItemKind, string> = {
 };
 const LOOKUP: Partial<Record<ItemKind, "album" | "track" | "artist">> = { album: "album", track: "track", artist: "artist" };
 const SOURCE: Record<string, string> = { musicbrainz: "MusicBrainz", discogs: "Discogs", deezer: "Deezer", itunes: "iTunes",
-  spotify: "Spotify", fanarttv: "fanart.tv", web: "Web search" };
-const ORDER = ["musicbrainz", "discogs", "spotify", "deezer", "itunes"];     // the fullest metadata first
+  bandcamp: "Bandcamp", spotify: "Spotify", fanarttv: "fanart.tv", web: "Web search" };
+const ORDER = ["musicbrainz", "discogs", "bandcamp", "spotify", "deezer", "itunes"];     // the fullest metadata first
 const SHOWN = 8;
 
 /** A picture that steps aside when it can't load (a release without cover art). */
@@ -401,7 +401,7 @@ function Matches({ kind, form, onUse, onResults }: {
                                      onChange={(e) => setInput({ ...input, title: e.target.value })} />}
         <button className="btn small" aria-label="Search"><Search size={14} /></button>
       </form>
-      {r.isFetching ? <div className="dim edit-wait"><Loader2 size={14} className="spin" /> Asking MusicBrainz, Discogs, Deezer, iTunes and Spotify…</div> : (
+      {r.isFetching ? <div className="dim edit-wait"><Loader2 size={14} className="spin" /> Asking MusicBrainz, Discogs, Bandcamp, Deezer, iTunes and Spotify…</div> : (
         <ul className="edit-matches">
           {sorted(r.data?.results || []).slice(0, all ? undefined : SHOWN).map((m) => (
             <li key={`${m.source}-${m.id}`}>
