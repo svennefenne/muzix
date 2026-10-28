@@ -1001,9 +1001,10 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
   .searchbox { height: 48px; font-size: 16px; margin: 8px 0 4px; }
 
   /* mini-player floating above the tab bar */
-  .miniplayer-slot { display: block; padding: 0 8px; }
+  .miniplayer-slot { display: block; padding: 0 8px; container: miniplayer / inline-size; }
   .miniplayer {
-    position: relative; display: grid; grid-template-columns: 40px minmax(0, 1fr) 44px 44px; align-items: center; gap: 4px;
+    position: relative; display: grid; grid-template-columns: 40px minmax(0, 1fr); grid-auto-flow: column; grid-auto-columns: 38px;
+    align-items: center;
     height: 56px; margin-bottom: 4px; padding: 0 4px 0 8px; border-radius: 8px; overflow: hidden; cursor: pointer;
     background: color-mix(in srgb, var(--primary) 22%, var(--surface-2)); box-shadow: 0 8px 24px #0008;
   }
@@ -1012,11 +1013,15 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
   .mp-text { min-width: 0; }
   .mp-title { font-weight: 700; font-size: 13.5px; }
   .mp-sub { margin-top: 2px; font-size: 12.5px; color: var(--text-dim); }
-  .mp-text { margin-left: 6px; }
-  .mp-play { display: grid; place-items: center; width: 44px; height: 44px; border: 0; background: none; color: var(--text); cursor: pointer; }
+  .mp-text { margin: 0 4px 0 10px; }
+  .mp-play { display: grid; place-items: center; width: 38px; height: 44px; border: 0; background: none; color: var(--text); cursor: pointer; }
   .mp-play:disabled { opacity: .35; cursor: default; }
+  .mp-play.on { color: var(--primary); }
   .mp-progress { position: absolute; left: 8px; right: 8px; bottom: 0; height: 2px; border-radius: 2px; overflow: hidden; background: color-mix(in srgb, var(--text) 18%, transparent); }
   .mp-progress div { height: 100%; background: var(--text); }
+  /* cast and like only where the title keeps about 120px */
+  @container miniplayer (max-width: 349px) { .mp-cast { display: none; } }
+  @container miniplayer (max-width: 299px) { .mp-like { display: none; } }
 
   /* bottom tab bar */
   .tabbar {

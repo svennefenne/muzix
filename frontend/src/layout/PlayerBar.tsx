@@ -2,7 +2,7 @@ import { Heart, ListMusic, Maximize2, PanelRight, Pause, Play, Repeat, Repeat1, 
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { fmtTime } from "../api";
-import { toggleLike } from "../actions";
+import { toggleQueuedLike } from "../actions";
 import { CastButton, CastNote } from "../components/CastButton";
 import { Art } from "../components/ui";
 import { engine } from "../player/engine";
@@ -48,8 +48,6 @@ export function PlayerBar() {
   const s = usePlayer();
   const cur = s.current();
   const { queueOpen, setQueueOpen, setNowPlayingOpen, npPanel, setPref } = useUi();
-  const [liked, setLiked] = useState<Record<string, boolean>>({});
-  const isLiked = cur ? liked[cur.key] ?? !!cur.liked : false;
   const VolIcon = s.muted || s.volume === 0 ? VolumeX : s.volume < 0.5 ? Volume1 : Volume2;
   const spoken = cur?.kind === "book" || cur?.kind === "episode";
 
@@ -70,9 +68,9 @@ export function PlayerBar() {
               <CastNote />
             </div>
             {cur.kind === "track" && (
-              <button className={`mini ${isLiked ? "liked" : ""}`} aria-label="Like"
-                      onClick={async () => setLiked({ ...liked, [cur.key]: await toggleLike("track", Number(cur.id), isLiked) })}>
-                <Heart size={16} fill={isLiked ? "currentColor" : "none"} />
+              <button className={`mini ${cur.liked ? "liked" : ""}`} aria-label="Like" aria-pressed={!!cur.liked}
+                      onClick={() => toggleQueuedLike(cur)}>
+                <Heart size={16} fill={cur.liked ? "currentColor" : "none"} />
               </button>
             )}
           </>

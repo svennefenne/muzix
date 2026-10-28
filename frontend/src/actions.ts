@@ -2,7 +2,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { create } from "zustand";
 import { api } from "./api";
 import { engine } from "./player/engine";
-import { fromTrack } from "./store/player";
+import { fromTrack, usePlayer, type PlayItem } from "./store/player";
 import { useUi } from "./store/ui";
 import type { AlbumDetail, Track } from "./types";
 
@@ -41,6 +41,13 @@ export async function toggleLike(kind: "track" | "album" | "artist", id: number,
   else await api.put(`/api/likes/${kind}/${id}`);
   queryClient.invalidateQueries();
   return !liked;
+}
+
+/** Likes or unlikes a song in the queue, and keeps that on its queue entry so every player shows it. */
+export async function toggleQueuedLike(item: PlayItem) {
+  const liked = await toggleLike("track", Number(item.id), !!item.liked);
+  const s = usePlayer.getState();
+  s.set({ queue: s.queue.map((q) => (q.key === item.key ? { ...q, liked } : q)) });
 }
 
 // "Add to playlist" picker

@@ -2,12 +2,13 @@
  * mini-player and a bottom tab bar whose "More" sheet holds the other sections. */
 
 import {
-  BookOpen, Gamepad2, House, Library, LogOut, MoreHorizontal, Music2, Pause, Play, Podcast, Radio, Search, Settings, Shield, SkipForward, X,
+  BookOpen, Gamepad2, Heart, House, Library, LogOut, MoreHorizontal, Music2, Pause, Play, Podcast, Radio, Search, Settings, Shield, SkipForward, X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { toggleQueuedLike } from "../actions";
 import { api } from "../api";
-import { CastNote } from "../components/CastButton";
+import { CastButton, CastNote } from "../components/CastButton";
 import { Art } from "../components/ui";
 import { engine } from "../player/engine";
 import { usePlayer } from "../store/player";
@@ -33,20 +34,28 @@ export function MiniPlayer() {
   if (!cur) return <div className="miniplayer-slot" />;
   return (
     <div className="miniplayer-slot">
+      {/* a tap opens the full player, except on its buttons */}
       <div className="miniplayer" role="button" tabIndex={0} aria-label="Open the player"
-           onClick={() => open(true)} onKeyDown={(e) => e.key === "Enter" && open(true)}>
+           onClick={(e) => !(e.target as Element).closest("button") && open(true)}
+           onKeyDown={(e) => e.key === "Enter" && e.target === e.currentTarget && open(true)}>
         <Art src={cur.art} name={cur.album || cur.title} size={96} />
         <div className="mp-text">
           <div className="mp-title ellipsis">{live || cur.title}</div>
           {castOn && !error ? <CastNote className="mp-sub cast-note" />
             : <div className={`mp-sub ellipsis ${error ? "error-text" : ""}`}>{error || (live ? cur.title : cur.artist)}</div>}
         </div>
-        <button className="mp-play" aria-label={playing ? "Pause" : "Play"}
-                onClick={(e) => { e.stopPropagation(); engine.toggle(); }}>
+        {/* cast and like go first when the screen is narrow (see .miniplayer-slot) */}
+        <CastButton className="mp-play mp-cast" size={20} />
+        {cur.kind === "track" && (
+          <button className={`mp-play mp-like ${cur.liked ? "on" : ""}`} aria-label="Like" aria-pressed={!!cur.liked}
+                  onClick={() => toggleQueuedLike(cur)}>
+            <Heart size={20} fill={cur.liked ? "currentColor" : "none"} />
+          </button>
+        )}
+        <button className="mp-play" aria-label={playing ? "Pause" : "Play"} onClick={() => engine.toggle()}>
           {playing ? <Pause size={22} fill="currentColor" /> : <Play size={22} fill="currentColor" />}
         </button>
-        <button className="mp-play" aria-label="Next song" disabled={!hasNext}
-                onClick={(e) => { e.stopPropagation(); engine.next(); }}>
+        <button className="mp-play" aria-label="Next song" disabled={!hasNext} onClick={() => engine.next()}>
           <SkipForward size={20} fill="currentColor" />
         </button>
         {cur.kind !== "radio" && <div className="mp-progress"><div style={{ width: `${frac * 100}%` }} /></div>}

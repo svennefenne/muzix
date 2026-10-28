@@ -3,7 +3,7 @@ import { ChevronDown, Heart, History, ListMusic, Pause, Play, Plus, Repeat, Repe
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, fmtNumber, fmtTime } from "../api";
-import { playTracks, queryClient, toggleLike, usePlaylistPicker } from "../actions";
+import { playTracks, queryClient, toggleQueuedLike, usePlaylistPicker } from "../actions";
 import { CastButton, CastNote } from "../components/CastButton";
 import { useStationHistory } from "../components/StationHistory";
 import { Art, Modal } from "../components/ui";
@@ -130,8 +130,6 @@ function PhoneTransport() {
   const s = usePlayer();
   const cur = s.current();
   const setQueueOpen = useUi((u) => u.setQueueOpen);
-  const [liked, setLiked] = useState<Record<string, boolean>>({});
-  const isLiked = cur ? liked[cur.key] ?? !!cur.liked : false;
   const spoken = cur?.kind === "book" || cur?.kind === "episode";
   return (
     <div className="np-phone">
@@ -151,9 +149,9 @@ function PhoneTransport() {
       </div>
       <div className="np-extra">
         {cur?.kind === "track" ? (
-          <button className={`ctl ${isLiked ? "on" : ""}`} aria-label="Like"
-                  onClick={async () => setLiked({ ...liked, [cur.key]: await toggleLike("track", Number(cur.id), isLiked) })}>
-            <Heart size={22} fill={isLiked ? "currentColor" : "none"} />
+          <button className={`ctl ${cur.liked ? "on" : ""}`} aria-label="Like" aria-pressed={!!cur.liked}
+                  onClick={() => toggleQueuedLike(cur)}>
+            <Heart size={22} fill={cur.liked ? "currentColor" : "none"} />
           </button>
         ) : cur?.kind === "radio" ? (
           <button className="ctl" aria-label={`Played on ${cur.title}`} onClick={() => showHistory(String(cur.id), cur.title)}>
