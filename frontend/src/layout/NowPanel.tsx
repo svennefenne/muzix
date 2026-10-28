@@ -12,9 +12,10 @@ import { engine } from "../player/engine";
 import { usePlayer } from "../store/player";
 import { useUi } from "../store/ui";
 import { useActiveTheme } from "../theme/ThemeApplier";
+import { likeTip } from "./PlayerBar";
 
 export function NowPanel() {
-  const { setPref, setNowPlayingOpen, setQueueOpen } = useUi();
+  const { setPref, setNowPlayingOpen, setQueueOpen, autoplay } = useUi();
   const queue = usePlayer((s) => s.queue);
   const index = usePlayer((s) => s.index);
   const live = usePlayer((s) => s.liveTitle);
@@ -29,12 +30,12 @@ export function NowPanel() {
     <aside className="dock nppanel" aria-label="Now playing">
       <div className="np-head">
         <h2 className="np-heading ellipsis">{cur?.album || "Now playing"}</h2>
-        {cur && <button className="iconbtn" title="Full-screen player" aria-label="Full-screen player" onClick={() => setNowPlayingOpen(true)}><Maximize2 size={14} /></button>}
-        <button className="iconbtn" title="Hide this panel" aria-label="Hide the now playing panel" onClick={() => setPref("np_panel", false)}><X size={15} /></button>
+        {cur && <button className="iconbtn" aria-label="Full-screen player" onClick={() => setNowPlayingOpen(true)}><Maximize2 size={14} /></button>}
+        <button className="iconbtn" data-tip="Hide this panel" aria-label="Hide the now playing panel" onClick={() => setPref("np_panel", false)}><X size={15} /></button>
       </div>
       {cur ? (
         <div className="np-scroll">
-          <button className="np-cover" onClick={() => setNowPlayingOpen(true)} aria-label="Open the full-screen player">
+          <button className="np-cover" onClick={() => setNowPlayingOpen(true)} aria-label="Open the full-screen player" data-tip="Open the full-screen player">
             <Art src={cur.art} name={cur.album || cur.title} size={600} />
           </button>
           <div className="np-id">
@@ -46,13 +47,16 @@ export function NowPanel() {
             </div>
             {cur.kind === "track" && (
               <button className={`ctl ${isLiked ? "on" : ""}`} aria-label={isLiked ? "Remove from liked songs" : "Add to liked songs"} aria-pressed={isLiked}
+                      data-tip={likeTip(isLiked)}
                       onClick={async () => setLiked({ ...liked, [cur.key]: await toggleLike("track", Number(cur.id), isLiked) })}>
                 <Heart size={18} fill={isLiked ? "currentColor" : "none"} />
               </button>
             )}
           </div>
           {theme.skin && (
-            <p className="np-skin"><b>{theme.skin.name}</b> skin · {theme.skin.blurb}</p>
+            <p className="np-skin" data-tip="The look follows the genre of what plays; pin one or turn them off in Settings">
+              <b>{theme.skin.name}</b> skin · {theme.skin.blurb}
+            </p>
           )}
           {cur.albumId && <Link className="np-albumlink" to={`/album/${cur.albumId}`}>Go to the album</Link>}
           {cur.kind === "episode" && <Link className="np-albumlink" to={`/podcasts/episode/${cur.id}`}>Go to the episode</Link>}
@@ -68,12 +72,12 @@ export function NowPanel() {
               <button className="np-link" onClick={() => setQueueOpen(true)}><ListMusic size={14} /> Open queue</button>
             </div>
             {next.length ? next.map((it, i) => (
-              <button key={it.key + i} className="np-qrow" onClick={() => engine.jump(index + 1 + i)}>
+              <button key={it.key + i} className="np-qrow" data-tip={`Play now: ${it.title}`} onClick={() => engine.jump(index + 1 + i)}>
                 <Art src={it.art} name={it.album || it.title} size={96} />
                 <span className="np-qtext"><span className="ellipsis">{it.title}</span><small className="ellipsis">{it.artist}</small></span>
                 <small className="np-qdur">{it.duration ? fmtTime(it.duration) : ""}</small>
               </button>
-            )) : <p className="np-quiet">Nothing after this one.</p>}
+            )) : <p className="np-quiet">{autoplay && cur.kind === "track" ? "Autoplay is finding similar songs to play next." : "Nothing after this one."}</p>}
           </section>
         </div>
       ) : (

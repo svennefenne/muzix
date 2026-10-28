@@ -18,6 +18,9 @@ you choose from 98 colour schemes, each with a light and a dark version.
   Search remembers what you pick from its results, as Spotify does: they show
   as recent searches in the empty search box and on the Search page, each to
   remove, on every device you sign in on.
+- **Autoplay**: when the queue runs out, similar songs keep playing, picked by
+  the genre tags of what you chose (game music: more from the same chips).
+  Turn it off in the queue or in Settings.
 - **Every format**: MP3, FLAC, Ogg/Opus, M4A, M4B, WavPack (up to 384 kHz),
   APE, WMA, plus chip music and trackers:
   | Family | Formats | Played by |

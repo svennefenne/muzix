@@ -1,18 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, Heart, History, ListMusic, Pause, Play, Plus, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, fmtNumber, fmtTime } from "../api";
 import { playTracks, queryClient, toggleQueuedLike, usePlaylistPicker } from "../actions";
 import { CastButton, CastNote } from "../components/CastButton";
 import { useStationHistory } from "../components/StationHistory";
-import { Art, Modal } from "../components/ui";
+import { Art, Modal, Switch } from "../components/ui";
 import { engine } from "../player/engine";
 import { usePlayer, type PlayItem } from "../store/player";
 import { useUi } from "../store/ui";
 import { useActiveTheme } from "../theme/ThemeApplier";
 import type { AlbumDetail, Home, Playlist } from "../types";
-import { SeekBar } from "./PlayerBar";
+import { likeTip, nextTip, repeatTip, SeekBar, shuffleTip } from "./PlayerBar";
 import { toggleFullscreen } from "./TopBar";
 
 export function Footer() {
@@ -30,24 +30,26 @@ export function Footer() {
   return (
     <footer className="footer">
       <span>Muzix</span><span className="sep">·</span>
-      <span className="hide-sm">Node {location.hostname}</span><span className="sep hide-sm">·</span>
-      <Link to="/settings">{user?.username}</Link>
-      {home.data && <><span className="sep hide-sm">·</span><span className="hide-sm">{fmtNumber(home.data.stats.tracks)} tracks · {fmtNumber(home.data.stats.vgm_tracks)} chiptunes · {home.data.stats.hours} h</span></>}
+      <span className="hide-sm" data-tip="The server Muzix plays from">Node {location.hostname}</span><span className="sep hide-sm">·</span>
+      <Link to="/settings" data-tip="Your settings">{user?.username}</Link>
+      {home.data && <><span className="sep hide-sm">·</span><span className="hide-sm" data-tip="Everything in the library">{fmtNumber(home.data.stats.tracks)} tracks · {fmtNumber(home.data.stats.vgm_tracks)} chiptunes · {home.data.stats.hours} h</span></>}
       <span className="sep">·</span>
-      <span>{theme.skin ? `Skin: ${theme.skin.name}` : "Skin: off"}</span>
-      {castOn && <><span className="sep">·</span><span>Cast: {castDevice}</span></>}
-      {running[0] && <><span className="sep">·</span><Link to="/admin/jobs">{running[0].title} {Math.round(running[0].progress * 100)}%</Link></>}
-      {!running[0] && lastScan?.status === "failed" && <><span className="sep">·</span><Link to="/admin/jobs" className="error-text">Last scan failed</Link></>}
+      <span data-tip={theme.skin ? `${theme.skin.blurb}. The look follows the genre of what plays; pin one in Settings.` : "Genre skins are off; turn them on in Settings"}>
+        {theme.skin ? `Skin: ${theme.skin.name}` : "Skin: off"}
+      </span>
+      {castOn && <><span className="sep">·</span><span data-tip="The speaker playing your music">Cast: {castDevice}</span></>}
+      {running[0] && <><span className="sep">·</span><Link to="/admin/jobs" data-tip="Open the jobs page">{running[0].title} {Math.round(running[0].progress * 100)}%</Link></>}
+      {!running[0] && lastScan?.status === "failed" && <><span className="sep">·</span><Link to="/admin/jobs" className="error-text" data-tip="See what went wrong">Last scan failed</Link></>}
       <div className="right">
-        <button className="chip hide-sm" onClick={toggleFullscreen}>Go fullscreen! F11</button>
-        <Link className="chip" to="/settings">Appearance</Link>
+        <button className="chip hide-sm" data-tip="Fill the whole screen" data-tip-key="F11" onClick={toggleFullscreen}>Go fullscreen! F11</button>
+        <Link className="chip" to="/settings" data-tip="Light or dark, genre skins, color schemes">Appearance</Link>
       </div>
     </footer>
   );
 }
 
 export function QueueDrawer() {
-  const { queueOpen, setQueueOpen } = useUi();
+  const { queueOpen, setQueueOpen, autoplay, setPref } = useUi();
   const { queue, index } = usePlayer();
   const [drag, setDrag] = useState<number | null>(null);
   const curRef = useRef<HTMLDivElement>(null);
@@ -63,14 +65,16 @@ export function QueueDrawer() {
           <div className="h2" style={{ fontSize: 22 }}>Queue</div>
         </div>
         <div className="row-actions">
-          {queue.length > 0 && <button className="btn small ghost" onClick={() => engine.clear()}>Clear</button>}
-          <button className="mini" aria-label="Close" onClick={() => setQueueOpen(false)}><X size={18} /></button>
+          {queue.length > 0 && <button className="btn small ghost" data-tip="Empty the queue" onClick={() => engine.clear()}>Clear</button>}
+          <button className="mini" aria-label="Close the queue" onClick={() => setQueueOpen(false)}><X size={18} /></button>
         </div>
       </div>
       <div className="drawer-body">
         {queue.length === 0 && <div className="faint" style={{ padding: 16 }}>The queue is empty. Play something!</div>}
         {queue.map((it, i) => (
-          <div key={it.key + i} ref={i === index ? curRef : undefined}
+          <Fragment key={it.key + i}>
+          {it.auto && !queue[i - 1]?.auto && <div className="kicker q-auto-head" data-tip="Picked by the genre tags of what you played">Autoplay · similar music</div>}
+          <div ref={i === index ? curRef : undefined}
                className={`qrow ${i === index ? "current" : ""} ${drag === i ? "dragging" : ""}`}
                draggable onDragStart={() => setDrag(i)} onDragEnd={() => setDrag(null)}
                onDragOver={(e) => e.preventDefault()}
@@ -83,10 +87,19 @@ export function QueueDrawer() {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
               <span className="faint mono" style={{ fontSize: 11 }}>{it.duration ? fmtTime(it.duration) : ""}</span>
-              <button className="mini" aria-label="Remove" onClick={(e) => { e.stopPropagation(); engine.remove(i); }}><X size={14} /></button>
+              <button className="mini" aria-label={`Remove ${it.title} from the queue`} data-tip="Remove from the queue"
+                      onClick={(e) => { e.stopPropagation(); engine.remove(i); }}><X size={14} /></button>
             </div>
           </div>
+          </Fragment>
         ))}
+        <div className="q-autoplay">
+          <Switch checked={autoplay} onChange={(v) => setPref("autoplay", v)} label="Autoplay" />
+          <div>
+            <b>Autoplay</b>
+            <div className="dim">When your music runs out, similar songs keep playing, picked by their genre tags.</div>
+          </div>
+        </div>
       </div>
     </aside>
   );
@@ -134,22 +147,23 @@ function PhoneTransport() {
   return (
     <div className="np-phone">
       <div className="np-transport">
-        <button className={`ctl ${s.shuffle ? "on" : ""}`} aria-label="Shuffle" onClick={() => s.set({ shuffle: !s.shuffle })}><Shuffle size={22} /></button>
-        <button className="ctl" aria-label={spoken ? "Back 15 seconds" : "Previous"}
+        <button className={`ctl ${s.shuffle ? "on" : ""}`} aria-label="Shuffle" aria-pressed={s.shuffle} data-tip={shuffleTip(s.shuffle)}
+                onClick={() => s.set({ shuffle: !s.shuffle })}><Shuffle size={22} /></button>
+        <button className="ctl" aria-label={spoken ? "Back 15 seconds" : "Previous"} data-tip-key={spoken ? "←" : "P"}
                 onClick={() => (spoken ? engine.seek(s.position - 15) : engine.prev())}><SkipBack size={30} fill="currentColor" /></button>
-        <button className="ctl play" aria-label={s.playing ? "Pause" : "Play"} onClick={() => engine.toggle()}>
+        <button className="ctl play" aria-label={s.playing ? "Pause" : "Play"} data-tip-key="Space" onClick={() => engine.toggle()}>
           {s.playing ? <Pause size={30} fill="currentColor" /> : <Play size={30} fill="currentColor" style={{ marginLeft: 3 }} />}
         </button>
-        <button className="ctl" aria-label={spoken ? "Forward 30 seconds" : "Next"}
-                onClick={() => (spoken ? engine.seek(s.position + 30) : engine.next())}><SkipForward size={30} fill="currentColor" /></button>
-        <button className={`ctl ${s.repeat !== "off" ? "on" : ""}`} aria-label={`Repeat: ${s.repeat}`}
+        <button className="ctl" aria-label={spoken ? "Forward 30 seconds" : "Next"} data-tip={spoken ? "Forward 30 seconds" : nextTip(s)}
+                data-tip-key={spoken ? "→" : "N"} onClick={() => (spoken ? engine.seek(s.position + 30) : engine.next())}><SkipForward size={30} fill="currentColor" /></button>
+        <button className={`ctl ${s.repeat !== "off" ? "on" : ""}`} aria-label={`Repeat: ${s.repeat}`} data-tip={repeatTip(s.repeat)}
                 onClick={() => s.set({ repeat: s.repeat === "off" ? "all" : s.repeat === "all" ? "one" : "off" })}>
           {s.repeat === "one" ? <Repeat1 size={22} /> : <Repeat size={22} />}
         </button>
       </div>
       <div className="np-extra">
         {cur?.kind === "track" ? (
-          <button className={`ctl ${cur.liked ? "on" : ""}`} aria-label="Like" aria-pressed={!!cur.liked}
+          <button className={`ctl ${cur.liked ? "on" : ""}`} aria-label="Like" aria-pressed={!!cur.liked} data-tip={likeTip(!!cur.liked)}
                   onClick={() => toggleQueuedLike(cur)}>
             <Heart size={22} fill={cur.liked ? "currentColor" : "none"} />
           </button>
@@ -159,7 +173,7 @@ function PhoneTransport() {
           </button>
         ) : <span />}
         <CastButton size={22} />
-        <button className="ctl" aria-label="Queue" onClick={() => setQueueOpen(true)}><ListMusic size={22} /></button>
+        <button className="ctl" aria-label="Queue" data-tip="Queue: what plays next" onClick={() => setQueueOpen(true)}><ListMusic size={22} /></button>
       </div>
       <CastNote className="cast-note np-castnote" />
     </div>
@@ -238,7 +252,7 @@ export function NowPlaying() {
     <div className="nowplaying">
       <div style={{ display: "flex", justifyContent: "space-between", padding: "18px 24px" }}>
         <div className="kicker">Now playing{theme.skin ? ` · ${theme.skin.name} skin · ${theme.skin.blurb}` : ""}</div>
-        <button className="iconbtn" aria-label="Close" onClick={() => setNowPlayingOpen(false)}><ChevronDown size={18} /></button>
+        <button className="iconbtn" aria-label="Close the full-screen player" data-tip-key="Esc" onClick={() => setNowPlayingOpen(false)}><ChevronDown size={18} /></button>
       </div>
       <div className="nowplaying-body">
         <FlipCover cur={cur} />
@@ -256,9 +270,9 @@ export function NowPlaying() {
               <div className="np-seek"><SeekBar /></div>
               <PhoneTransport />
               <div className="row-actions np-desktop-actions" style={{ marginTop: 18 }}>
-                <button className="btn" onClick={() => engine.prev()}>Previous</button>
-                <button className="btn accent" onClick={() => engine.toggle()}>Play / pause</button>
-                <button className="btn" onClick={() => engine.next()}>Next</button>
+                <button className="btn" data-tip="Previous song" data-tip-key="P" onClick={() => engine.prev()}>Previous</button>
+                <button className="btn accent" data-tip="Play or pause" data-tip-key="Space" onClick={() => engine.toggle()}>Play / pause</button>
+                <button className="btn" data-tip={nextTip(usePlayer.getState())} data-tip-key="N" onClick={() => engine.next()}>Next</button>
                 {cur.kind === "radio" && (
                   <button className="btn" onClick={() => showHistory(String(cur.id), cur.title)}><History size={15} /> Played here</button>
                 )}

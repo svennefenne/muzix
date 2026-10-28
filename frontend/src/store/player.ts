@@ -21,6 +21,7 @@ export interface PlayItem {
   albumId?: number | null;
   artistId?: number | null;
   format?: string;
+  detail?: string;            // bit depth, sample rate, bitrate
   castNative?: boolean;       // a Cast speaker can take the file as it is (and seek in it)
   liked?: boolean;
   resume?: number;            // start here (seconds)
@@ -28,6 +29,7 @@ export interface PlayItem {
   partOffset?: number;        // a book part's start within the whole book
   spotifyUri?: string;
   spotifyArtist?: string;     // first artist, for the genre lookup
+  auto?: boolean;             // added by autoplay
 }
 
 export function fromTrack(t: Track): PlayItem {
@@ -36,6 +38,8 @@ export function fromTrack(t: Track): PlayItem {
     artist: t.artist || t.albumartist, album: t.album, art: t.art, duration: t.duration,
     src: t.stream, genre: t.genre, tags: t.tags, system: t.system, trackKind: t.kind,
     albumId: t.album_id, artistId: t.artist_id, format: t.format, castNative: t.cast_native, liked: t.liked,
+    detail: t.kind === "music" ? [t.bit_depth && `${t.bit_depth}-bit`, t.sample_rate && `${+(t.sample_rate / 1000).toFixed(1)} kHz`,
+                                  t.bitrate && `${Math.round(t.bitrate / 1000)} kbps`].filter(Boolean).join(" · ") : "",
   };
 }
 
@@ -76,7 +80,7 @@ export function fromStation(s: Station): PlayItem {
   };
 }
 
-type Repeat = "off" | "all" | "one";
+export type Repeat = "off" | "all" | "one";
 
 interface PlayerState {
   queue: PlayItem[];

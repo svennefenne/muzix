@@ -20,7 +20,7 @@ export function Segmented<T extends string>({ value, options, onChange, label, i
   return (
     <div className={`seg ${iconsOnPhone ? "icons-sm" : ""}`} role="radiogroup" aria-label={label}>
       {options.map((o) => (
-        <button key={o.value} role="radio" aria-checked={o.value === value} title={o.title || o.label}
+        <button key={o.value} role="radio" aria-checked={o.value === value} data-tip={o.title || o.label}
                 className={o.value === value ? "on" : ""} onClick={() => onChange(o.value)}>
           {o.icon}<span>{o.label}</span>
         </button>
@@ -41,7 +41,7 @@ export function DisplaySwitch({ value, onChange }: { value: DisplayMode; onChang
 
 export function SortMenu({ value, options, onChange }: { value: string; options: [string, string][]; onChange: (v: string) => void }) {
   return (
-    <label className="sortmenu">
+    <label className="sortmenu" data-tip="Sort order, remembered for this page">
       <span className="seg-label">Sort</span>
       <select className="select" value={value} onChange={(e) => onChange(e.target.value)}>
         {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}

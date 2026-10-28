@@ -71,7 +71,7 @@ export default function Home() {
           </div>
         </div>
         {featured && (
-          <Link to={`/album/${featured.id}`} className="hero-art" title={`${featured.artist} - ${featured.title}`}>
+          <Link to={`/album/${featured.id}`} className="hero-art" data-tip={`${featured.artist} - ${featured.title}`}>
             <Art src={featured.art} name={featured.title} size={600} />
             <div className="caption">Featured · {featured.artist} · {featured.year || ""}</div>
           </Link>

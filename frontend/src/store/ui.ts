@@ -20,6 +20,7 @@ interface UiState {
   npPanel: boolean;
   searchEngine: string;
   radioBuffer: number;           // seconds of a station gathered before it starts
+  autoplay: boolean;             // similar songs once the queue runs out
   queueOpen: boolean;
   nowPlayingOpen: boolean;
   adminMode: boolean;            // admins: a cog on every item, to edit, hide or delete it (per device)
@@ -82,6 +83,7 @@ export const useUi = create<UiState>((set, get) => ({
   npPanel: initial.np_panel ?? true,
   searchEngine: initial.search_engine || "https://www.google.com/search?q=%s",
   radioBuffer: initial.radio_buffer ?? 0,
+  autoplay: initial.autoplay ?? true,
   queueOpen: false,
   nowPlayingOpen: false,
   adminMode: (() => {
@@ -108,6 +110,7 @@ export const useUi = create<UiState>((set, get) => ({
       npPanel: p.np_panel ?? get().npPanel,
       searchEngine: p.search_engine ?? get().searchEngine,
       radioBuffer: p.radio_buffer ?? get().radioBuffer,
+      autoplay: p.autoplay ?? get().autoplay,
     });
   },
   setPref: (key, value) => {
@@ -115,7 +118,7 @@ export const useUi = create<UiState>((set, get) => ({
       scheme: "scheme", mode: "mode", genre_skins: "genreSkins", skin_lock: "skinLock",
       visualizer: "visualizer", quality: "quality", library_view: "libraryView",
       sidebar_collapsed: "sidebarCollapsed", np_panel: "npPanel", search_engine: "searchEngine",
-      radio_buffer: "radioBuffer",
+      radio_buffer: "radioBuffer", autoplay: "autoplay",
     };
     const field = map[key];
     if (field) set({ [field]: value } as Partial<UiState>);

@@ -16,7 +16,7 @@ export function CastButton({ size = 18, className = "ctl", label = false }: { si
     : state === "unavailable" ? "No speakers found on this network yet" : "Play on a speaker";
   return (
     <button className={`${className} cast-btn ${on ? "on" : ""} ${state === "connecting" ? "connecting" : ""} ${state === "unavailable" ? "dim" : ""}`}
-            aria-label={what} title={what} onClick={() => (appPlayer.available ? appPlayer.chooseSpeaker() : caster.choose())}>
+            aria-label={what} data-tip={what} onClick={() => (appPlayer.available ? appPlayer.chooseSpeaker() : caster.choose())}>
       <Cast size={size} />{label && <span>{on ? device : "Cast"}</span>}
     </button>
   );

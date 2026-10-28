@@ -27,7 +27,7 @@ export function SchemePicker({ value, onChange, dark }: { value: string; onChang
               {items.map((p) => {
                 const c = dark ? p.dark : p.light;
                 return (
-                  <button key={p.slug} className={`swatch ${value === p.slug ? "active" : ""}`} onClick={() => onChange(p.slug)} title={p.name}>
+                  <button key={p.slug} className={`swatch ${value === p.slug ? "active" : ""}`} onClick={() => onChange(p.slug)} data-tip={p.name}>
                     <div className="strip" style={{ background: c.bg }}>
                       {[c.bg, c.surface, c.primary, c.secondary, c.success, c.warning, c.error, c.text].map((x, i) => <span key={i} style={{ background: x }} />)}
                     </div>
@@ -98,6 +98,11 @@ export default function Settings() {
             <option value="high">High (Opus 160-192 kbit/s, for slow connections)</option>
             <option value="low">Data saver (Opus 96 kbit/s)</option>
           </select>
+        </div>
+        <div className="field">
+          <label>Autoplay</label>
+          <div className="row-actions"><Switch checked={ui.autoplay} onChange={(v) => ui.setPref("autoplay", v)} label="Autoplay" />
+            <span className="dim">When your music runs out, keep playing similar songs, picked by their genre tags (for game music: the same chips).</span></div>
         </div>
         <div className="field">
           <label>Visualizer & reactive backgrounds</label>

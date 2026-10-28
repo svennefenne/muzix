@@ -69,7 +69,7 @@ export function RecentSearches() {
                   <span className="qs-sub ellipsis">{p.sub}</span>
                 </span>
               </button>
-              <button className="recent-x" aria-label={`Remove ${p.title} from recent searches`} title="Remove"
+              <button className="recent-x" aria-label={`Remove ${p.title} from recent searches`} data-tip="Remove from recent searches"
                       onClick={() => forgetSearch(p.kind, p.id)}><X size={16} /></button>
             </div>
           );

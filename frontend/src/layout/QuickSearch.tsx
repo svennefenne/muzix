@@ -143,7 +143,7 @@ export function QuickSearch() {
                   <span className="qs-sub ellipsis">{h.sub}</span>
                 </span>
                 {recentMode ? (
-                  <button className="qs-x" aria-label={`Remove ${h.title} from recent searches`} title="Remove"
+                  <button className="qs-x" aria-label={`Remove ${h.title} from recent searches`} data-tip="Remove from recent searches"
                           onClick={(e) => { e.stopPropagation(); forgetSearch(h.ref.kind, h.ref.id); }}><X size={15} /></button>
                 ) : h.icon}
               </div>

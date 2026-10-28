@@ -102,7 +102,7 @@ export function AdminCog({ kind, id, title, className = "" }: { kind: ItemKind; 
   if (!on) return null;
   const t = { kind, id, title };
   return (
-    <button className={`admin-cog ${className}`} aria-label={`Admin: ${title}`} title={`Edit, hide or delete this ${NOUN[kind]}`}
+    <button className={`admin-cog ${className}`} aria-label={`Admin: ${title}`} data-tip={`Edit, hide or delete this ${NOUN[kind]}`}
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();

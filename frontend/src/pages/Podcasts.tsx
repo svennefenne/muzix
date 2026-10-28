@@ -35,8 +35,8 @@ function EpisodeRow({ e, feed }: { e: Episode; feed?: Feed }) {
       </div>
       <div className="row-actions">
         {e.finished && <span className="badge accent"><Check size={11} /> Played</span>}
-        {e.downloaded ? <span className="badge">Saved</span> : (
-          <button className="mini" title="Download" aria-label="Download" onClick={async () => {
+        {e.downloaded ? <span className="badge" data-tip="Downloaded to the server">Saved</span> : (
+          <button className="mini" data-tip="Download the episode to the server" aria-label="Download" onClick={async () => {
             await api.post(`/api/podcasts/episodes/${e.id}/download`);
             notify("Downloading in the background");
           }}><Download size={15} /></button>
@@ -312,7 +312,7 @@ export function EpisodePage() {
               {here && playing ? <><Pause size={15} fill="currentColor" /> Pause</>
                 : <><Play size={15} fill="currentColor" /> {here ? "Continue" : e.finished ? "Play again" : pct > 0 ? "Resume" : "Play"}</>}
             </button>
-            {e.downloaded ? <span className="badge">Saved</span> : (
+            {e.downloaded ? <span className="badge" data-tip="Downloaded to the server">Saved</span> : (
               <button className="btn" onClick={async () => {
                 await api.post(`/api/podcasts/episodes/${e.id}/download`);
                 notify("Downloading in the background");

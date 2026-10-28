@@ -167,7 +167,7 @@ export function LibraryArtistAlbums() {
                  kicker={["Artist", artist.data?.genre, total !== undefined && `${fmtNumber(total)} albums`]}
                  actions={<>
                    <button className="btn" onClick={() => playRandom({ artist_id: Number(id), kind: "all" })}><Shuffle size={15} /> Shuffle</button>
-                   <Link className="btn" to={`/artist/${id}`} title="Top songs and more"><UserRound size={15} /> Artist page</Link>
+                   <Link className="btn" to={`/artist/${id}`} data-tip="Top songs and more"><UserRound size={15} /> Artist page</Link>
                  </>}>
       <Infinite q={q}>{(items) => <AlbumItems items={items} display={b.display} />}</Infinite>
     </BrowseShell>
@@ -280,8 +280,9 @@ export function AlbumPage() {
           {a.artist_tags.length > 0 && <TagLinks tags={a.artist_tags.slice(0, 6)} />}
           <div className="row-actions">
             <button className="btn accent" onClick={() => playAlbum(a.id)}><Play size={15} fill="currentColor" /> Play</button>
-            <button className="btn" onClick={() => playAlbum(a.id, { shuffle: true })}><Shuffle size={15} /> Shuffle</button>
-            <button className={`btn ${isLiked ? "accent" : ""}`} onClick={async () => setLiked(await toggleLike("album", a.id, isLiked))}>
+            <button className="btn" data-tip="Play the album in random order" onClick={() => playAlbum(a.id, { shuffle: true })}><Shuffle size={15} /> Shuffle</button>
+            <button className={`btn ${isLiked ? "accent" : ""}`} data-tip={isLiked ? "Saved in your library: click to remove it" : "Save the album to your library"}
+                    onClick={async () => setLiked(await toggleLike("album", a.id, isLiked))}>
               <Heart size={15} fill={isLiked ? "currentColor" : "none"} /> {isLiked ? "Saved" : "Save"}
             </button>
             <button className="btn" onClick={() => pick(a.tracks.map((t) => t.id))}><ListPlus size={15} /> Add to playlist</button>
@@ -299,7 +300,7 @@ export function AlbumPage() {
           }}>Show more</button>
         </div>
       )}
-      <div className="faint mono" style={{ fontSize: 11, marginTop: 14, letterSpacing: ".08em" }}>{a.folder}</div>
+      <div className="faint mono" style={{ fontSize: 11, marginTop: 14, letterSpacing: ".08em" }} data-tip="Where the album's files are on the server">{a.folder}</div>
       {a.more.length > 0 && (
         <Section kicker="More from" title={a.artist}>
           <div className="scroller">{a.more.map((m) => <AlbumCard key={m.id} a={m} />)}</div>
@@ -324,8 +325,8 @@ export function ArtistPage() {
           <Display l1={a.name} small />
           {a.tags.length > 0 && <TagLinks tags={a.tags} />}
           <div className="row-actions">
-            <button className="btn accent" onClick={() => playTracks(a.top_tracks, 0)}><Play size={15} fill="currentColor" /> Play</button>
-            <button className="btn" onClick={() => playRandom({ artist_id: a.id, kind: "all" })}><Shuffle size={15} /> Shuffle</button>
+            <button className="btn accent" data-tip="Play the top songs" onClick={() => playTracks(a.top_tracks, 0)}><Play size={15} fill="currentColor" /> Play</button>
+            <button className="btn" data-tip={`Shuffle every song by ${a.name}`} onClick={() => playRandom({ artist_id: a.id, kind: "all" })}><Shuffle size={15} /> Shuffle</button>
             <AdminCog kind="artist" id={a.id} title={a.name} className="inline" />
           </div>
         </div>
@@ -363,7 +364,7 @@ export function GenrePage() {
 function TagLinks({ tags }: { tags: string[] }) {
   return (
     <div className="tags">
-      {tags.map((t) => <Link className="tag" key={t} to={`/tag/${encodeURIComponent(t)}`}>{t}</Link>)}
+      {tags.map((t) => <Link className="tag" key={t} to={`/tag/${encodeURIComponent(t)}`} data-tip={`Everything tagged ${t}`}>{t}</Link>)}
     </div>
   );
 }

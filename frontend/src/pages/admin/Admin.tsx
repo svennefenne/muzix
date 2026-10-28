@@ -140,7 +140,7 @@ function RootRow({ r, reload }: { r: Root; reload: () => void }) {
   return (
     <div className="list-row" style={{ display: "block" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <span className={`status-dot ${r.exists ? "ok" : "bad"}`} title={r.exists ? "Mounted" : "Not found in the container"} />
+        <span className={`status-dot ${r.exists ? "ok" : "bad"}`} data-tip={r.exists ? "Mounted" : "Not found in the container"} />
         <div className="grow" style={{ minWidth: 220 }}>
           <div style={{ fontWeight: 700, wordBreak: "break-all" }}>{r.path}</div>
           <div className="dim" style={{ fontSize: 12.5 }}>
@@ -151,7 +151,7 @@ function RootRow({ r, reload }: { r: Root; reload: () => void }) {
         <select className="select" style={{ width: 140 }} value={r.kind} onChange={(e) => save({ kind: e.target.value })}>
           <option value="music">Music</option><option value="vgm">VGM</option><option value="audiobooks">Audiobooks</option>
         </select>
-        <label className="row-actions dim" style={{ gap: 6 }} title="New uploads of this kind go here">
+        <label className="row-actions dim" style={{ gap: 6 }} data-tip="New uploads of this kind go here">
           <input type="radio" checked={r.upload_target} onChange={() => save({ upload_target: true })} /> Upload target
         </label>
         <Switch checked={r.enabled} onChange={(v) => save({ enabled: v })} label="Enabled" />

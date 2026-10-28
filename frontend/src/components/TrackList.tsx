@@ -7,7 +7,23 @@ import { engine } from "../player/engine";
 import { fromTrack, usePlayer } from "../store/player";
 import type { Track } from "../types";
 import { AdminCog } from "./AdminMode";
+import { likeTip } from "../layout/PlayerBar";
 import { Art, useMenu, type MenuItem } from "./ui";
+
+const FAMILY: Record<string, string> = {
+  module: "a tracker module", gme: "console chip music", sid: "Commodore 64 music", midi: "MIDI, played with a General MIDI sound set",
+  ym: "Atari ST chip music", furnace: "a FamiTracker or Furnace song", zxtune: "a tracker song (ZX Spectrum, Amiga or PC)",
+  uade: "Amiga music, played by its own replay code",
+};
+
+/** What a file format other than the everyday ones is. */
+function formatTip(t: Track) {
+  const f = t.format.toUpperCase();
+  const what = FAMILY[t.family || ""];
+  if (what) return `${f}${t.system ? ` · ${t.system}` : ""}: ${what}, rendered the way the original hardware played it`;
+  const detail = [t.bit_depth && `${t.bit_depth}-bit`, t.sample_rate && `${+(t.sample_rate / 1000).toFixed(1)} kHz`].filter(Boolean).join(" ");
+  return `${f} file${detail ? `, ${detail}` : ""}${t.family === "decode" ? ": the server converts it, as browsers can't play it" : ""}`;
+}
 
 /** As in Spotify: on a touch screen a tap on a row plays it; with a mouse it takes a
  * double-click. Taps on the row's own links and buttons do their own thing. */
@@ -61,7 +77,7 @@ export function TrackList({ tracks, showArt, showAlbum = true, numbered = "index
         <div style={{ textAlign: "right" }}>#</div>
         <div className="t-main">Title</div>
         {showAlbum && <div className="t-album">Album</div>}
-        <div className="t-dur"><Clock size={13} /></div>
+        <div className="t-dur" data-tip="Length"><Clock size={13} aria-label="Length" /></div>
         <div className="t-eq" />
         <div className="t-actions" />
       </div>
@@ -80,7 +96,7 @@ export function TrackList({ tracks, showArt, showAlbum = true, numbered = "index
               <div className="t-num">
                 {isCur && <span className="eq n"><i /><i /><i /></span>}
                 <span className="n t-n">{numbered === "track" && t.track_no ? t.track_no : i + 1}</span>
-                <button className="p" aria-label={`Play ${t.title}`} onClick={() => { onPlay?.(t); playTracks(tracks, i); }}>
+                <button className="p" aria-label={`Play ${t.title}`} data-tip={isCur ? (playing ? "Playing now" : "Paused") : `Play ${t.title}`} onClick={() => { onPlay?.(t); playTracks(tracks, i); }}>
                   <Play size={15} fill="currentColor" />
                 </button>
               </div>
@@ -92,7 +108,7 @@ export function TrackList({ tracks, showArt, showAlbum = true, numbered = "index
                     {t.artist_id ? <Link to={`/artist/${t.artist_id}`}>{t.artist}</Link> : t.artist}
                     {t.system && <span className="faint"> · {t.system}</span>}
                     {t.format && !["mp3", "flac", "m4a", "ogg", "opus"].includes(t.format) &&
-                      <span className="badge" style={{ marginLeft: 8 }}>{t.format}</span>}
+                      <span className="badge" style={{ marginLeft: 8 }} data-tip={formatTip(t)}>{t.format}</span>}
                   </div>
                 </div>
               </div>
@@ -102,10 +118,10 @@ export function TrackList({ tracks, showArt, showAlbum = true, numbered = "index
               <div className="t-eq">{isCur && <span className="eq"><i /><i /><i /></span>}</div>
               <div className="t-actions">
                 <AdminCog kind="track" id={t.id} title={t.title} className="inline" />
-                <button className={`mini t-like ${on ? "liked" : ""}`} aria-label={on ? "Unlike" : "Like"} onClick={() => like(t)}>
+                <button className={`mini t-like ${on ? "liked" : ""}`} aria-label={on ? "Unlike" : "Like"} data-tip={likeTip(on)} onClick={() => like(t)}>
                   <Heart size={15} fill={on ? "currentColor" : "none"} />
                 </button>
-                <button className="mini t-more" aria-label={`More options for ${t.title}`} onClick={(e) => showMenu(e, menuFor(t))}>
+                <button className="mini t-more" aria-label={`More options for ${t.title}`} data-tip="More: queue, playlists, album, artist" onClick={(e) => showMenu(e, menuFor(t))}>
                   <MoreHorizontal size={16} />
                 </button>
               </div>

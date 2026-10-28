@@ -123,11 +123,11 @@ export function Sidebar() {
     <aside className={`dock sidepanel ${collapsed ? "collapsed" : ""}`} aria-label="Your library">
       <div className="lib-head">
         <button className="lib-title" onClick={() => (narrow ? nav("/library") : setPref("sidebar_collapsed", !sidebarCollapsed))}
-                title={narrow ? "Open your library" : collapsed ? "Show your library" : "Collapse to covers"} aria-expanded={!collapsed}>
+                data-tip={narrow ? "Open your library" : collapsed ? "Show your library" : "Collapse to covers"} aria-expanded={!collapsed}>
           {collapsed ? <Library size={20} /> : <PanelLeftClose size={18} />}
           <span>Your library</span>
         </button>
-        <button className="iconbtn lib-add" title="New playlist" aria-label="New playlist"
+        <button className="iconbtn lib-add" data-tip="New playlist" aria-label="New playlist"
                 onClick={() => nav("/library/playlists", { state: { create: true } })}><Plus size={16} /></button>
       </div>
       <div className="lib-chips" role="toolbar" aria-label="Show">
@@ -139,7 +139,7 @@ export function Sidebar() {
       </div>
       <div className="lib-list">
         {browse && (
-          <NavLink to={browse[0]} end className="lib-row lib-browse" title={browse[1]}>
+          <NavLink to={browse[0]} end className="lib-row lib-browse" data-tip={collapsed ? browse[1] : undefined}>
             <div className="lib-art lib-browse-icon"><ChevronRight size={18} /></div>
             <div className="lib-text"><div className="lib-name">{browse[1]}</div></div>
           </NavLink>
@@ -150,7 +150,7 @@ export function Sidebar() {
               <div className="lib-art">
                 {r.art}
                 {(r.onPlay || r.onOpen) && (
-                  <span className="lib-play" aria-hidden><Play size={16} fill="currentColor" /></span>
+                  <span className="lib-play" aria-hidden data-tip={`Play ${r.title}`}><Play size={16} fill="currentColor" /></span>
                 )}
                 {r.dot && collapsed && <NewDot label={r.dot} />}
               </div>
@@ -161,12 +161,12 @@ export function Sidebar() {
             </>
           );
           return r.to ? (
-            <NavLink key={r.key} to={r.to} end className="lib-row" title={collapsed ? r.title : undefined}
+            <NavLink key={r.key} to={r.to} end className="lib-row" data-tip={collapsed ? [r.title, r.sub].filter(Boolean).join(" · ") : undefined}
                      onClick={(e) => { if ((e.target as HTMLElement).closest(".lib-play") && r.onPlay) { e.preventDefault(); r.onPlay(); } }}>
               {body}
             </NavLink>
           ) : (
-            <button key={r.key} className="lib-row" title={collapsed ? r.title : `Play ${r.title}`} onClick={r.onOpen}>{body}</button>
+            <button key={r.key} className="lib-row" data-tip={`Play ${r.title}`} onClick={r.onOpen}>{body}</button>
           );
         })}
         {d && !shown.length && !collapsed && (

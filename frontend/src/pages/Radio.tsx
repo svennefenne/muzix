@@ -44,7 +44,7 @@ function StationGrid({ list, saved }: { list: Station[]; saved: Station[] }) {
               <button className="mini" aria-label="Play" onClick={(e) => { e.stopPropagation(); engine.play([fromStation(s)]); }}><Play size={14} fill="currentColor" /></button>
               <button className={`mini ${isSaved ? "liked" : ""}`} aria-label={isSaved ? "Remove" : "Save"}
                       onClick={(e) => { e.stopPropagation(); toggle(s); }}><Heart size={14} fill={isSaved ? "currentColor" : "none"} /></button>
-              <button className="mini" aria-label={`Played on ${s.name}`} title="Played while you listened"
+              <button className="mini" aria-label={`Played on ${s.name}`} data-tip="Songs this station played while you listened"
                       onClick={(e) => { e.stopPropagation(); showHistory(s.uuid || s.url, s.name); }}><History size={14} /></button>
             </div>
           </div>

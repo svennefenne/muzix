@@ -10,7 +10,7 @@ export function AlbumCard({ a }: { a: Album }) {
   return (
     <Link to={`/album/${a.id}`} className="card">
       <Art src={a.art} name={a.title} />
-      <button className="play-fab" aria-label={`Play ${a.title}`}
+      <button className="play-fab" aria-label={`Play ${a.title}`} data-tip={`Play ${a.title}`}
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); playAlbum(a.id); }}>
         <Play size={20} fill="currentColor" />
       </button>
@@ -25,7 +25,7 @@ export function ArtistCard({ a, to }: { a: Artist; to?: string }) {
   return (
     <Link to={to || `/artist/${a.id}`} className="card">
       <Art src={a.art} name={a.name} round />
-      <button className="play-fab" aria-label={`Play ${a.name}`}
+      <button className="play-fab" aria-label={`Play ${a.name}`} data-tip={`Shuffle songs by ${a.name}`}
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); playRandom({ artist_id: a.id, kind: "all" }); }}>
         <Play size={20} fill="currentColor" />
       </button>

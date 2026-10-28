@@ -24,19 +24,19 @@ export const TABS = [
 
 /** The sections, as pills in the top bar on desktops (phones have them on Home). */
 const SECTIONS = [
-  { to: "/library", label: "Music", icon: Disc3 },
-  { to: "/vgm", label: "VGM", icon: Gamepad2 },
-  { to: "/audiobooks", label: "Audiobooks", icon: BookOpen },
-  { to: "/podcasts", label: "Podcasts", icon: Podcast },
-  { to: "/radio", label: "Radio", icon: Radio },
-  { to: "/spotify", label: "Spotify", icon: Music2 },
+  { to: "/library", label: "Music", icon: Disc3, tip: "Music: your library" },
+  { to: "/vgm", label: "VGM", icon: Gamepad2, tip: "VGM: chiptunes and tracker music" },
+  { to: "/audiobooks", label: "Audiobooks", icon: BookOpen, tip: "Audiobooks: pick up where you left off" },
+  { to: "/podcasts", label: "Podcasts", icon: Podcast, tip: "Podcasts: your shows and new episodes" },
+  { to: "/radio", label: "Radio", icon: Radio, tip: "Radio: stations from all over the world" },
+  { to: "/spotify", label: "Spotify", icon: Music2, tip: "Spotify: your Spotify, played in Muzix" },
 ];
 
 function SectionPills() {
   return (
     <nav className="topnav" aria-label="Sections">
-      {SECTIONS.map(({ to, label, icon: Icon }) => (
-        <NavLink key={to} to={to} className="topnav-pill" title={label} aria-label={label}>
+      {SECTIONS.map(({ to, label, icon: Icon, tip }) => (
+        <NavLink key={to} to={to} className="topnav-pill" data-tip={tip} data-tip-key="Q / E" aria-label={label}>
           <Icon size={16} /><span>{label}</span>
         </NavLink>
       ))}
@@ -93,24 +93,25 @@ export function TopBar() {
 
   return (
     <header className="topbar">
-      <NavLink to="/" className="logo" aria-label="Home">
+      <NavLink to="/" className="logo" aria-label="Home" data-tip="Home">
         <Logo name={siteName || "Muzix"} />
       </NavLink>
       <SectionPills />
       <div className="topbar-center">
-        <NavLink to="/" end className={`iconbtn homebtn ${atHome ? "on" : ""}`} title="Home" aria-label="Home"><House size={17} /></NavLink>
+        <NavLink to="/" end className={`iconbtn homebtn ${atHome ? "on" : ""}`} data-tip="Home" aria-label="Home"><House size={17} /></NavLink>
         <QuickSearch />
       </div>
       <div className="topbar-right">
-        <button className="iconbtn hide-sm" title="Now playing" onClick={() => setNowPlayingOpen(true)}>
+        <button className="iconbtn hide-sm" aria-label="Now playing" data-tip="Now playing: the full-screen player" onClick={() => setNowPlayingOpen(true)}>
           <LevelRing /><Activity size={15} />
         </button>
         <AdminSwitch />
-        <button className="iconbtn hide-sm" title={`Light/dark: ${mode} (click for ${nextMode})`} onClick={() => setPref("mode", nextMode)}>
+        <button className="iconbtn hide-sm" aria-label="Light or dark" data-tip={`${{ system: "Matching your system", dark: "Dark", light: "Light" }[mode]}: click for ${nextMode === "system" ? "your system's choice" : nextMode}`}
+                onClick={() => setPref("mode", nextMode)}>
           <ModeIcon size={15} />
         </button>
-        <button className="iconbtn hide-sm trim-2" title="Fullscreen (F11)" onClick={toggleFullscreen}><Monitor size={15} /></button>
-        <button className="pill userpill" onClick={userMenu} aria-label={`Account: ${user?.username}`}>
+        <button className="iconbtn hide-sm trim-2" aria-label="Fullscreen" data-tip="Fill the whole screen" data-tip-key="F11" onClick={toggleFullscreen}><Monitor size={15} /></button>
+        <button className="pill userpill" onClick={userMenu} aria-label={`Account: ${user?.username}`} data-tip="Settings, admin and signing out">
           <span className="avatar">{(user?.username || "?")[0].toUpperCase()}</span>
           <span className="uname">{user?.username}</span>
         </button>
@@ -126,8 +127,8 @@ function AdminSwitch() {
   const setAdminMode = useUi((s) => s.setAdminMode);
   if (!admin) return null;
   return (
-    <button className={`iconbtn admin-switch ${on ? "on" : ""}`} aria-pressed={on}
-            title={on ? "Admin mode is on: click to leave it" : "Admin mode: edit, hide or delete items"}
+    <button className={`iconbtn admin-switch ${on ? "on" : ""}`} aria-pressed={on} aria-label="Admin mode"
+            data-tip={on ? "Admin mode is on: click to leave it" : "Admin mode: edit, hide or delete items"}
             onClick={() => setAdminMode(!on)}>
       <Wrench size={15} />
     </button>

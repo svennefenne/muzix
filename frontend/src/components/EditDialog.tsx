@@ -358,7 +358,7 @@ function TrackTable({ tracks, missed, onChange }: { tracks: TrackEdit[]; missed:
       <div className="edit-track head" role="row"><span>Disc</span><span>#</span><span>Title</span><span>Artist</span><span /></div>
       {tracks.map((t, i) => (
         <div key={t.id} className={`edit-track ${missed.has(t.id) ? "missed" : ""}`} role="row"
-             title={missed.has(t.id) ? "No song of this length in the picked album: kept as it was" : undefined}>
+             data-tip={missed.has(t.id) ? "No song of this length in the picked album: kept as it was" : undefined}>
           <input className="input" type="number" aria-label="Disc" value={t.disc_no || ""} onChange={(e) => set(i, { disc_no: Number(e.target.value) || 0 })} />
           <input className="input" type="number" aria-label="Track" value={t.track_no || ""} onChange={(e) => set(i, { track_no: Number(e.target.value) || 0 })} />
           <input className="input" aria-label="Title" value={t.title} onChange={(e) => set(i, { title: e.target.value })} />
@@ -449,7 +449,7 @@ function CoverTile({ c, busy, onUse }: { c: Cover; busy: string; onUse: (url: st
   if (failed) return null;
   return (
     <button className={`edit-cover ${busy === c.url ? "busy" : ""}`} disabled={!!busy}
-            title={`${c.source}: ${c.title}${c.width ? ` (${c.width}×${c.height})` : ""}`} onClick={() => onUse(c.url)}>
+            data-tip={`${c.source}: ${c.title}${c.width ? ` (${c.width}×${c.height})` : ""}`} onClick={() => onUse(c.url)}>
       <img src={src} alt="" loading="lazy" referrerPolicy="no-referrer"
            onError={() => (src !== c.url ? setSrc(c.url) : setFailed(true))} />
       <span>{c.source}{c.width ? ` · ${c.width}` : ""}</span>

@@ -6,6 +6,7 @@ import { AdminHost } from "./components/AdminMode";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Logo } from "./components/Logo";
 import { StationHistory } from "./components/StationHistory";
+import { Tooltips } from "./components/Tooltips";
 import { Display, Kicker, Loading, MenuHost } from "./components/ui";
 import { MiniPlayer, TabBar } from "./layout/Mobile";
 import { NowPanel } from "./layout/NowPanel";
@@ -167,6 +168,7 @@ function Shell() {
       <PlaylistPicker />
       <StationHistory />
       <MenuHost />
+      <Tooltips />
       <AdminHost />
       <Toast />
     </div>

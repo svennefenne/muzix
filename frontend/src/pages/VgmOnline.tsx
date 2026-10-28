@@ -248,7 +248,7 @@ function FolderView({ d, source, system, more, bare }: {
       ) : dirs.length > 0 && (
         <div className={`online-folders ${short ? "short" : ""}`}>
           {dirs.slice(0, shown).map((x) => (
-            <Link key={x.path} to={href(source, x.path)} title={x.name}>
+            <Link key={x.path} to={href(source, x.path)} data-tip={x.name}>
               <Folder size={15} /><span className="ellipsis">{x.name.replace(/_/g, " ")}</span>
               {!!x.count && <span className="online-count">{x.count.toLocaleString()}</span>}
             </Link>
@@ -273,7 +273,7 @@ function FolderView({ d, source, system, more, bare }: {
                   <span className="online-n">
                     {busy === x.path ? <Loader2 size={15} className="spin" /> : <><span className="n">{i + 1}</span><Play size={14} fill="currentColor" className="p" /></>}
                   </span>
-                  <span className="online-name" title={x.name}>
+                  <span className="online-name" data-tip={x.name}>
                     <span className="ellipsis">{name}</span>
                     {meta && <span className="online-by ellipsis">{meta}</span>}
                   </span>

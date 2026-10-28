@@ -4,8 +4,9 @@
 
 import { api, sized } from "../api";
 import { report } from "../components/ErrorBoundary";
-import { usePlayer, type PlayItem } from "../store/player";
+import { fromTrack, usePlayer, type PlayItem } from "../store/player";
 import { useUi } from "../store/ui";
+import type { Track } from "../types";
 import { appPlayer } from "./app";
 import { caster, type CastHooks } from "./cast";
 import { spotify } from "./spotify";
@@ -45,6 +46,7 @@ class Engine {
   private stalled = false;
   private lastEnd = 0;
   private lastTick = 0;
+  private filling: Promise<boolean> | null = null;   // autoplay looking for more
 
   constructor() {
     // tells iOS this page plays music, so its audio keeps going with the screen off (Safari 17+)
@@ -114,6 +116,10 @@ class Engine {
       onFinish: () => {
         this.saveProgress(true);
         usePlayer.getState().set({ playing: false, buffering: false });
+        // autoplay found nothing in time: the app goes on once it has
+        if (this.filling || this.autoplayDue()) this.fillAutoplay().then((more) => {
+          if (more) appPlayer.loadQueue(usePlayer.getState().index + 1);
+        });
       },
     });
     caster.load();
@@ -121,6 +127,12 @@ class Engine {
     usePlayer.subscribe((s, prev) => {
       if (s.volume !== prev.volume || s.muted !== prev.muted) this.applyVolume();
       if (s.speed !== prev.speed) el.playbackRate = s.speed;
+      if ((s.index !== prev.index || s.queue !== prev.queue || s.repeat !== prev.repeat) && this.autoplayDue()) this.fillAutoplay();
+    });
+    useUi.subscribe((u, prev) => {
+      if (u.autoplay === prev.autoplay) return;
+      if (!u.autoplay) this.dropAutoplay();
+      else if (this.autoplayDue()) this.fillAutoplay();
     });
     this.mediaSession();
   }
@@ -199,22 +211,39 @@ class Engine {
     const s = usePlayer.getState();
     if (!s.queue.length) return;
     if (this.remote) return this.remote.next();
-    if (auto && s.repeat === "one") return this.seek(0, true);
+    if (auto && s.repeat === "one") return this.again();
     let idx = s.index + 1;
     if (s.shuffle && s.queue.length > 1) {
       do idx = Math.floor(Math.random() * s.queue.length);
       while (idx === s.index);
     }
     if (idx >= s.queue.length) {
-      if (s.repeat !== "all") {
-        this.saveProgress(true);
-        s.set({ playing: false });
+      if (s.repeat === "all") idx = 0;
+      else {
+        // the queue ran out: autoplay may still be finding what comes next
+        if (this.filling || this.autoplayDue()) this.fillAutoplay().then((more) => (more ? this.next(auto) : this.finish()));
+        else this.finish();
         return;
       }
-      idx = 0;
     }
     s.set({ index: idx });
     this.load(true);
+  }
+
+  /** Repeat one: the song that ended starts over (and counts as played again). The element
+   * stops at the end of a song, so seeking back alone leaves it paused. */
+  private again() {
+    const cur = usePlayer.getState().current();
+    if (!cur) return;
+    this.scrobbled = false;
+    if (cur.kind === "spotify") return spotify.playItem({ ...cur, resume: 0 });
+    this.seek(0, true);
+    this.el.play().catch(() => {});
+  }
+
+  private finish() {
+    this.saveProgress(true);
+    usePlayer.getState().set({ playing: false });
   }
 
   prev() {
@@ -232,6 +261,49 @@ class Engine {
     this.el.load();
     this.loadedKey = "";
     spotify.pause();
+  }
+
+  // ------------------------------------------------------------ autoplay
+
+  /** Spotify's autoplay: with the queue about to run out, similar songs join it, picked by the
+   * genre tags of the songs you chose (game music: more from the same chips). Not while the
+   * queue repeats, nor after audiobooks, podcasts or radio. Shuffling here never runs out. */
+  private autoplayDue() {
+    const s = usePlayer.getState();
+    return useUi.getState().autoplay && s.repeat === "off" && !(s.shuffle && !this.remote)
+      && s.current()?.kind === "track" && s.index >= s.queue.length - 2;
+  }
+
+  private fillAutoplay(): Promise<boolean> {
+    if (this.filling) return this.filling;
+    const s = usePlayer.getState();
+    const played = s.queue.slice(0, s.index + 1).filter((it) => it.kind === "track");
+    const chosen = played.filter((it) => !it.auto);
+    const seeds = (chosen.length ? chosen : played).slice(-5).reverse().map((it) => it.id);
+    if (!seeds.length) return Promise.resolve(false);
+    const exclude = s.queue.filter((it) => it.kind === "track").map((it) => it.id);
+    const at = s.current()?.key;
+    const ask = api.post<Track[]>("/api/similar", { seeds, exclude, n: 10 }).then((found) => {
+      const q = usePlayer.getState().queue;
+      // not wanted any more: turned off, or other music started meanwhile
+      if (!found.length || !useUi.getState().autoplay || !q.some((it) => it.key === at)) return false;
+      usePlayer.getState().set({ queue: [...q, ...found.map((t) => ({ ...fromTrack(t), auto: true }))] });
+      if (this.remote) this.remote.syncUpcoming();
+      return true;
+    }).catch(() => false).finally(() => {
+      this.filling = null;
+    });
+    this.filling = ask;
+    return ask;
+  }
+
+  /** Autoplay turned off: the songs it lined up go. */
+  private dropAutoplay() {
+    const s = usePlayer.getState();
+    const queue = s.queue.filter((it, i) => i <= s.index || !it.auto);
+    if (queue.length === s.queue.length) return;
+    s.set({ queue });
+    if (this.remote) this.remote.syncUpcoming();
   }
 
   // ------------------------------------------------------------ loading & seeking

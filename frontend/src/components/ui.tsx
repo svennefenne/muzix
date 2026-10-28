@@ -46,7 +46,7 @@ export function Display({ l1, l2, small }: { l1: string; l2?: string; small?: bo
 
 /** Spotify's blue dot: a new episode not played yet, or a podcast with ones you haven't seen. */
 export function NewDot({ label }: { label: string }) {
-  return <span className="new-dot" role="img" aria-label={label} title={label} />;
+  return <span className="new-dot" role="img" aria-label={label} data-tip={label} />;
 }
 
 export function Kicker({ parts }: { parts: (string | number | null | undefined | false)[] }) {
@@ -98,7 +98,7 @@ export function Loading() {
 
 export function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label?: string }) {
   return (
-    <label className="switch" title={label}>
+    <label className="switch" data-tip={label ? `${label}: ${checked ? "on" : "off"}` : undefined}>
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} aria-label={label} />
       <span />
     </label>

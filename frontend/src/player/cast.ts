@@ -24,7 +24,7 @@ export interface CastHooks {
 
 /** What the speaker (or the Android app) keeps of an item, enough to rebuild the queue if the page reloads. */
 export type Slim = Pick<PlayItem, "key" | "kind" | "id" | "title" | "artist" | "album" | "art" | "duration" | "src"
-  | "albumId" | "artistId" | "bookId" | "partOffset" | "format" | "castNative">;
+  | "albumId" | "artistId" | "bookId" | "partOffset" | "format" | "castNative" | "auto">;
 interface Carried { muzix: Slim; offset: number }
 
 const MIME: Record<string, string> = {
@@ -33,8 +33,8 @@ const MIME: Record<string, string> = {
 };
 
 export function slim(it: PlayItem): Slim {
-  const { key, kind, id, title, artist, album, art, duration, src, albumId, artistId, bookId, partOffset, format, castNative } = it;
-  return { key, kind, id, title, artist, album, art, duration, src, albumId, artistId, bookId, partOffset, format, castNative };
+  const { key, kind, id, title, artist, album, art, duration, src, albumId, artistId, bookId, partOffset, format, castNative, auto } = it;
+  return { key, kind, id, title, artist, album, art, duration, src, albumId, artistId, bookId, partOffset, format, castNative, auto };
 }
 
 function carried(info?: chrome.cast.media.MediaInfo | null): Carried | null {

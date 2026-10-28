@@ -19,6 +19,7 @@ export interface Prefs {
   np_panel?: boolean;                    // the "Now playing" panel on the right
   search_engine?: string;                // web search for a song: a URL with %s for the words
   radio_buffer?: number;                 // seconds of a station gathered before it starts playing
+  autoplay?: boolean;                    // similar songs once the queue runs out
   browse?: Record<string, BrowsePref>;   // sort and display mode per page
 }
 

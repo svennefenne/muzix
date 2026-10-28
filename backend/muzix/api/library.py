@@ -1,11 +1,12 @@
 import os
+import random
 import re
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
-from sqlalchemy import case, delete, func, or_, select, text
+from sqlalchemy import case, delete, func, or_, select, text, true
 from sqlalchemy.orm import Session
 
 from .. import art, serial
@@ -236,6 +237,92 @@ def random_tracks(db: Session = Depends(get_db), user: User = Depends(current_us
     if system:
         q = q.where(on_system(system))
     return tracks_json(db, user, db.scalars(q.order_by(func.random()).limit(n)).all())
+
+
+# ---------------------------------------------------------------- autoplay
+
+class Seeds(BaseModel):
+    seeds: list[int]                # what played, the latest first
+    exclude: list[int] = []         # already in the queue
+    n: int = 10
+
+
+def tag_profile(a: Artist) -> dict[str, float]:
+    """An artist's genre tags weighed 0..1 (its strongest is 1). The genre folder counts as a weak
+    tag, so artists Last.fm knows nothing about still meet the others in their folder."""
+    tags = [(str(t).casefold(), float(w or 0)) for t, w in (a.tags or [])[:8]]
+    top = max((w for _, w in tags), default=0) or 1
+    out = {t: max(w / top, 0.05) for t, w in tags}
+    if a.genre:
+        out.setdefault(a.genre.casefold(), 0.3)
+    return out
+
+
+def likeness(p: dict[str, float], q: dict[str, float]) -> float:
+    """How alike two tag profiles are (cosine): 1 for the same tags in the same proportions."""
+    dot = sum(w * q[t] for t, w in p.items() if t in q)
+    return dot / (sum(w * w for w in p.values()) * sum(w * w for w in q.values())) ** 0.5 if dot else 0.0
+
+
+def pick_weighted(scored: list[tuple[float, int]], n: int, rnd: random.Random) -> list[int]:
+    """n of the ids at random, the better scored the likelier (weighted sampling without replacement)."""
+    return [i for _, i in sorted(((rnd.random() ** (1 / s), i) for s, i in scored if s > 0), reverse=True)[:n]]
+
+
+@router.post("/similar")
+def similar(body: Seeds, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Autoplay: songs like the seeds, to keep the music going once the queue runs out. For music,
+    songs by the artists whose genre tags are most like the seeds' artists' (now and then the
+    seeds' artists themselves); for game music, more from the same chips. Never anything queued,
+    nor what this user played lately."""
+    n = max(1, min(body.n, 50))
+    seeds = [t for t in (db.get(Track, i) for i in body.seeds[:10]) if t]
+    if not seeds:
+        return []
+    recent = db.scalars(select(PlayEvent.track_id).where(PlayEvent.user_id == user.id)
+                        .order_by(PlayEvent.played_at.desc()).limit(300))
+    skip = {*body.exclude[:5000], *body.seeds, *recent}
+    fresh = Track.id.not_in(skip)
+    music = [t for t in seeds if t.kind == "music"]
+    if not music:
+        chips = {("system", s) if (s := (t.extra or {}).get("system")) else ("format", t.format) for t in seeds}
+        q = select(Track).where(Track.kind == "vgm", fresh,
+                                or_(*(on_system(v) if k == "system" else Track.format == v for k, v in chips)))
+        return tracks_json(db, user, db.scalars(q.order_by(func.random()).limit(n)).all())
+
+    # what the seeds sound like: their artists' tags, the latest seed counting the most
+    profile: dict[str, float] = {}
+    for k, t in enumerate(music):
+        if t.artist_id and (a := db.get(Artist, t.artist_id)):
+            for tag, w in tag_profile(a).items():
+                profile[tag] = profile.get(tag, 0) + w * 0.8 ** k
+    rnd = random.Random()
+    picked: list[Track] = []
+    if profile:
+        own = {t.artist_id for t in music}
+        scored = sorted(((likeness(profile, tag_profile(a)) * (0.35 if a.id in own else 1), a.id)
+                         for a in db.scalars(select(Artist))), reverse=True)[:40]
+        artists = pick_weighted([(s * s, i) for s, i in scored], n, rnd)
+        rows = db.execute(select(Track.id, Track.artist_id)
+                          .where(Track.artist_id.in_(artists), Track.kind == "music", fresh)
+                          .order_by(func.random())).all()
+        first: dict[int, int] = {}
+        for tid, aid in rows:
+            first.setdefault(aid, tid)
+        ids = [first[a] for a in artists if a in first]
+        ids += [tid for tid, _ in rows if tid not in ids][:n - len(ids)]     # few alike artists: more songs each
+        got = {t.id: t for t in db.scalars(select(Track).where(Track.id.in_(ids)))}
+        picked = [got[i] for i in ids if i in got]
+    # nothing tagged alike: the seeds' genre folders, then anything
+    folders = {t.genre for t in music if t.genre}
+    for where in ([Track.genre.in_(folders)] if folders else []) + [true()]:
+        if len(picked) >= n:
+            break
+        have = [t.id for t in picked]
+        picked += db.scalars(select(Track).where(Track.kind == "music", fresh, Track.id.not_in(have), where)
+                             .order_by(func.random()).limit(n - len(picked))).all()
+    rnd.shuffle(picked)
+    return tracks_json(db, user, picked)
 
 
 # ---------------------------------------------------------------- playlist files
