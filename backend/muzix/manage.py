@@ -34,7 +34,7 @@ import httpx
 from PIL import Image, ImageOps
 from sqlalchemy import delete, func, or_, select, update
 
-from . import db, enrich, env, formats, jobs, scanner
+from . import art, db, enrich, env, formats, jobs, scanner, serial
 from .meta import tagwrite
 from .models import (Album, Artist, Book, EditRecord, Episode, Feed, FilePlaylist, Like, Playlist, Root, Station,
                      TagOverride, Track, TrashItem)
@@ -103,7 +103,7 @@ def hidden_items() -> list[dict]:
         for a in s.scalars(select(Album).where(Album.hidden.is_(True)).order_by(Album.artist_name, Album.title)):
             if a.artist_id not in hidden_artists:
                 out.append({"kind": "album", "id": a.id, "title": a.title, "subtitle": f"Album · {a.artist_name}",
-                            "art": f"/api/art/album/{a.id}" if a.art else None})
+                            "art": serial.art_url("album", a.id) if a.art else None})
         for t in s.scalars(select(Track).where(Track.hidden.is_(True)).order_by(Track.artist, Track.title)):
             if t.album_id not in hidden_albums and t.artist_id not in hidden_artists:
                 out.append({"kind": "track", "id": t.id, "title": t.title, "subtitle": f"Song · {t.artist}"})
@@ -282,7 +282,9 @@ def restore(trash_id: int) -> dict:
         item = s.get(TrashItem, trash_id)
         if item is None:
             raise ManageError("That's no longer in the trash")
+        albums = {t.album_id for t in _tracks_in(s, os.path.dirname(item.moves[0][0]))} if item.kind == "cover" else set()
         root_id = _restore(s, item)
+    art.changed("album", *albums)
     job = jobs.submit("scan", "Scan after putting back from the trash", root_id=root_id) if root_id else None
     return {"job_id": job}
 
@@ -421,7 +423,7 @@ def _details(s, kind: str, id_: int) -> dict:
         folder = album_dir(sorted({t.path for t in tracks}))
         return {"kind": kind, "id": id_, "title": row.title, "artist": row.artist_name, "year": row.year,
                 "genre": row.genre, "folder": folder, "hidden": row.hidden,
-                "art": f"/api/art/album/{id_}" if row.art else None,
+                "art": serial.art_url("album", id_) if row.art else None,
                 "files": "music" if root and root.kind == "music" else root.kind if root else "",
                 "writable": bool(tracks) and _writable(tracks[0].path),
                 "tags": "files" if tracks and all(_taggable(t) for t in tracks) else "muzix",
@@ -432,7 +434,7 @@ def _details(s, kind: str, id_: int) -> dict:
                 "album": row.album, "album_id": row.album_id, "track_no": row.track_no, "disc_no": row.disc_no,
                 "year": row.year, "genre": row.genre, "path": row.path, "format": row.format, "hidden": row.hidden,
                 "duration": row.duration,
-                "art": f"/api/art/album/{row.album_id}" if row.album_id else None,
+                "art": serial.art_url("album", row.album_id),
                 "writable": _writable(row.path), "tags": "files" if _taggable(row) else "muzix"}
     if kind == "artist":
         # what a new name changes: their albums, and their songs on no album of theirs
@@ -448,11 +450,11 @@ def _details(s, kind: str, id_: int) -> dict:
             folders[folder] = folders.get(folder, 0) + 1
         return {"kind": kind, "id": id_, "name": row.name, "songs": n, "albums": albums, "hidden": row.hidden,
                 "folders": sorted(folders, key=lambda f: -folders[f])[:3] if "." not in folders else [],
-                "art": f"/api/art/artist/{id_}"}
+                "art": serial.art_url("artist", id_)}
     if kind == "book":
         return {"kind": kind, "id": id_, "title": row.title, "author": row.author, "narrator": row.narrator,
                 "series": row.series, "year": row.year, "description": row.description, "hidden": row.hidden,
-                "art": f"/api/art/book/{id_}" if row.art else None}
+                "art": serial.art_url("book", id_) if row.art else None}
     if kind == "podcast":
         return {"kind": kind, "id": id_, "title": row.title, "author": row.author, "description": row.description,
                 "image": row.image, "hidden": row.hidden}
@@ -1252,6 +1254,8 @@ def undo_edit(edit_id: int) -> dict:
                 rec.undo = {**u, "parts": list(parts)}
         with db.session() as s:
             s.get(EditRecord, edit_id).undone_at = datetime.now(timezone.utc)
+    if u.get("cover") or u.get("art"):
+        art.changed("album", u.get("album_id"))
     _tidy_later()
     return {"undone": edit_id, "kind": kind, "item_id": item_id}
 
@@ -1296,6 +1300,12 @@ def set_cover(kind: str, id_: int, data: bytes, edit_id: int | None = None) -> d
     """A new cover: an album's goes into its folder as cover.jpg and into its files (the old cover
     file into the trash); an artist's, book's or a shared folder's into Muzix's own data. With
     `edit_id` (an album picked from a source, saved with its edit) undoing the edit undoes it too."""
+    kind, id_, out = _put_cover(kind, id_, data, edit_id)
+    art.changed(kind, id_)
+    return out
+
+
+def _put_cover(kind: str, id_: int, data: bytes, edit_id: int | None) -> tuple[str, int, dict]:
     big, small = _jpeg(data, 1200), _jpeg(data, 600)
     notes = []
     with db.session() as s:
@@ -1337,7 +1347,7 @@ def set_cover(kind: str, id_: int, data: bytes, edit_id: int | None = None) -> d
                         except (tagwrite.TagError, OSError) as e:
                             notes.append(f"{os.path.basename(t.path)}: {e}")
                 row.art = path
-                return {"art": path, "embedded": embedded, "notes": notes}
+                return kind, id_, {"art": path, "embedded": embedded, "notes": notes}
             path = _own_art("album-art", id_)       # a folder shared with other albums, or read-only
         elif kind == "artist":
             path = _own_art("artist-art", id_)
@@ -1354,4 +1364,4 @@ def set_cover(kind: str, id_: int, data: bytes, edit_id: int | None = None) -> d
         else:
             row.art = path
             row.custom = {**(row.custom or {}), "art": path}
-        return {"art": path, "notes": notes}
+        return kind, id_, {"art": path, "notes": notes}

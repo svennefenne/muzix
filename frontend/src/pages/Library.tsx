@@ -2,7 +2,7 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { ChevronRight, Disc3, Heart, ListPlus, Mic2, Play, Plus, Shuffle, Tags, Trash2, UserRound } from "lucide-react";
 import { Fragment, useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link, Navigate, NavLink, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { api, fmtLong, fmtNumber } from "../api";
+import { api, fmtLong, fmtNumber, sized } from "../api";
 import { playAlbum, playRandom, playTracks, queryClient, toggleLike, usePlaylistPicker } from "../actions";
 import {
   ALBUM_SORTS, AlbumItems, ARTIST_SORTS, ArtistItems, DisplaySwitch, GENRE_SORTS, GenreItems, Segmented, SortMenu,
@@ -439,7 +439,7 @@ export function PlaylistPage() {
     <div className="page">
       <div className="detail-head">
         <div className="art" style={{ display: "grid", gridTemplateColumns: p.art.length >= 4 ? "1fr 1fr" : "1fr" }}>
-          {p.art.length >= 4 ? p.art.slice(0, 4).map((u) => <img key={u} src={`${u}?s=300`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />)
+          {p.art.length >= 4 ? p.art.slice(0, 4).map((u) => <img key={u} src={sized(u, 300)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />)
             : <Art src={p.art[0]} name={p.name} size={600} />}
         </div>
         <div>

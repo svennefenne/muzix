@@ -47,6 +47,12 @@ export const api = {
   del: <T>(path: string) => request<T>("DELETE", path),
 };
 
+/** A picture of Muzix's at about `px` pixels. Its address carries a version (a new one when the
+ * picture changes), so the size goes after that. */
+export function sized(url: string, px: number): string {
+  return url.startsWith("/api/art/") ? `${url}${url.includes("?") ? "&" : "?"}s=${px}` : url;
+}
+
 export function fmtTime(sec: number | null | undefined): string {
   if (!sec || !isFinite(sec) || sec < 0) return "0:00";
   const s = Math.floor(sec % 60);

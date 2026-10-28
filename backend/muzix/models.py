@@ -224,6 +224,14 @@ class RecentSearch(Base):
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
 
 
+class ArtVersion(Base):
+    """How many times a picture has changed: part of its address, so browsers fetch it again."""
+    __tablename__ = "art_versions"
+    kind: Mapped[str] = mapped_column(String(16), primary_key=True)   # album | artist | book
+    item_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+
+
 class PlayEvent(Base):
     __tablename__ = "plays"
     id: Mapped[int] = mapped_column(primary_key=True)

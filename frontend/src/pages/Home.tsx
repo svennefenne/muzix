@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Shuffle } from "lucide-react";
 import { useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { api, fmtNumber } from "../api";
+import { api, fmtNumber, sized } from "../api";
 import { playAlbum, playRandom } from "../actions";
 import { AlbumRow, GenreCard } from "../components/Cards";
 import { Art, Display, Kicker, Loading, Section, Stripes } from "../components/ui";
@@ -22,7 +22,7 @@ function Tile({ to, kicker, title, sub, art, color, className = "" }: {
     <div className={`tile ${className}`} style={{ "--tile-color": color } as React.CSSProperties}
          onClick={() => nav(to)} role="link" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && nav(to)}>
       <div className="tile-bg">
-        {art.filter(Boolean).slice(0, 9).map((u, i) => <img key={i} src={`${u}?s=300`} alt="" loading="lazy" />)}
+        {art.filter((u): u is string => !!u).slice(0, 9).map((u, i) => <img key={i} src={sized(u, 300)} alt="" loading="lazy" />)}
       </div>
       <Stripes />
       <div className="tile-body">

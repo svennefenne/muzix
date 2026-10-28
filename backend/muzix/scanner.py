@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.exc import IntegrityError
 
-from . import db, formats, jobs, playlists as file_playlists, settings
+from . import art, db, formats, jobs, playlists as file_playlists, settings
 from .meta import chip, tags
 from .models import Album, Artist, Root, TagOverride, Track
 
@@ -392,19 +392,20 @@ def finish_scan(ctx):
         # covers
         rows = s.execute(select(Album.id, Album.folder, Album.art)).all()
     updates = []
-    for aid, folder, art in rows:
-        if art and not art.startswith("embedded:") and os.path.exists(art):
+    for aid, folder, was in rows:
+        if was and not was.startswith("embedded:") and os.path.exists(was):
             continue
         cover = find_cover(folder)
         if not cover:
             with db.session() as s:
                 tid = s.scalar(select(Track.id).where(Track.album_id == aid, Track.embedded_art.is_(True)).limit(1))
             cover = f"embedded:{tid}" if tid else ""
-        if cover != art:
-            updates.append((aid, cover))
+        if cover != was:
+            updates.append((aid, cover, was))
     with db.session() as s:
-        for aid, cover in updates:
+        for aid, cover, _ in updates:
             s.execute(update(Album).where(Album.id == aid).values(art=cover))
+    art.changed("album", *[aid for aid, _, was in updates if was])     # new ones had no address to keep
     rebuild_search()
 
 

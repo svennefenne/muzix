@@ -1,6 +1,7 @@
 import { ChevronDown } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { create } from "zustand";
+import { sized } from "../api";
 
 /** Cover art with a generated fallback (colour from the name, big initials). */
 export function Art({ src, name, size = 300, round, className = "", onClick }: {
@@ -11,7 +12,7 @@ export function Art({ src, name, size = 300, round, className = "", onClick }: {
     setFailed(false);
   }, [src]);
   const pixel = document.documentElement.dataset.artfx === "pixel";
-  const url = src && src.startsWith("/api/art/") ? `${src}${src.includes("?") ? "&" : "?"}s=${pixel ? 64 : size}` : src;
+  const url = src ? sized(src, pixel ? 64 : size) : src;
   const hue = hashHue(name || "");
   return (
     <div className={`art ${round ? "round" : ""} ${className}`} onClick={onClick}

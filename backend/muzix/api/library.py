@@ -348,7 +348,7 @@ def search(q: str, db: Session = Depends(get_db), user: User = Depends(current_u
 
 def _book_hit(b: Book) -> dict:
     return {"id": b.id, "title": b.title, "author": b.author, "series": b.series,
-            "art": f"/api/art/book/{b.id}" if b.art else None}
+            "art": serial.art_url("book", b.id) if b.art else None}
 
 
 # ---------------------------------------------------------------- recent searches (Spotify's search history)

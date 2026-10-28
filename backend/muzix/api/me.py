@@ -256,7 +256,7 @@ def sidebar(db: Session = Depends(get_db), user: User = Depends(current_user)):
         "albums": [_album_item(a, liked_ids) for a in albums],
         "games": [_album_item(a, liked_ids) for a in games],
         "artists": [{"id": a.id, "name": a.name, "art": serial.art_url("artist", a.id)} for a in artists],
-        "books": [{"id": b.id, "title": b.title, "author": b.author, "art": f"/api/art/book/{b.id}" if b.art else None,
+        "books": [{"id": b.id, "title": b.title, "author": b.author, "art": serial.art_url("book", b.id) if b.art else None,
                    "progress": round(p.position / b.duration, 3) if b.duration else 0} for b, p in books],
         "podcasts": [{"id": f.id, "title": f.title or f.url, "author": f.author, "art": f.image or None,
                       "new": f.id in fresh} for f in feeds],

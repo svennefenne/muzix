@@ -1,12 +1,12 @@
 """JSON shapes of library objects, shared by the API routes."""
 
-from . import formats, render
+from . import art, formats, render
 from .lengths import display_duration
 from .models import Album, Artist, Track
 
 
 def art_url(kind: str, id_: int | None) -> str | None:
-    return f"/api/art/{kind}/{id_}" if id_ else None
+    return art.url(kind, id_) if id_ else None
 
 
 def track(t: Track, liked: set[int] | None = None, artist_tags: dict | None = None) -> dict:

@@ -1,6 +1,7 @@
 import { Play } from "lucide-react";
 import { Link } from "react-router-dom";
 import { playAlbum, playRandom } from "../actions";
+import { sized } from "../api";
 import type { Album, Artist, Genre, Playlist } from "../types";
 import { AdminCog, type ItemKind } from "./AdminMode";
 import { Art } from "./ui";
@@ -45,7 +46,7 @@ export function MosaicCard({ to, name, art, sub, admin }: {
     <Link to={to} className="card">
       <div className="art" style={{ display: "grid", gridTemplateColumns: art.length >= 4 ? "1fr 1fr" : "1fr" }}>
         {art.length >= 4
-          ? art.slice(0, 4).map((u) => <img key={u} src={`${u}?s=160`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />)
+          ? art.slice(0, 4).map((u) => <img key={u} src={sized(u, 160)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />)
           : <Art src={art[0]} name={name} />}
       </div>
       {admin && <AdminCog kind={admin.kind} id={admin.id} title={name} />}
@@ -63,7 +64,7 @@ export function PlaylistCard({ p }: { p: Playlist }) {
 export function GenreCard({ g, to }: { g: Genre; to?: string }) {
   return (
     <Link to={to || `/genre/${encodeURIComponent(g.name)}`} className="genre-card">
-      <div className="mosaic">{g.art.slice(0, 4).map((u) => <img key={u} src={`${u}?s=160`} alt="" loading="lazy" />)}</div>
+      <div className="mosaic">{g.art.slice(0, 4).map((u) => <img key={u} src={sized(u, 160)} alt="" loading="lazy" />)}</div>
       <div>
         <div className="h3">{g.name}</div>
         <div className="card-sub">{g.artists != null ? `${g.artists} artists · ` : ""}{g.albums} albums</div>

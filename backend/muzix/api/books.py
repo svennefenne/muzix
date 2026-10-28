@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import art
+from .. import art, serial
 from ..db import get_db
 from ..meta import tags
 from ..models import Book, BookPart, BookProgress, User
@@ -27,7 +27,7 @@ SORTS = {
 
 def book_json(b: Book, prog: BookProgress | None, full=False, parts=None):
     out = {"id": b.id, "title": b.title, "author": b.author, "narrator": b.narrator, "series": b.series,
-           "year": b.year, "duration": b.duration, "art": f"/api/art/book/{b.id}" if b.art else None,
+           "year": b.year, "duration": b.duration, "art": serial.art_url("book", b.id) if b.art else None,
            "position": prog.position if prog else 0, "finished": bool(prog and prog.finished),
            "updated_at": prog.updated_at.isoformat() if prog and prog.updated_at else None}
     if full:

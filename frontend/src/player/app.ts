@@ -4,6 +4,7 @@
  * way it does to a Cast speaker; the app reports back what plays and where (android/…/PlayerBridge.kt).
  * The app casts by itself too: every entry carries the signed link a speaker would play. */
 
+import { sized } from "../api";
 import { report } from "../components/ErrorBoundary";
 import { usePlayer, type PlayItem } from "../store/player";
 import { useUi } from "../store/ui";
@@ -101,7 +102,7 @@ class AppPlayer {
   }
 
   private item(it: PlayItem, token: string, from = 0) {
-    const art = it.art ? new URL(it.art.startsWith("/api/") ? it.art + "?s=600" : it.art, location.origin).toString() : "";
+    const art = it.art ? new URL(sized(it.art, 600), location.origin).toString() : "";
     return {
       key: it.key, url: this.url(it, from), title: it.title, artist: it.artist, album: it.album || "", art,
       duration: it.kind === "radio" ? 0 : it.duration, offset: from, muzix: JSON.stringify(slim(it)),

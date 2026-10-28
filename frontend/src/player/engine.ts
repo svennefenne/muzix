@@ -2,7 +2,7 @@
  * and skin backdrops, and the bookkeeping around it (play counts, resume
  * positions, media keys, prefetching the next song's render). */
 
-import { api } from "../api";
+import { api, sized } from "../api";
 import { report } from "../components/ErrorBoundary";
 import { usePlayer, type PlayItem } from "../store/player";
 import { useUi } from "../store/ui";
@@ -556,7 +556,7 @@ class Engine {
 
   private updateMediaSession(item: PlayItem, live = "") {
     if (!("mediaSession" in navigator)) return;
-    const art = item.art ? [{ src: item.art.startsWith("/api/") ? item.art + "?s=600" : item.art, sizes: "600x600" }] : [];
+    const art = item.art ? [{ src: sized(item.art, 600), sizes: "600x600" }] : [];
     if (live && appPlayer.active) appPlayer.meta(live, item.title);
     navigator.mediaSession.metadata = new MediaMetadata({
       title: live || item.title, artist: live ? item.title : item.artist, album: item.album || "", artwork: art,

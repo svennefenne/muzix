@@ -6,9 +6,11 @@ import os
 import threading
 
 from PIL import Image, ImageOps
+from sqlalchemy import select
 
-from . import env
+from . import db, env
 from .meta import tags
+from .models import Album, Artist, ArtVersion
 
 SIZES = (64, 160, 300, 600, 1200)
 _locks: dict[str, threading.Lock] = {}
@@ -90,3 +92,45 @@ def dominant_colors(path: str, n: int = 3) -> list[str]:
         r, g, b = rgb[idx * 3:idx * 3 + 3]
         out.append(f"#{r:02x}{g:02x}{b:02x}")
     return out
+
+
+# ---------------------------------------------------------------- addresses
+# Browsers keep a picture for a week, so one that changes gets a new address: its version goes
+# up. Every picture starts at version 1; only the ones that changed are in the table.
+
+_versions: dict[tuple[str, int], int] | None = None
+_versions_lock = threading.Lock()
+
+
+def _known() -> dict[tuple[str, int], int]:
+    global _versions
+    with _versions_lock:
+        if _versions is None:
+            with db.session() as s:
+                _versions = {(v.kind, v.item_id): v.version for v in s.scalars(select(ArtVersion))}
+        return _versions
+
+
+def url(kind: str, id_: int) -> str:
+    return f"/api/art/{kind}/{id_}?v={_known().get((kind, id_), 1)}"
+
+
+def changed(kind: str, *ids: int | None) -> None:
+    """New addresses for pictures that changed. Call it once the change is committed: a browser
+    that asks for the new address straight away must get the new picture. An artist without a
+    picture of its own shows one of its albums' covers, so it changes with them."""
+    ids = {i for i in ids if i}
+    if not ids:
+        return
+    with db.session() as s:
+        rows = {v.item_id: v for v in s.scalars(select(ArtVersion).where(ArtVersion.kind == kind, ArtVersion.item_id.in_(ids)))}
+        for i in ids:
+            if i not in rows:
+                rows[i] = ArtVersion(kind=kind, item_id=i, version=1)
+                s.add(rows[i])
+            rows[i].version += 1
+        now = {(kind, i): v.version for i, v in rows.items()}
+        artists = s.scalars(select(Album.artist_id).join(Artist, Artist.id == Album.artist_id)
+                            .where(Album.id.in_(ids), Artist.image == "")).all() if kind == "album" else []
+    _known().update(now)
+    changed("artist", *artists)

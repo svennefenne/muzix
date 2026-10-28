@@ -4,7 +4,7 @@
 import { Grid3x3, LayoutGrid, List, Play } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { fmtLong, fmtNumber } from "../api";
+import { fmtLong, fmtNumber, sized } from "../api";
 import { playAlbum, playRandom } from "../actions";
 import { useUi } from "../store/ui";
 import type { Album, Artist, DisplayMode, Genre } from "../types";
@@ -167,7 +167,7 @@ export function GenreItems({ items, display, linkTo }: { items: Genre[]; display
           head={["", "Genre", "Artists", "Albums", "Songs"].map((h, i) => <span key={i} className={i === 2 || i === 4 ? "l-num l-opt" : i === 3 ? "l-num" : ""}>{h}</span>)}>
       {items.map((g) => (
         <Link key={g.name} to={linkTo?.(g) || `/genre/${encodeURIComponent(g.name)}`} className="lrow">
-          <div className="l-thumb mosaic">{g.art.slice(0, 4).map((u) => <img key={u} src={`${u}?s=96`} alt="" loading="lazy" />)}</div>
+          <div className="l-thumb mosaic">{g.art.slice(0, 4).map((u) => <img key={u} src={sized(u, 96)} alt="" loading="lazy" />)}</div>
           <div className="l-main"><div className="l-title ellipsis">{g.name}</div></div>
           <span className="l-num l-opt">{g.artists != null ? fmtNumber(g.artists) : ""}</span>
           <span className="l-num">{fmtNumber(g.albums)}</span>
