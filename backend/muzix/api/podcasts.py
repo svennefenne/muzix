@@ -19,45 +19,71 @@ from .proxy import check_url, relay
 router = APIRouter(prefix="/api/podcasts", tags=["podcasts"])
 
 
-def feed_json(f: Feed, sub: Subscription | None = None, unplayed: int | None = None):
+def feed_json(f: Feed, sub: Subscription | None = None, unplayed: int | None = None, new: bool = False):
     return {"id": f.id, "url": f.url, "title": f.title or f.url, "author": f.author,
             "description": f.description, "image": f.image, "link": f.link, "categories": f.categories,
             "error": f.error, "subscribed": sub is not None,
-            "auto_download": bool(sub and sub.auto_download), "unplayed": unplayed,
+            "auto_download": bool(sub and sub.auto_download), "unplayed": unplayed, "new": new,
             "last_checked": f.last_checked.isoformat() if f.last_checked else None}
 
 
-def episode_json(e: Episode, prog: EpisodeProgress | None, feed: Feed | None = None):
+def episode_json(e: Episode, prog: EpisodeProgress | None, feed: Feed | None = None, sub: Subscription | None = None):
     return {"id": e.id, "feed_id": e.feed_id, "title": e.title, "description": e.description,
             "published": e.published.isoformat() if e.published else None, "duration": e.duration,
             "image": e.image or (feed.image if feed else ""), "downloaded": bool(e.local_path),
             "position": prog.position if prog else 0, "finished": bool(prog and prog.finished),
-            "stream": f"/api/podcasts/episodes/{e.id}/stream",
+            "new": is_new(e, sub, prog), "stream": f"/api/podcasts/episodes/{e.id}/stream",
             "feed_title": feed.title if feed else None}
+
+
+# Spotify's blue dot: an episode that came out after you subscribed is new until you start it,
+# and a podcast is marked while one of those has come in since you last opened its page
+
+def _utc(d: datetime) -> datetime:
+    """As SQLite gives it back: UTC without a zone."""
+    return d.astimezone(timezone.utc).replace(tzinfo=None) if d.tzinfo else d
+
+
+def is_new(e: Episode, sub: Subscription | None, prog: EpisodeProgress | None) -> bool:
+    out = e.published or e.added_at
+    return sub is not None and prog is None and out is not None and _utc(out) > _utc(sub.created_at)
+
+
+def fresh_feeds(db: Session, user_id: int) -> set[int]:
+    """The subscribed podcasts with a new episode the user hasn't seen on their page."""
+    came = func.coalesce(Episode.added_at, Episode.published)     # when Muzix first read it
+    return set(db.scalars(
+        select(Episode.feed_id).distinct()
+        .join(Subscription, (Subscription.feed_id == Episode.feed_id) & (Subscription.user_id == user_id))
+        .outerjoin(EpisodeProgress, (EpisodeProgress.episode_id == Episode.id) & (EpisodeProgress.user_id == user_id))
+        .where(EpisodeProgress.episode_id.is_(None),
+               func.coalesce(Episode.published, Episode.added_at) > Subscription.created_at,
+               came > func.coalesce(Subscription.seen_at, Subscription.created_at))))
 
 
 @router.get("")
 def subscriptions(db: Session = Depends(get_db), user: User = Depends(current_user)):
     rows = db.execute(select(Feed, Subscription).join(Subscription, Subscription.feed_id == Feed.id)
                       .where(Subscription.user_id == user.id).order_by(func.lower(Feed.title))).all()
+    fresh = fresh_feeds(db, user.id)
     out = []
     for f, sub in rows:
         unplayed = db.scalar(select(func.count()).select_from(Episode).outerjoin(
             EpisodeProgress, (EpisodeProgress.episode_id == Episode.id) & (EpisodeProgress.user_id == user.id))
             .where(Episode.feed_id == f.id, func.coalesce(EpisodeProgress.finished, False).is_(False)))
-        out.append(feed_json(f, sub, unplayed))
+        out.append(feed_json(f, sub, unplayed, f.id in fresh))
     return out
 
 
 @router.get("/latest")
 def latest(db: Session = Depends(get_db), user: User = Depends(current_user), limit: int = 40):
-    rows = db.execute(select(Episode, Feed, EpisodeProgress)
+    rows = db.execute(select(Episode, Feed, EpisodeProgress, Subscription)
                       .join(Feed, Feed.id == Episode.feed_id)
                       .join(Subscription, (Subscription.feed_id == Feed.id) & (Subscription.user_id == user.id))
                       .outerjoin(EpisodeProgress, (EpisodeProgress.episode_id == Episode.id)
                                  & (EpisodeProgress.user_id == user.id))
                       .order_by(Episode.published.desc()).limit(limit)).all()
-    return [episode_json(e, p, f) for e, f, p in rows]
+    return [episode_json(e, p, f, sub) for e, f, p, sub in rows]
 
 
 class SubscribeBody(BaseModel):
@@ -140,8 +166,18 @@ def feed(feed_id: int, db: Session = Depends(get_db), user: User = Depends(curre
     rows = db.execute(select(Episode, EpisodeProgress).outerjoin(
         EpisodeProgress, (EpisodeProgress.episode_id == Episode.id) & (EpisodeProgress.user_id == user.id))
         .where(Episode.feed_id == feed_id).order_by(Episode.published.desc()).limit(500)).all()
-    return {**feed_json(f, db.get(Subscription, (user.id, feed_id))),
-            "episodes": [episode_json(e, p) for e, p in rows]}
+    sub = db.get(Subscription, (user.id, feed_id))
+    return {**feed_json(f, sub), "episodes": [episode_json(e, p, sub=sub) for e, p in rows]}
+
+
+@router.post("/{feed_id}/seen")
+def seen(feed_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """The podcast's page was opened: its dot in the library goes (its new episodes keep theirs)."""
+    sub = db.get(Subscription, (user.id, feed_id))
+    if sub is not None:
+        sub.seen_at = datetime.now(timezone.utc)
+        db.commit()
+    return {"ok": True}
 
 
 class SubSettings(BaseModel):

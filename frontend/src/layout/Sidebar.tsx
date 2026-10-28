@@ -8,7 +8,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { playAlbum, playTracks } from "../actions";
-import { Art } from "../components/ui";
+import { Art, NewDot } from "../components/ui";
 import { engine } from "../player/engine";
 import { sp } from "../player/spotify";
 import { fromStation } from "../store/player";
@@ -31,6 +31,7 @@ const CHIPS: { id: Chip; label: string; browse: [string, string] }[] = [
 interface Row {
   key: string; chip: Chip; title: string; sub: string; art: ReactNode;
   to?: string; onOpen?: () => void; onPlay?: () => void;
+  dot?: string;              // a blue dot before the subtitle (or on the cover, folded), saying this
 }
 
 /** True while the media query matches (the panel collapses on narrower windows). */
@@ -100,7 +101,7 @@ export function Sidebar() {
                   to: `/album/${a.id}`, onPlay: () => playAlbum(a.id) });
     for (const p of d.podcasts)
       rows.push({ key: `f${p.id}`, chip: "podcasts", title: p.title, sub: `Podcast${p.author ? ` · ${p.author}` : ""}`,
-                  art: <Art src={p.art} name={p.title} size={96} />, to: `/podcasts/${p.id}` });
+                  art: <Art src={p.art} name={p.title} size={96} />, to: `/podcasts/${p.id}`, dot: p.new ? "New episodes" : undefined });
     for (const s of d.stations)
       rows.push({ key: `s${s.id}`, chip: "radio", title: s.name, sub: `Station${s.country ? ` · ${s.country}` : ""}`,
                   art: <Art src={s.favicon || null} name={s.name} size={96} />, onOpen: () => engine.play([fromStation(s)], 0) });
@@ -151,10 +152,11 @@ export function Sidebar() {
                 {(r.onPlay || r.onOpen) && (
                   <span className="lib-play" aria-hidden><Play size={16} fill="currentColor" /></span>
                 )}
+                {r.dot && collapsed && <NewDot label={r.dot} />}
               </div>
               <div className="lib-text">
                 <div className="lib-name ellipsis">{r.title}</div>
-                <div className="lib-sub ellipsis">{r.sub}</div>
+                <div className="lib-sub ellipsis">{r.dot && <NewDot label={r.dot} />}{r.sub}</div>
               </div>
             </>
           );

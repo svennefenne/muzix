@@ -243,6 +243,8 @@ def sidebar(db: Session = Depends(get_db), user: User = Depends(current_user)):
                        .order_by(BookProgress.updated_at.desc()).limit(20)).all()
     feeds = db.scalars(select(Feed).join(Subscription, Subscription.feed_id == Feed.id)
                        .where(Subscription.user_id == user.id).order_by(func.lower(Feed.title)))
+    from .podcasts import fresh_feeds
+    fresh = fresh_feeds(db, user.id)
     stations = db.scalars(select(Station).where(Station.user_id == user.id).order_by(func.lower(Station.name)))
     lists = db.scalars(select(Playlist).where(Playlist.user_id == user.id).order_by(Playlist.updated_at.desc()))
     from .radio import saved_json
@@ -256,6 +258,7 @@ def sidebar(db: Session = Depends(get_db), user: User = Depends(current_user)):
         "artists": [{"id": a.id, "name": a.name, "art": serial.art_url("artist", a.id)} for a in artists],
         "books": [{"id": b.id, "title": b.title, "author": b.author, "art": f"/api/art/book/{b.id}" if b.art else None,
                    "progress": round(p.position / b.duration, 3) if b.duration else 0} for b, p in books],
-        "podcasts": [{"id": f.id, "title": f.title or f.url, "author": f.author, "art": f.image or None} for f in feeds],
+        "podcasts": [{"id": f.id, "title": f.title or f.url, "author": f.author, "art": f.image or None,
+                      "new": f.id in fresh} for f in feeds],
         "stations": [saved_json(st) for st in stations],
     }

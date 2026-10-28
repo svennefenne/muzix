@@ -42,6 +42,11 @@ export function Display({ l1, l2, small }: { l1: string; l2?: string; small?: bo
   );
 }
 
+/** Spotify's blue dot: a new episode not played yet, or a podcast with ones you haven't seen. */
+export function NewDot({ label }: { label: string }) {
+  return <span className="new-dot" role="img" aria-label={label} title={label} />;
+}
+
 export function Kicker({ parts }: { parts: (string | number | null | undefined | false)[] }) {
   const shown = parts.filter((p) => p !== null && p !== undefined && p !== false && p !== "");
   return (

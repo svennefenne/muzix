@@ -1,19 +1,21 @@
 import { useQuery } from "@tanstack/react-query";
 import { Check, Download, Play, Plus, RefreshCw, Rss, Upload } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ago, api, fmtTime } from "../api";
 import { queryClient } from "../actions";
 import { AdminCog } from "../components/AdminMode";
-import { Art, Display, Empty, Kicker, Loading, Modal, Section, Switch } from "../components/ui";
+import { Art, Display, Empty, Kicker, Loading, Modal, NewDot, Section, Switch } from "../components/ui";
 import { engine } from "../player/engine";
-import { fromEpisode } from "../store/player";
+import { fromEpisode, usePlayer } from "../store/player";
 import { useUi } from "../store/ui";
 import type { Episode, Feed, PodcastHit } from "../types";
 
 function EpisodeRow({ e, feed }: { e: Episode; feed?: Feed }) {
   const notify = useUi((s) => s.notify);
   const pct = e.duration ? Math.min(100, (e.position / e.duration) * 100) : 0;
+  // started here: its dot goes now rather than when the list is next fetched
+  const started = usePlayer((s) => s.queue.slice(0, s.index + 1).some((q) => q.key === `episode:${e.id}`));
   return (
     <div className="list-row" style={{ alignItems: "flex-start" }}>
       <button className="btn round" style={{ width: 42, height: 42 }} aria-label={`Play ${e.title}`}
@@ -21,7 +23,10 @@ function EpisodeRow({ e, feed }: { e: Episode; feed?: Feed }) {
         <Play size={16} fill="currentColor" />
       </button>
       <div className="grow">
-        <div className="kicker" style={{ fontSize: 10 }}>{[e.feed_title, e.published && ago(e.published), e.duration ? fmtTime(e.duration) : null].filter(Boolean).join(" · ")}</div>
+        <div className="kicker" style={{ fontSize: 10 }}>
+          {e.new && !started && <NewDot label="New episode" />}
+          {[e.feed_title, e.published && ago(e.published), e.duration ? fmtTime(e.duration) : null].filter(Boolean).join(" · ")}
+        </div>
         <div style={{ fontWeight: 700 }}>{e.title}</div>
         <div className="dim" style={{ fontSize: 13, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{e.description}</div>
         {pct > 0 && !e.finished && <div className="progressbar" style={{ marginTop: 8, maxWidth: 260 }}><div style={{ width: `${pct}%` }} /></div>}
@@ -138,7 +143,9 @@ export default function Podcasts() {
                 <Art src={f.image} name={f.title} />
                 <AdminCog kind="podcast" id={f.id} title={f.title} />
                 <div className="card-title ellipsis">{f.title}</div>
-                <div className="card-sub ellipsis">{f.unplayed ? `${f.unplayed} unplayed` : f.author}</div>
+                <div className="card-sub ellipsis">
+                  {f.new && <NewDot label="New episodes" />}{f.unplayed ? `${f.unplayed} unplayed` : f.author}
+                </div>
               </Link>
             ))}
           </div>
@@ -179,6 +186,14 @@ export function PodcastPage() {
   const { id } = useParams();
   const nav = useNavigate();
   const q = useQuery({ queryKey: ["podcast", Number(id)], queryFn: () => api.get<Feed>(`/api/podcasts/${id}`) });
+  const subscribed = !!q.data?.subscribed;
+  // opening the page is seeing what's new: the podcast's dot goes from the library
+  useEffect(() => {
+    if (!subscribed) return;
+    api.post(`/api/podcasts/${id}/seen`).then(() => {
+      for (const key of ["sidebar", "podcasts"]) queryClient.invalidateQueries({ queryKey: [key] });
+    }).catch(() => {});
+  }, [id, subscribed]);
   if (!q.data) return <div className="page"><Loading /></div>;
   const f = q.data;
   const eps = f.episodes || [];

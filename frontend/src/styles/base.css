@@ -172,6 +172,8 @@ img { display: block; }
   font: 500 11px/1.4 var(--font-mono); letter-spacing: .32em; text-transform: uppercase; color: var(--primary);
 }
 .kicker .sep { opacity: .5; padding: 0 .4em; }
+/* Spotify's blue dot: a new episode, or a podcast with ones you haven't seen */
+.new-dot { display: inline-block; width: 8px; height: 8px; margin-right: 7px; border-radius: 50%; background: var(--new); vertical-align: .04em; }
 .display {
   margin: 8px 0 16px; font-family: var(--font-display); font-weight: 900; text-transform: var(--display-case);
   font-size: clamp(44px, 7.4cqi, 104px); line-height: .9; letter-spacing: .01em;
@@ -762,6 +764,7 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
 .lib-row.active .lib-name { color: var(--primary); }
 .lib-row:focus-visible { outline-offset: -2px; }
 .lib-art { position: relative; width: 48px; }
+.lib-art .new-dot { position: absolute; top: -3px; right: -3px; width: 11px; height: 11px; margin: 0; box-shadow: 0 0 0 2px var(--bg); }
 .lib-art .art { border-radius: 6px; box-shadow: none; }
 .lib-art .art.round { border-radius: 10px; }
 .lib-art .art-fallback { font-size: 14px; padding: 2px; }

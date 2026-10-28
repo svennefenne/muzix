@@ -294,6 +294,7 @@ class Subscription(Base):
     feed_id: Mapped[int] = mapped_column(ForeignKey("feeds.id", ondelete="CASCADE"), primary_key=True)
     auto_download: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)   # its page last opened
 
 
 class Episode(Base):
@@ -310,6 +311,7 @@ class Episode(Base):
     size: Mapped[int] = mapped_column(Integer, default=0)
     image: Mapped[str] = mapped_column(String(2048), default="")
     local_path: Mapped[str] = mapped_column(String(1024), default="")
+    added_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=now)   # first read
     __table_args__ = (UniqueConstraint("feed_id", "guid", name="uq_episode_guid"),)
 
 

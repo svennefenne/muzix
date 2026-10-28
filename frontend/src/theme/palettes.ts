@@ -134,6 +134,7 @@ export function cssVars(raw: Colors): Record<string, string> {
     "--border-strong": mix(c.border, c.bg, 0.25),
     "--frame": mix(c.border, c.bg, dark ? 0.45 : 0.3),
     "--glow": c.primary + "55",
+    "--new": legible("#3d91f4", ink, [c.bg, c.surface], 3),   // Spotify's blue dot, kept visible on blue skins
     "--stripe-1": c.text,
     "--stripe-2": c.warning,
     "--stripe-3": c.primary,

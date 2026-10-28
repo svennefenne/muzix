@@ -132,7 +132,7 @@ export interface SidebarData {
   games: SidebarAlbum[];
   artists: { id: number; name: string; art: string | null }[];
   books: { id: number; title: string; author: string; art: string | null; progress: number }[];
-  podcasts: { id: number; title: string; author: string; art: string | null }[];
+  podcasts: { id: number; title: string; author: string; art: string | null; new: boolean }[];
   stations: Station[];
 }
 
@@ -192,6 +192,7 @@ export interface Feed {
   subscribed: boolean;
   auto_download: boolean;
   unplayed: number | null;
+  new: boolean;                 // a new episode since its page was last opened
   last_checked: string | null;
   episodes?: Episode[];
 }
@@ -207,6 +208,7 @@ export interface Episode {
   downloaded: boolean;
   position: number;
   finished: boolean;
+  new: boolean;                 // out since you subscribed, not started yet
   stream: string;
   feed_title?: string | null;
 }
