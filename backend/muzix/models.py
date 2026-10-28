@@ -215,6 +215,15 @@ class Like(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class RecentSearch(Base):
+    """Something a user picked from search results: their recent searches, as on Spotify."""
+    __tablename__ = "recent_searches"
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16), primary_key=True)   # artist | album | track | book
+    item_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+
+
 class PlayEvent(Base):
     __tablename__ = "plays"
     id: Mapped[int] = mapped_column(primary_key=True)

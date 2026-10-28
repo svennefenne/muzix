@@ -25,9 +25,10 @@ interface Props {
   showAlbum?: boolean;
   numbered?: "track" | "index";
   onRemove?: (t: Track) => void;
+  onPlay?: (t: Track) => void;        // a row was started
 }
 
-export function TrackList({ tracks, showArt, showAlbum = true, numbered = "index", onRemove }: Props) {
+export function TrackList({ tracks, showArt, showAlbum = true, numbered = "index", onRemove, onPlay }: Props) {
   const current = usePlayer((s) => (s.index >= 0 ? s.queue[s.index]?.key : null));
   const playing = usePlayer((s) => s.playing);
   const showMenu = useMenu((s) => s.show);
@@ -73,13 +74,13 @@ export function TrackList({ tracks, showArt, showAlbum = true, numbered = "index
           <div key={`${t.id}-${t.item_id ?? i}`}>
             {discHead && <div className="kicker" style={{ margin: "16px 10px 6px" }}>Disc {t.disc_no || 1}</div>}
             <div className={`trow ${showAlbum ? "" : "no-album"} ${isCur ? "playing" : ""} ${isCur && !playing ? "paused" : ""}`}
-                 role="row" onDoubleClick={() => playTracks(tracks, i)}
-                 onClick={rowTap(() => (isCur ? !playing && engine.toggle() : playTracks(tracks, i)))}
+                 role="row" onDoubleClick={() => { onPlay?.(t); playTracks(tracks, i); }}
+                 onClick={rowTap(() => { onPlay?.(t); if (isCur) { if (!playing) engine.toggle(); } else playTracks(tracks, i); })}
                  onContextMenu={(e) => { e.preventDefault(); showMenu(e, menuFor(t)); }}>
               <div className="t-num">
                 {isCur && <span className="eq n"><i /><i /><i /></span>}
                 <span className="n t-n">{numbered === "track" && t.track_no ? t.track_no : i + 1}</span>
-                <button className="p" aria-label={`Play ${t.title}`} onClick={() => playTracks(tracks, i)}>
+                <button className="p" aria-label={`Play ${t.title}`} onClick={() => { onPlay?.(t); playTracks(tracks, i); }}>
                   <Play size={15} fill="currentColor" />
                 </button>
               </div>

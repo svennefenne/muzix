@@ -138,6 +138,9 @@ export interface SidebarData {
 
 export interface BookHit { id: number; title: string; author: string; series: string; art: string | null }
 export interface SearchResults { artists: Artist[]; albums: Album[]; tracks: Track[]; books: BookHit[] }
+export type RecentKind = "artist" | "album" | "track" | "book";
+/** Something picked from search results, as search gives it now. */
+export type RecentSearch = { kind: "artist"; item: Artist } | { kind: "album"; item: Album } | { kind: "track"; item: Track } | { kind: "book"; item: BookHit };
 
 export interface Home {
   stats: { tracks: number; albums: number; artists: number; vgm_tracks: number; hours: number };

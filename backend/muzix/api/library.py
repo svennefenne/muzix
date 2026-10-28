@@ -1,14 +1,16 @@
 import os
 import re
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, Response
-from sqlalchemy import case, func, or_, select, text
+from pydantic import BaseModel
+from sqlalchemy import case, delete, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from .. import art, serial
 from ..db import get_db
-from ..models import Album, Artist, Book, FilePlaylist, FilePlaylistItem, Like, PlayEvent, Track, User
+from ..models import Album, Artist, Book, FilePlaylist, FilePlaylistItem, Like, PlayEvent, RecentSearch, Track, User
 from ..security import current_user
 
 router = APIRouter(prefix="/api", tags=["library"])
@@ -340,9 +342,70 @@ def search(q: str, db: Session = Depends(get_db), user: User = Depends(current_u
         "artists": [serial.artist(a, liked(db, user, "artist")) for a in out["artist"]],
         "albums": [serial.album(a, liked(db, user, "album")) for a in out["album"]],
         "tracks": tracks_json(db, user, out["track"]),
-        "books": [{"id": b.id, "title": b.title, "author": b.author, "series": b.series,
-                   "art": f"/api/art/book/{b.id}" if b.art else None} for b in books],
+        "books": [_book_hit(b) for b in books],
     }
+
+
+def _book_hit(b: Book) -> dict:
+    return {"id": b.id, "title": b.title, "author": b.author, "series": b.series,
+            "art": f"/api/art/book/{b.id}" if b.art else None}
+
+
+# ---------------------------------------------------------------- recent searches (Spotify's search history)
+
+RECENT_KINDS = {"artist": Artist, "album": Album, "track": Track, "book": Book}
+KEEP_RECENT = 30
+
+
+class Picked(BaseModel):
+    kind: str
+    id: int
+
+
+@router.get("/search/recent")
+def recent_searches(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """What the user picked from search results lately, newest first, each as search gives it
+    now: one that has since gone (or been hidden) drops out."""
+    rows = db.execute(select(RecentSearch.kind, RecentSearch.item_id).where(RecentSearch.user_id == user.id)
+                      .order_by(RecentSearch.at.desc()).limit(KEEP_RECENT)).all()
+    found = {}
+    for kind, model in RECENT_KINDS.items():
+        ids = [i for k, i in rows if k == kind]
+        found[kind] = {x.id: x for x in db.scalars(select(model).where(model.id.in_(ids)))} if ids else {}
+    tracks = {t["id"]: t for t in tracks_json(db, user, list(found["track"].values()))}
+    artists, albums = liked(db, user, "artist"), liked(db, user, "album")
+    show = {"artist": lambda a: serial.artist(a, artists), "album": lambda a: serial.album(a, albums),
+            "track": lambda t: tracks[t.id], "book": _book_hit}
+    return [{"kind": kind, "item": show[kind](found[kind][i])} for kind, i in rows if i in found[kind]]
+
+
+@router.post("/search/recent")
+def remember_search(body: Picked, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    if body.kind not in RECENT_KINDS:
+        raise HTTPException(400, "Not something search finds")
+    db.merge(RecentSearch(user_id=user.id, kind=body.kind, item_id=body.id, at=datetime.now(timezone.utc)))
+    db.flush()
+    oldest_kept = db.scalar(select(RecentSearch.at).where(RecentSearch.user_id == user.id)
+                            .order_by(RecentSearch.at.desc()).offset(KEEP_RECENT - 1).limit(1))
+    if oldest_kept is not None:
+        db.execute(delete(RecentSearch).where(RecentSearch.user_id == user.id, RecentSearch.at < oldest_kept))
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/search/recent/{kind}/{item_id}")
+def forget_search(kind: str, item_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    db.execute(delete(RecentSearch).where(RecentSearch.user_id == user.id, RecentSearch.kind == kind,
+                                          RecentSearch.item_id == item_id))
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/search/recent")
+def clear_searches(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    db.execute(delete(RecentSearch).where(RecentSearch.user_id == user.id))
+    db.commit()
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------- VGM

@@ -450,6 +450,26 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
   color: var(--primary); font: 700 11.5px/1 var(--font-ui); letter-spacing: .06em; text-transform: uppercase; cursor: pointer;
 }
 .qs-all.on { background: color-mix(in srgb, var(--primary) 14%, var(--surface)); }
+
+/* recent searches: in the search dropdown, and on the Search page while nothing is typed */
+.qs-x, .recent-x {
+  display: inline-grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 50%;
+  background: none; color: var(--text-dim); cursor: pointer;
+}
+.qs-item .qs-x svg { color: inherit; }
+.qs-x:hover, .recent-x:hover { color: var(--text); background: var(--surface-3); }
+.contents { display: contents; }
+.recent-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 2px 18px; }
+.recent-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; border-radius: 8px; }
+.recent-row:hover { background: var(--surface-2); }
+.recent-open {
+  display: grid; grid-template-columns: 48px minmax(0, 1fr); align-items: center; gap: 12px; padding: 6px 8px;
+  border: 0; background: none; color: var(--text); text-align: left; cursor: pointer;
+}
+.recent-open .art { box-shadow: none; border-radius: 6px; }
+.recent-open .art.round { border-radius: 50%; }
+.recent-x { margin-right: 6px; }
+.recent-clear { margin-top: 12px; }
 .iconbtn.show-sm { display: none; }
 
 /* ---------------------------------------------------------------- browsing: view, sort, display */

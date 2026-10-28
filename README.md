@@ -15,6 +15,9 @@ you choose from 98 colour schemes, each with a light and a dark version.
 
 - **Music library**: albums, artists, genres, playlists, likes, play history,
   full-text search, album colours, gapless-feeling queue with prefetch.
+  Search remembers what you pick from its results, as Spotify does: they show
+  as recent searches in the empty search box and on the Search page, each to
+  remove, on every device you sign in on.
 - **Every format**: MP3, FLAC, Ogg/Opus, M4A, M4B, WavPack (up to 384 kHz),
   APE, WMA, plus chip music and trackers:
   | Family | Formats | Played by |
