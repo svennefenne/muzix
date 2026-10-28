@@ -63,6 +63,11 @@ export function QuickSearch() {
         key: `ar${a.id}`, group: "Artists", ref: { kind: "artist" as const, id: a.id }, title: a.name, sub: a.tags.slice(0, 3).join(", ") || a.genre || "Artist",
         art: a.art, round: true, go: () => nav(`/library/artists/${a.id}`),
       })),
+      ...r.tracks.slice(0, 5).map((t, i) => ({
+        key: `t${t.id}`, group: "Songs", ref: { kind: "track" as const, id: t.id }, title: t.title,
+        sub: [t.artist, t.kind === "vgm" ? t.system : null, t.album].filter(Boolean).join(" · "),
+        art: t.art, icon: <Play size={14} fill="currentColor" />, go: () => playTracks(r.tracks.slice(0, 5), i),
+      })),
       ...music.map((a) => ({
         key: `al${a.id}`, group: "Albums", ref: { kind: "album" as const, id: a.id }, title: a.title, sub: [a.artist, a.year || null].filter(Boolean).join(" · "),
         art: a.art, go: () => nav(`/album/${a.id}`),
@@ -70,11 +75,6 @@ export function QuickSearch() {
       ...games.map((a) => ({
         key: `al${a.id}`, group: "Games", ref: { kind: "album" as const, id: a.id }, title: a.title, sub: [a.artist, `${a.track_count} tunes`].filter(Boolean).join(" · "),
         art: a.art, go: () => nav(`/album/${a.id}`),
-      })),
-      ...r.tracks.slice(0, 5).map((t, i) => ({
-        key: `t${t.id}`, group: "Songs", ref: { kind: "track" as const, id: t.id }, title: t.title,
-        sub: [t.artist, t.kind === "vgm" ? t.system : null, t.album].filter(Boolean).join(" · "),
-        art: t.art, icon: <Play size={14} fill="currentColor" />, go: () => playTracks(r.tracks.slice(0, 5), i),
       })),
       ...r.books.slice(0, 3).map((b) => ({
         key: `b${b.id}`, group: "Audiobooks", ref: { kind: "book" as const, id: b.id }, title: b.title, sub: [b.author, b.series].filter(Boolean).join(" · ") || "Audiobook",

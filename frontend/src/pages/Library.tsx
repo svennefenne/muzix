@@ -508,20 +508,20 @@ export function SearchPage() {
   return (
     <div className="page wide">
       <Kicker parts={["Search the library"]} />
-      <input className="input searchbox" autoFocus={desktop} placeholder="Artists, albums, songs, audiobooks…" value={text}
+      <input className="input searchbox" autoFocus={desktop} placeholder="Artists, songs, albums, audiobooks…" value={text}
              onChange={(e) => setText(e.target.value)} />
       {!qs && <RecentSearches />}
       {!qs && genres.data && genres.data.length > 0 && (
         <Section title="Browse all"><GenreItems items={genres.data} display="gallery" linkTo={(g) => `/library/genres/${enc(g.name)}`} /></Section>
       )}
       {r && !r.artists.length && !r.albums.length && !r.tracks.length && !r.books.length && <Empty title={`Nothing found for "${qs}"`} />}
-      {r && r.tracks.length > 0 && (
-        <Section title="Songs"><TrackList tracks={r.tracks.slice(0, 10)} showArt onPlay={(t) => rememberSearch("track", t.id)} /></Section>
-      )}
       {r && r.artists.length > 0 && (
         <Section title="Artists">
           <div className="scroller">{r.artists.map((a) => <Remember key={a.id} kind="artist" id={a.id}><ArtistCard a={a} /></Remember>)}</div>
         </Section>
+      )}
+      {r && r.tracks.length > 0 && (
+        <Section title="Songs"><TrackList tracks={r.tracks.slice(0, 10)} showArt onPlay={(t) => rememberSearch("track", t.id)} /></Section>
       )}
       {r && r.albums.length > 0 && (
         <Section title="Albums">
