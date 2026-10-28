@@ -43,8 +43,7 @@ export function tipFor(start: EventTarget | null): Tip | null {
 export function Tooltips() {
   const [tip, setTip] = useState<Tip | null>(null);
   const [x, setX] = useState<number | null>(null);
-  const box = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState({ left: -9999, top: -9999 });
+  const boxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let timer: number | undefined;
@@ -164,21 +163,23 @@ export function Tooltips() {
     };
   }, []);
 
-  // above the element, or below it when there's no room; never off the screen
+  // above the element, or below it when there's no room; never off the screen. Placed here
+  // rather than through React's style prop: React only writes what changed since the last
+  // tip, so a coordinate set aside for measuring would stay set aside.
   useLayoutEffect(() => {
-    if (!tip || !box.current) return;
-    box.current.style.left = box.current.style.top = "0px";      // measured at full width, not squeezed at an edge
+    const box = boxRef.current;
+    if (!tip || !box) return;
+    box.style.left = box.style.top = "0px";      // measured at full width, not squeezed at an edge
     const r = tip.el.getBoundingClientRect();
-    const b = box.current.getBoundingClientRect();
+    const b = box.getBoundingClientRect();
     const cx = x ?? r.left + r.width / 2;
-    const left = Math.min(Math.max(8, cx - b.width / 2), window.innerWidth - b.width - 8);
-    const top = r.top - b.height - 8 >= 8 ? r.top - b.height - 8 : r.bottom + 8;
-    setPos({ left, top });
+    box.style.left = `${Math.min(Math.max(8, cx - b.width / 2), window.innerWidth - b.width - 8)}px`;
+    box.style.top = `${r.top - b.height - 8 >= 8 ? r.top - b.height - 8 : r.bottom + 8}px`;
   }, [tip, x]);
 
   if (!tip) return null;
   return (
-    <div ref={box} id="muzix-tip" className="tooltip" role="tooltip" style={pos}>
+    <div ref={boxRef} id="muzix-tip" className="tooltip" role="tooltip">
       {tip.text}{tip.key && <kbd>{tip.key}</kbd>}
     </div>
   );
