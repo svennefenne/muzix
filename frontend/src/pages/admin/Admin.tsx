@@ -216,6 +216,11 @@ function LibraryFolders() {
 // ---------------------------------------------------------------- upload
 
 interface Pending { file: File; path: string }
+interface Found {
+  path: string; why: "library" | "similar" | "uploaded" | "waiting"; when?: string;
+  match?: { title: string; artist: string; album: string; format: string; path: string };
+}
+interface Review { files: Pending[]; found: Found[]; skip: string[]; resolve: (send: Pending[] | null) => void }
 interface Batch { batch: string; files: { path: string; size: number; kind: string }[]; created: string; job: { id: number; status: string; progress: number; message: string } | null }
 
 /** The files of a drop: folders walked through their entries, anything without one taken as
@@ -249,13 +254,34 @@ async function entriesToFiles(entries: FileSystemEntry[]): Promise<Pending[]> {
 }
 
 /** An upload in progress, shared so a drop on any admin page can start one. */
-const useUpload = create<{ progress: { done: number; total: number; files: number } | null }>(() => ({ progress: null }));
+const useUpload = create<{ progress: { done: number; total: number; files: number } | null; checking: boolean; review: Review | null }>(
+  () => ({ progress: null, checking: false, review: null }));
+
+/** Before anything goes up: files that look like duplicates (sent before, or songs the library
+ * seems to have) are shown, and the uploader picks what to send. null: cancelled. */
+async function checkDuplicates(files: Pending[]): Promise<Pending[] | null> {
+  useUpload.setState({ checking: true });
+  let res: { found: Found[]; skip: string[] };
+  try {
+    res = await api.post("/api/upload/check", { files: files.map((f) => ({ path: f.path, size: f.file.size })) });
+  } catch {
+    useUi.getState().notify("Couldn't check for duplicates: uploading everything", "error");
+    return files;
+  } finally {
+    useUpload.setState({ checking: false });
+  }
+  if (!res.found.length) return files;
+  return new Promise((resolve) => useUpload.setState({ review: { files, ...res, resolve } }));
+}
 
 async function startUpload(files: Pending[]) {
   const notify = useUi.getState().notify;
   const setProgress = (progress: { done: number; total: number; files: number } | null) => useUpload.setState({ progress });
-  const audioish = files.filter((f) => !f.path.split("/").some((p) => p.startsWith(".")));
-  if (!audioish.length) return;
+  const picked = files.filter((f) => !f.path.split("/").some((p) => p.startsWith(".")));
+  if (!picked.length) return;
+  const audioish = await checkDuplicates(picked);
+  if (!audioish) return;
+  if (!audioish.length) return notify("Nothing to upload: every file was skipped");
   const { batch } = await api.post<{ batch: string }>("/api/upload/batch");
   const total = audioish.reduce((s, f) => s + f.file.size, 0);
   let done = 0;
@@ -324,8 +350,62 @@ async function sendParts(batch: string, p: Pending, onProgress: (loaded: number)
   }
 }
 
+const WHY: [Found["why"], string][] = [
+  ["library", "Already in the library"], ["similar", "Similar name in the library"],
+  ["uploaded", "Uploaded before"], ["waiting", "Waiting to be imported"],
+];
+const SHOWN = 100;
+
+function DuplicatesDialog({ review }: { review: Review }) {
+  const done = (send: Pending[] | null) => {
+    useUpload.setState({ review: null });
+    review.resolve(send);
+  };
+  const skip = new Set(review.skip);
+  const rest = review.files.filter((f) => !skip.has(f.path));
+  const along = review.skip.length - review.found.length;
+  return (
+    <Modal onClose={() => done(null)} className="dupes">
+      <div className="kicker">Before uploading</div>
+      <div className="h2">{review.found.length} of {review.files.length} files may be duplicates</div>
+      {WHY.map(([why, heading]) => {
+        const items = review.found.filter((f) => f.why === why);
+        if (!items.length) return null;
+        return (
+          <section key={why} className="dupe-group">
+            <div className="h3">{heading} <span className="faint">{items.length}</span></div>
+            <ul className="dupe-list">
+              {items.slice(0, SHOWN).map((f) => (
+                <li key={f.path}>
+                  <div>{f.path}</div>
+                  {f.match ? (
+                    <div className="dim" data-tip={f.match.path}>
+                      {f.match.artist} – {f.match.title}{f.match.album && ` · ${f.match.album}`} · {f.match.format.toUpperCase()}
+                    </div>
+                  ) : <div className="dim">{why === "waiting" ? "In the upload area since" : "Uploaded"} {ago(f.when!)}</div>}
+                </li>
+              ))}
+              {items.length > SHOWN && <li className="dim">and {items.length - SHOWN} more</li>}
+            </ul>
+          </section>
+        );
+      })}
+      {along > 0 && <p className="dim">Skipping them also leaves out {along} lyrics, covers or other files that go with them.</p>}
+      <div className="row-actions">
+        <button className="btn accent" onClick={() => done(rest)}>{rest.length ? `Skip them, upload ${rest.length}` : "Skip them all"}</button>
+        <button className="btn" onClick={() => done(review.files)}>Upload all {review.files.length}</button>
+        <button className="btn ghost" onClick={() => done(null)}>Cancel</button>
+      </div>
+    </Modal>
+  );
+}
+
 function UploadArea() {
   const progress = useUpload((s) => s.progress);
+  const checking = useUpload((s) => s.checking);
+  const review = useUpload((s) => s.review);
+  const settings = useQuery({ queryKey: ["admin-settings"], queryFn: () => api.get<SettingSpec[]>("/api/admin/settings") });
+  const checkOn = settings.data?.find((x) => x.key === "upload_check_duplicates")?.value !== false;
   const batches = useQuery({ queryKey: ["batches"], queryFn: () => api.get<Batch[]>("/api/upload/batches"), refetchInterval: 3000 });
   const fileInput = useRef<HTMLInputElement>(null);
   const dirInput = useRef<HTMLInputElement>(null);
@@ -335,7 +415,17 @@ function UploadArea() {
   return (
     <>
       <section className="panel">
-        <div className="panel-head"><div><div className="kicker">Upload</div><div className="h3">Add music to the library</div></div></div>
+        <div className="panel-head">
+          <div><div className="kicker">Upload</div><div className="h3">Add music to the library</div></div>
+          <label className="row-actions dim" style={{ gap: 8 }}
+                 data-tip="Before files go up, look for ones uploaded before or still waiting to be imported, and for songs the library seems to have already (same title, with the artist or album in the file or folder names). You choose what to skip.">
+            <Switch checked={checkOn} onChange={async (v) => {
+              await api.put("/api/admin/settings", { upload_check_duplicates: v });
+              settings.refetch();
+            }} />
+            Check for duplicates
+          </label>
+        </div>
         {/* drops are caught by the whole admin page (Admin below) */}
         <div className="dropzone" onClick={() => fileInput.current?.click()}>
           <Upload size={34} />
@@ -349,6 +439,7 @@ function UploadArea() {
             <button className="btn" onClick={() => fileInput.current?.click()}>Choose files</button>
             <button className="btn" onClick={() => dirInput.current?.click()}>Choose a folder</button>
           </div>
+          {checking && <div className="dim">Checking for duplicates…</div>}
           {progress && (
             <div style={{ width: "100%", maxWidth: 420 }}>
               <div className="progressbar"><div style={{ width: `${(progress.done / progress.total) * 100}%` }} /></div>
@@ -356,9 +447,16 @@ function UploadArea() {
             </div>
           )}
         </div>
-        <input ref={fileInput} type="file" multiple hidden onChange={(e) => upload(Array.from(e.target.files || []).map((f) => ({ file: f, path: f.name })))} />
-        <input ref={dirInput} type="file" hidden {...{ webkitdirectory: "", directory: "" }}
-               onChange={(e) => upload(Array.from(e.target.files || []).map((f) => ({ file: f, path: f.webkitRelativePath || f.name })))} />
+        {review && <DuplicatesDialog review={review} />}
+        {/* emptied once read, so picking the same files again still counts */}
+        <input ref={fileInput} type="file" multiple hidden onChange={(e) => {
+          upload(Array.from(e.target.files || []).map((f) => ({ file: f, path: f.name })));
+          e.target.value = "";
+        }} />
+        <input ref={dirInput} type="file" hidden {...{ webkitdirectory: "", directory: "" }} onChange={(e) => {
+          upload(Array.from(e.target.files || []).map((f) => ({ file: f, path: f.webkitRelativePath || f.name })));
+          e.target.value = "";
+        }} />
       </section>
       <section className="panel">
         <div className="panel-head"><div className="h3">Waiting to be imported</div></div>

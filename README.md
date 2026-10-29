@@ -72,7 +72,8 @@ you choose from 98 colour schemes, each with a light and a dark version.
   top of the home page.
   Each podcast remembers its own order (newest or oldest first) and whether
   finished episodes are hidden; an episode's menu marks it, or every older one,
-  as finished. An episode opens its own page with the full
+  as finished. With a podcast's Autoplay on, the next unplayed episode in that
+  order plays when one ends. An episode opens its own page with the full
   show notes: links work and timestamps (12:34) play from there.
 - **Internet radio**: tens of thousands of stations from radio-browser.info,
   saved stations, live "now playing" titles.
@@ -113,7 +114,10 @@ you choose from 98 colour schemes, each with a light and a dark version.
 - **Upload area**: drop files or whole folders in the browser. Music is matched
   with MusicBrainz (beets), gets cover art and a main genre, and is filed as
   `Genre/Artist/Artist - Year - Album/1. Artist - Album - Title (Year).ext`.
-  Chiptunes go to your VGM folder.
+  Chiptunes go to your VGM folder. Before anything goes up, a duplicate check
+  (switch it off on the upload page) lists files uploaded before or waiting to
+  be imported, and songs the library seems to have already by their names; you
+  skip them or upload them anyway.
 - Spotify-style layout in the Deck Force look: your library on the left, the
   page in a frame, what's playing on the right (toggle it from the player bar),
   player and status line below. Works on phones too.

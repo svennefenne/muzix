@@ -172,3 +172,35 @@ def test_marking_older_episodes_finished_and_undoing_it():
         by_title = {e["title"]: e for e in page["episodes"]}
         assert by_title["Ep 2"]["position"] == 120
         assert s.get(EpisodeProgress, (uid, by_title["Ep 3"]["id"])) is None
+
+
+def test_autoplay_plays_the_next_episode_in_the_pages_order():
+    t0 = datetime.now(timezone.utc) - timedelta(days=100)
+    with db.session() as s:
+        u = User(username="binge", password_hash="x")
+        f = Feed(url="https://example.com/binge.xml", title="Binge")
+        s.add_all([u, f])
+        s.flush()
+        eps = [Episode(feed_id=f.id, guid=f"b{n}", title=f"Ep {n}", published=t0 + timedelta(days=n)) for n in range(1, 5)]
+        eps.append(Episode(feed_id=f.id, guid="b-undated", title="Undated"))
+        s.add_all(eps)
+        s.add(Subscription(user_id=u.id, feed_id=f.id))
+        s.flush()
+        s.add(EpisodeProgress(user_id=u.id, episode_id=eps[1].id, position=60, finished=True))     # Ep 2: heard
+        uid, fid, ids = u.id, f.id, {e.title: e.id for e in eps}
+
+    def after(title, order="newest"):
+        with db.session() as s:
+            nxt = api.next_episode(ids[title], order=order, db=s, user=s.get(User, uid))["next"]
+            return nxt and nxt["title"]
+
+    assert after("Ep 4") is None                          # autoplay is off until it's switched on
+    with db.session() as s:
+        api.sub_settings(fid, api.SubSettings(autoplay=True), db=s, user=s.get(User, uid))
+        page = api.feed(fid, db=s, user=s.get(User, uid))
+        assert page["autoplay"] and not page["auto_download"]
+    assert after("Ep 4") == "Ep 3"
+    assert after("Ep 3") == "Ep 1"                        # the finished one is skipped
+    assert after("Ep 1") == "Undated" and after("Undated") is None
+    assert after("Ep 1", "oldest") == "Ep 3"              # a serial, heard from the start
+    assert after("Ep 4", "oldest") == "Undated"

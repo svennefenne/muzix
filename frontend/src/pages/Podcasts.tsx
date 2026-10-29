@@ -275,6 +275,15 @@ export function PodcastPage() {
                   <Switch checked={f.auto_download} onChange={async (v) => { await api.put(`/api/podcasts/${f.id}/subscription`, { auto_download: v }); q.refetch(); }} />
                   Download new episodes
                 </label>
+                <label className="row-actions dim" style={{ gap: 8 }}
+                       data-tip={`When an episode ends, the next unplayed one below it in the list plays: ${order === "oldest" ? "a newer one, as the list goes oldest first" : "an older one, as the list goes newest first"}`}>
+                  <Switch checked={f.autoplay} onChange={async (v) => {
+                    await api.put(`/api/podcasts/${f.id}/subscription`, { autoplay: v });
+                    await q.refetch();
+                    engine.podcastAutoplay(f.id, v);
+                  }} />
+                  Autoplay
+                </label>
                 <button className="btn danger" onClick={async () => {
                   await api.del(`/api/podcasts/${f.id}`);
                   queryClient.invalidateQueries({ queryKey: ["podcasts"] });

@@ -7,12 +7,14 @@ import shutil
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import env, formats, jobs
+from .. import env, formats, jobs, settings
 from ..db import get_db
 from ..models import Job
+from ..organize import duplicates
 from ..security import admin_user
 
 router = APIRouter(prefix="/api/upload", tags=["upload"], dependencies=[Depends(admin_user)])
@@ -37,8 +39,26 @@ def new_batch():
     return {"batch": name}
 
 
+class Pending(BaseModel):
+    path: str
+    size: int
+
+
+class CheckBody(BaseModel):
+    files: list[Pending]
+
+
+@router.post("/check")
+def check(body: CheckBody, db: Session = Depends(get_db)):
+    """Before files go up: which look like duplicates (organize/duplicates.py)."""
+    if not settings.get("upload_check_duplicates"):
+        return {"found": [], "skip": [], "off": True}
+    return duplicates.check([(f.path, f.size) for f in body.files], db)
+
+
 @router.post("/batch/{batch}/files")
-async def upload_files(batch: str, files: list[UploadFile], paths: list[str] = Form(default=[])):
+async def upload_files(batch: str, files: list[UploadFile], paths: list[str] = Form(default=[]),
+                       db: Session = Depends(get_db)):
     d = batch_dir(batch)
     if not d.is_dir():
         raise HTTPException(404, "No such upload batch")
@@ -51,12 +71,13 @@ async def upload_files(batch: str, files: list[UploadFile], paths: list[str] = F
             while chunk := await f.read(1024 * 1024):
                 out.write(chunk)
         saved.append({"path": rel, "size": dest.stat().st_size, "kind": formats.family(rel) or "other"})
+    duplicates.remember(db, batch, saved)
     return {"saved": saved}
 
 
 @router.post("/batch/{batch}/part")
 async def upload_part(batch: str, data: UploadFile, path: str = Form(...), offset: int = Form(..., ge=0),
-                      total: int = Form(..., ge=0)):
+                      total: int = Form(..., ge=0), db: Session = Depends(get_db)):
     """One piece of a big file. Proxies such as Cloudflare refuse request bodies
     over 100 MiB, so the browser sends large files in pieces, in order."""
     d = batch_dir(batch)
@@ -81,7 +102,9 @@ async def upload_part(batch: str, data: UploadFile, path: str = Form(...), offse
     if size < total:
         return {"received": size}
     os.replace(part, dest)
-    return {"saved": [{"path": rel, "size": size, "kind": formats.family(rel) or "other"}]}
+    saved = [{"path": rel, "size": size, "kind": formats.family(rel) or "other"}]
+    duplicates.remember(db, batch, saved)
+    return {"saved": saved}
 
 
 def batch_json(d, db: Session):
@@ -113,6 +136,7 @@ def start_import(batch: str):
 
 
 @router.delete("/batch/{batch}")
-def discard(batch: str):
+def discard(batch: str, db: Session = Depends(get_db)):
     shutil.rmtree(batch_dir(batch), ignore_errors=True)
+    duplicates.forget(db, batch)
     return {"ok": True}

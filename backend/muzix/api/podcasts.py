@@ -25,7 +25,7 @@ def feed_json(f: Feed, sub: Subscription | None = None, unplayed: int | None = N
     return {"id": f.id, "url": f.url, "title": f.title or f.url, "author": f.author,
             "description": f.description, "image": f.image, "link": f.link, "categories": f.categories,
             "error": f.error, "subscribed": sub is not None,
-            "auto_download": bool(sub and sub.auto_download), "unplayed": unplayed, "new": new,
+            "auto_download": bool(sub and sub.auto_download), "autoplay": bool(sub and sub.autoplay), "unplayed": unplayed, "new": new,
             "last_checked": f.last_checked.isoformat() if f.last_checked else None}
 
 
@@ -205,7 +205,8 @@ def feed(feed_id: int, order: str = "newest", hide_finished: bool = False, limit
 
 
 class SubSettings(BaseModel):
-    auto_download: bool
+    auto_download: bool | None = None
+    autoplay: bool | None = None
 
 
 @router.put("/{feed_id}/subscription")
@@ -213,7 +214,8 @@ def sub_settings(feed_id: int, body: SubSettings, db: Session = Depends(get_db),
     sub = db.get(Subscription, (user.id, feed_id))
     if sub is None:
         raise HTTPException(404, "Not subscribed")
-    sub.auto_download = body.auto_download
+    for name, value in body.model_dump(exclude_none=True).items():
+        setattr(sub, name, value)
     db.commit()
     return {"ok": True}
 
@@ -284,6 +286,36 @@ def progress(episode_id: int, body: Progress, db: Session = Depends(get_db), use
     db.merge(row)
     db.commit()
     return {"ok": True}
+
+
+@router.get("/episodes/{episode_id}/next")
+def next_episode(episode_id: int, order: str = "newest", db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Autoplay: the episode after this one on the podcast's page, in its order, skipping the
+    finished ones. None when the podcast's autoplay is off or the list ends."""
+    e = db.get(Episode, episode_id)
+    if e is None:
+        raise HTTPException(404, "No such episode")
+    sub = db.get(Subscription, (user.id, e.feed_id))
+    if sub is None or not sub.autoplay:
+        return {"next": None}
+    oldest = order == "oldest"
+    # the page's order: by date either way, undated ones last
+    if e.published is None:
+        after = Episode.published.is_(None) & ((Episode.id > e.id) if oldest else (Episode.id < e.id))
+    else:
+        later = (Episode.published > e.published) if oldest else (Episode.published < e.published)
+        tie = (Episode.published == e.published) & ((Episode.id > e.id) if oldest else (Episode.id < e.id))
+        after = Episode.published.is_(None) | later | tie
+    nxt = db.scalar(select(Episode)
+                    .outerjoin(EpisodeProgress, (EpisodeProgress.episode_id == Episode.id) & (EpisodeProgress.user_id == user.id))
+                    .where(Episode.feed_id == e.feed_id, after, EpisodeProgress.finished.is_not(True))
+                    .order_by(Episode.published.is_(None),
+                              Episode.published.asc() if oldest else Episode.published.desc(),
+                              Episode.id.asc() if oldest else Episode.id.desc())
+                    .limit(1))
+    if nxt is None:
+        return {"next": None}
+    return {"next": episode_json(nxt, db.get(EpisodeProgress, (user.id, nxt.id)), db.get(Feed, e.feed_id), sub)}
 
 
 @router.post("/episodes/{episode_id}/finish-older")

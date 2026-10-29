@@ -74,7 +74,9 @@ export function QueueDrawer() {
         {queue.length === 0 && <div className="faint" style={{ padding: 16 }}>The queue is empty. Play something!</div>}
         {queue.map((it, i) => (
           <Fragment key={it.key + i}>
-          {it.auto && !queue[i - 1]?.auto && <div className="kicker q-auto-head" data-tip="Picked by the genre tags of what you played">Autoplay · similar music</div>}
+          {it.auto && !queue[i - 1]?.auto && (it.kind === "episode"
+            ? <div className="kicker q-auto-head" data-tip="The podcast's autoplay is on: its next episode, in the order its page is sorted">Autoplay · next episode</div>
+            : <div className="kicker q-auto-head" data-tip="Picked by the genre tags of what you played">Autoplay · similar music</div>)}
           <div ref={i === index ? curRef : undefined}
                className={`qrow ${i === index ? "current" : ""} ${drag === i ? "dragging" : ""}`}
                draggable onDragStart={() => setDrag(i)} onDragEnd={() => setDrag(null)}

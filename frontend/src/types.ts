@@ -206,6 +206,7 @@ export interface Feed {
   error: string;
   subscribed: boolean;
   auto_download: boolean;
+  autoplay: boolean;            // when an episode ends, the next one in the list plays
   unplayed: number | null;
   new: boolean;                 // it has a new episode
   last_checked: string | null;

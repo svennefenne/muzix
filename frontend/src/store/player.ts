@@ -27,6 +27,7 @@ export interface PlayItem {
   liked?: boolean;
   resume?: number;            // start here (seconds)
   bookId?: number;
+  feedId?: number;            // an episode's podcast
   partOffset?: number;        // a book part's start within the whole book
   spotifyUri?: string;
   spotifyArtist?: string;     // first artist, for the genre lookup
@@ -66,7 +67,7 @@ export function fromEpisode(e: Episode, feedTitle?: string, feedImage?: string):
   return {
     key: `episode:${e.id}`, kind: "episode", id: e.id, title: e.title,
     artist: feedTitle || e.feed_title || "", art: e.image || feedImage || null, duration: e.duration,
-    src: e.stream, resume: e.finished ? 0 : e.position,
+    src: e.stream, resume: e.finished ? 0 : e.position, feedId: e.feed_id,
   };
 }
 

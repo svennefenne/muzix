@@ -91,6 +91,9 @@ SCHEMA: list[Spec] = [
     Spec("upload_fetch_art", "bool", True, "Uploads", "Find cover art"),
     Spec("upload_genre_folders", "bool", True, "Uploads", "File into genre folders",
          "Genre/Artist/Artist - Year - Album, like the rest of the library."),
+    Spec("upload_check_duplicates", "bool", True, "Uploads", "Check for duplicates",
+         "Before files go up: the same file uploaded before or waiting to be imported, and songs the "
+         "library seems to have already (by title, with the artist or album in the file or folder names)."),
     # admin mode's edit window
     Spec("discogs_token", "secret", "", "Library", "Discogs personal access token",
          "Album and artist matches and pictures from Discogs when editing in admin mode. Free: sign in at "

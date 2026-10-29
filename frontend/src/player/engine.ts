@@ -4,9 +4,9 @@
 
 import { api, sized } from "../api";
 import { report } from "../components/ErrorBoundary";
-import { fromTrack, usePlayer, type PlayItem } from "../store/player";
+import { fromEpisode, fromTrack, usePlayer, type PlayItem } from "../store/player";
 import { useUi } from "../store/ui";
-import type { Track } from "../types";
+import type { Episode, Track } from "../types";
 import { appPlayer } from "./app";
 import { caster, type CastHooks } from "./cast";
 import { spotify } from "./spotify";
@@ -47,6 +47,7 @@ class Engine {
   private lastEnd = 0;
   private lastTick = 0;
   private filling: Promise<boolean> | null = null;   // autoplay looking for more
+  private askedNext = "";                              // the episode whose next one was asked for
 
   constructor() {
     // tells iOS this page plays music, so its audio keeps going with the screen off (Safari 17+)
@@ -117,7 +118,7 @@ class Engine {
         this.saveProgress(true);
         usePlayer.getState().set({ playing: false, buffering: false });
         // autoplay found nothing in time: the app goes on once it has
-        if (this.filling || this.autoplayDue()) this.fillAutoplay().then((more) => {
+        this.upNext()?.then((more) => {
           if (more) appPlayer.loadQueue(usePlayer.getState().index + 1);
         });
       },
@@ -127,7 +128,7 @@ class Engine {
     usePlayer.subscribe((s, prev) => {
       if (s.volume !== prev.volume || s.muted !== prev.muted) this.applyVolume();
       if (s.speed !== prev.speed) el.playbackRate = s.speed;
-      if ((s.index !== prev.index || s.queue !== prev.queue || s.repeat !== prev.repeat) && this.autoplayDue()) this.fillAutoplay();
+      if (s.index !== prev.index || s.queue !== prev.queue || s.repeat !== prev.repeat) this.upNext();
     });
     useUi.subscribe((u, prev) => {
       if (u.autoplay === prev.autoplay) return;
@@ -221,7 +222,8 @@ class Engine {
       if (s.repeat === "all") idx = 0;
       else {
         // the queue ran out: autoplay may still be finding what comes next
-        if (this.filling || this.autoplayDue()) this.fillAutoplay().then((more) => (more ? this.next(auto) : this.finish()));
+        const more = this.upNext();
+        if (more) more.then((found) => (found ? this.next(auto) : this.finish()));
         else this.finish();
         return;
       }
@@ -298,12 +300,51 @@ class Engine {
   }
 
   /** Autoplay turned off: the songs it lined up go. */
-  private dropAutoplay() {
+  private dropAutoplay(feedId?: number) {
     const s = usePlayer.getState();
-    const queue = s.queue.filter((it, i) => i <= s.index || !it.auto);
+    const lined = (it: PlayItem) => it.auto && (feedId === undefined ? it.kind !== "episode" : it.feedId === feedId);
+    const queue = s.queue.filter((it, i) => i <= s.index || !lined(it));
     if (queue.length === s.queue.length) return;
     s.set({ queue });
     if (this.remote) this.remote.syncUpcoming();
+  }
+
+  /** What comes once the queue runs out: similar songs, or the podcast's next episode. */
+  private upNext(): Promise<boolean> | null {
+    return this.filling ?? (this.autoplayDue() ? this.fillAutoplay() : this.episodeDue() ? this.fillEpisode() : null);
+  }
+
+  /** A podcast's own autoplay (switched on its page): the episode after this one in its list joins
+   * the queue, in the order the page is sorted (a serial from the start, news from the top). */
+  private episodeDue() {
+    const s = usePlayer.getState();
+    const cur = s.current();
+    return cur?.kind === "episode" && !!cur.feedId && s.repeat === "off" && s.index >= s.queue.length - 1 && this.askedNext !== cur.key;
+  }
+
+  private fillEpisode(): Promise<boolean> {
+    const cur = usePlayer.getState().current()!;
+    this.askedNext = cur.key;
+    const order = useUi.getState().browse[`podcast:${cur.feedId}`]?.sort === "oldest" ? "oldest" : "newest";
+    const ask = api.get<{ next: Episode | null }>(`/api/podcasts/episodes/${cur.id}/next`, { order }).then(({ next }) => {
+      const q = usePlayer.getState().queue;
+      // not wanted any more (other things play), or in the queue already
+      if (!next || !q.some((it) => it.key === cur.key) || q.some((it) => it.key === `episode:${next.id}`)) return false;
+      usePlayer.getState().set({ queue: [...q, { ...fromEpisode(next), auto: true }] });
+      if (this.remote) this.remote.syncUpcoming();
+      return true;
+    }).catch(() => false).finally(() => {
+      this.filling = null;
+    });
+    this.filling = ask;
+    return ask;
+  }
+
+  /** A podcast's autoplay switched: its next episode joins the queue now, or the one it lined up goes. */
+  podcastAutoplay(feedId: number, on: boolean) {
+    if (!on) return this.dropAutoplay(feedId);
+    this.askedNext = "";
+    this.upNext();
   }
 
   // ------------------------------------------------------------ loading & seeking

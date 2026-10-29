@@ -321,6 +321,7 @@ class Subscription(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     feed_id: Mapped[int] = mapped_column(ForeignKey("feeds.id", ondelete="CASCADE"), primary_key=True)
     auto_download: Mapped[bool] = mapped_column(Boolean, default=False)
+    autoplay: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # the next episode plays when one ends
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)   # its page last opened (no longer used)
 
@@ -411,6 +412,18 @@ class Job(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class UploadedFile(Base):
+    """Every file uploaded (until its batch is discarded): the same one coming again is noticed."""
+    __tablename__ = "uploaded_files"
+    __table_args__ = (Index("ix_uploaded_files_name_size", "name", "size"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(512))        # the file's name, lower case
+    size: Mapped[int] = mapped_column(Integer)
+    path: Mapped[str] = mapped_column(String(1024))       # as uploaded, folders included
+    batch: Mapped[str] = mapped_column(String(32), index=True)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 # what an admin can hide: hidden rows stay out of every page and list (db.py)
