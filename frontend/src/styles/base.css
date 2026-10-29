@@ -706,6 +706,11 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
 .ep-open:focus-visible { outline: none; }
 .ep-open:focus-visible::after { outline: 2px solid var(--primary); outline-offset: 2px; }
 .ep-row button, .ep-row .badge { position: relative; z-index: 1; }
+.ep-row .row-actions { flex-shrink: 0; flex-wrap: nowrap; }
+/* a played episode: one slim row, its date, length and title */
+.ep-row.done { align-items: center; padding: 8px 14px; }
+.ep-row.done:not(:hover) .ep-open { color: var(--text-dim); }
+.ep-row.done .ep-open { font-size: 14px; }
 .ep-head .display.small { font-size: clamp(28px, 3.8cqi, 48px); line-height: 1; }
 .show-notes { max-width: 760px; font-size: 15px; line-height: 1.6; color: var(--text-dim); }
 .show-notes p { margin: 0 0 12px; }
@@ -799,12 +804,13 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
 .quick:hover { background: color-mix(in srgb, var(--text) 18%, transparent); }
 .quick .art { width: 60px; border-radius: 0; box-shadow: none; }
 .quick .art-fallback { font-size: 14px; padding: 2px; }
-.quick span {
+.quick > span {
   padding-right: 10px; font-weight: 700; font-size: 13.5px; line-height: 1.25;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
-.quick.podcast { grid-template-columns: 60px minmax(0, 1fr) auto; }      /* its blue dot at the end */
-.quick .new-dot { margin: 0 14px 0 0; }
+/* a podcast with something new: the blue dot on its cover's corner, ringed so any cover shows it */
+.quick-art { position: relative; }
+.quick-art .new-dot { position: absolute; top: 5px; right: 5px; width: 10px; height: 10px; margin: 0; box-shadow: 0 0 0 2px #000a; }
 @container page (max-width: 900px) { .quick-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 /* new episodes: the play button on the cover, the title on two lines */
 .ep-card-art { position: relative; }
@@ -1246,9 +1252,8 @@ button.lyr:hover { color: var(--lyr-now); text-decoration: underline; text-decor
   .hero { margin-bottom: 12px; }
   .quick-grid { grid-template-columns: 1fr 1fr; margin-bottom: 0; }
   .quick { grid-template-columns: 52px minmax(0, 1fr); height: 52px; }
-  .quick.podcast { grid-template-columns: 52px minmax(0, 1fr) auto; }
   .quick .art { width: 52px; }
-  .quick span { font-size: 12.5px; }
+  .quick > span { font-size: 12.5px; }
 
   /* album, artist and book pages: big centred cover, then the details */
   .detail-head { grid-template-columns: 1fr; gap: 18px; margin-bottom: 18px; }

@@ -34,7 +34,9 @@ function EpisodeRow({ e, feed }: { e: Episode; feed?: Feed }) {
   const showMenu = useMenu((s) => s.show);
   const pct = e.duration ? Math.min(100, (e.position / e.duration) * 100) : 0;
   const started = useStartedEpisodes().has(e.id);
+  const play = () => engine.play([fromEpisode(e, feed?.title, feed?.image)]);
   const menu = (ev: { clientX: number; clientY: number }) => showMenu(ev, [
+    ...(e.finished ? [{ label: "Play again", icon: <Play size={16} />, onClick: play }] : []),
     {
       label: e.finished ? "Mark as unplayed" : "Mark as played", icon: <CircleCheck size={16} />,
       onClick: () => void api.put(`/api/podcasts/episodes/${e.id}/progress`, { position: e.finished ? 0 : e.duration, finished: !e.finished })
@@ -42,34 +44,50 @@ function EpisodeRow({ e, feed }: { e: Episode; feed?: Feed }) {
     },
     ...(e.published ? [{ label: "Mark older as finished", icon: <ListChecks size={16} />, onClick: () => void finishOlder(e) }] : []),
   ]);
+  const kicker = (
+    <div className="kicker" style={{ fontSize: 10 }}>
+      {e.new && !started && <NewDot label="New episode" />}
+      {[e.feed_title, e.published && ago(e.published), e.duration ? fmtTime(e.duration) : null].filter(Boolean).join(" · ")}
+    </div>
+  );
+  // the title's link covers the whole row: a click anywhere but the buttons opens the episode
+  const title = <Link className={`ep-open ${e.finished ? "ellipsis" : ""}`} to={`/podcasts/episode/${e.id}`}>{e.title}</Link>;
+  const actions = (
+    <div className="row-actions">
+      {e.finished && <span className="badge accent"><Check size={11} /> Played</span>}
+      {e.downloaded ? <span className="badge" data-tip="Downloaded to the server">Saved</span> : (
+        <button className="mini" data-tip="Download the episode to the server" aria-label="Download" onClick={async () => {
+          await api.post(`/api/podcasts/episodes/${e.id}/download`);
+          notify("Downloading in the background");
+        }}><Download size={15} /></button>
+      )}
+      <button className="mini" aria-label={`More options for ${e.title}`}
+              data-tip={e.finished ? "More: play again, mark as unplayed, mark older as finished" : "More: mark as played, mark older as finished"}
+              onClick={menu}>
+        <MoreHorizontal size={15} />
+      </button>
+    </div>
+  );
+  const context = (ev: React.MouseEvent) => {
+    ev.preventDefault();
+    menu(ev);
+  };
+  // played: a slim row with just what tells it apart; the description is for the ones still to hear
+  if (e.finished) {
+    return <div className="list-row ep-row done" onContextMenu={context}><div className="grow">{kicker}{title}</div>{actions}</div>;
+  }
   return (
-    <div className="list-row ep-row" style={{ alignItems: "flex-start" }} onContextMenu={(ev) => { ev.preventDefault(); menu(ev); }}>
-      <button className="btn round" style={{ width: 42, height: 42 }} aria-label={`Play ${e.title}`}
-              onClick={() => engine.play([fromEpisode(e, feed?.title, feed?.image)])}>
+    <div className="list-row ep-row" style={{ alignItems: "flex-start" }} onContextMenu={context}>
+      <button className="btn round" style={{ width: 42, height: 42 }} aria-label={`Play ${e.title}`} onClick={play}>
         <Play size={16} fill="currentColor" />
       </button>
       <div className="grow">
-        <div className="kicker" style={{ fontSize: 10 }}>
-          {e.new && !started && <NewDot label="New episode" />}
-          {[e.feed_title, e.published && ago(e.published), e.duration ? fmtTime(e.duration) : null].filter(Boolean).join(" · ")}
-        </div>
-        {/* the title's link covers the whole row: a click anywhere but the buttons opens the episode */}
-        <Link className="ep-open" to={`/podcasts/episode/${e.id}`}>{e.title}</Link>
+        {kicker}
+        {title}
         <div className="dim" style={{ fontSize: 13, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{e.description}</div>
-        {pct > 0 && !e.finished && <div className="progressbar" style={{ marginTop: 8, maxWidth: 260 }}><div style={{ width: `${pct}%` }} /></div>}
+        {pct > 0 && <div className="progressbar" style={{ marginTop: 8, maxWidth: 260 }}><div style={{ width: `${pct}%` }} /></div>}
       </div>
-      <div className="row-actions">
-        {e.finished && <span className="badge accent"><Check size={11} /> Played</span>}
-        {e.downloaded ? <span className="badge" data-tip="Downloaded to the server">Saved</span> : (
-          <button className="mini" data-tip="Download the episode to the server" aria-label="Download" onClick={async () => {
-            await api.post(`/api/podcasts/episodes/${e.id}/download`);
-            notify("Downloading in the background");
-          }}><Download size={15} /></button>
-        )}
-        <button className="mini" aria-label={`More options for ${e.title}`} data-tip="More: mark as played, mark older as finished" onClick={menu}>
-          <MoreHorizontal size={15} />
-        </button>
-      </div>
+      {actions}
     </div>
   );
 }

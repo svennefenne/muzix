@@ -113,10 +113,12 @@ export default function Home() {
 
       <div className="quick-grid">
         {fresh.map((p) => (
-          <Link key={`p${p.id}`} to={`/podcasts/${p.id}`} className="quick podcast">
-            <Art src={p.image} name={p.title} size={160} />
+          <Link key={`p${p.id}`} to={`/podcasts/${p.id}`} className="quick">
+            <div className="quick-art">
+              <Art src={p.image} name={p.title} size={160} />
+              {p.dot && <NewDot label={p.new === 1 ? "A new episode" : `${p.new} new episodes`} />}
+            </div>
             <span>{p.title}</span>
-            {p.dot && <NewDot label={p.new === 1 ? "A new episode" : `${p.new} new episodes`} />}
           </Link>
         ))}
         {quick.map((a) => (
