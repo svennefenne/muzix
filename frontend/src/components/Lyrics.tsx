@@ -19,7 +19,13 @@ export function useLyrics(item: PlayItem | null) {
   });
 }
 
-export const hasLyrics = (l?: Lyrics) => !!l && (l.lines.length > 0 || l.instrumental);
+export const hasLyrics = (l?: Lyrics) => !!l && l.lines.length > 0;
+
+/** Why there are no lyrics to show. */
+export function noLyrics(item: PlayItem | null, q: { data?: Lyrics; isFetching: boolean }) {
+  return !item ? "Nothing is playing" : item.kind !== "track" ? "Lyrics are for songs from the library"
+    : q.isFetching ? "Looking for lyrics…" : q.data?.instrumental ? "An instrumental: no words to show" : "No lyrics found for this song";
+}
 
 function hsl(hex: string): [number, number, number] {
   const n = parseInt(hex.slice(1), 16);
@@ -88,9 +94,6 @@ export function LyricsLines({ lyrics, seek = true, className = "" }: { lyrics: L
   const hold = () => {
     held.current = Date.now() + 4000;
   };
-  if (lyrics.instrumental) {
-    return <div className={`lyr-lines ${className}`}><p className="lyr now"><Music2 size="0.9em" aria-hidden /> Instrumental</p></div>;
-  }
   return (
     <div ref={box} className={`lyr-lines ${lyrics.synced ? "synced" : ""} ${className}`}
          onWheel={hold} onTouchMove={hold} onKeyDown={hold}>
@@ -118,7 +121,7 @@ export function LyricsSource({ lyrics }: { lyrics: Lyrics }) {
   if (!lyrics.source) return null;
   return (
     <p className="lyr-src">
-      {SOURCE[lyrics.source]}{!lyrics.synced && !lyrics.instrumental && " · not synced to the song"}
+      {SOURCE[lyrics.source]}{!lyrics.synced && " · not synced to the song"}
     </p>
   );
 }
@@ -161,8 +164,7 @@ export function MicButton({ item }: { item: PlayItem | null }) {
   const setLyricsPanel = useUi((s) => s.setLyricsPanel);
   const setPref = useUi((s) => s.setPref);
   const has = hasLyrics(q.data);
-  const tip = on ? "Hide the lyrics" : has ? "Lyrics" : item?.kind !== "track" ? "Lyrics are for songs from the library"
-    : q.isFetching ? "Looking for lyrics…" : "No lyrics found for this song";
+  const tip = on ? "Hide the lyrics" : has ? "Lyrics" : noLyrics(item, q);
   return (
     <button className={`ctl lyr-mic ${on ? "on" : ""} ${has || on ? "" : "dim"}`} aria-label="Lyrics" aria-pressed={on}
             aria-disabled={!has && !on} data-tip={tip}

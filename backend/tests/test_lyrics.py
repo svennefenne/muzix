@@ -29,6 +29,15 @@ def test_lrc_text_becomes_timed_lines():
     assert lyrics.parse("") == (False, [])
 
 
+def test_placeholders_are_not_lyrics():
+    for text in ("Instrumental", "[Instrumental]", "Soundtrack", "(Original Score)", "♪", "[00:01.00]♪\n[00:20.00]",
+                 "No lyrics found", "-"):
+        got = lyrics._answer("tags", text)
+        assert got["lines"] == [] and got["instrumental"] and not got["synced"], text
+    assert lyrics._answer("tags", "")["source"] is None
+    assert lyrics._answer("tags", "Soundtrack of my life\nSing it")["lines"][0]["text"] == "Soundtrack of my life"
+
+
 def _mp3(path):
     """A few silent MPEG-1 layer III frames: enough for mutagen to call it an MP3."""
     frame = b"\xff\xfb\x90\x64" + bytes(413)

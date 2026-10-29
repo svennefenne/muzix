@@ -24,6 +24,9 @@ STAMP = re.compile(r"\[(\d+):(\d{1,2}(?:[.:]\d{1,3})?)\]")
 OFFSET = re.compile(r"^\[offset:\s*([+-]?\d+)\s*\]$", re.I)
 META = re.compile(r"^\[[a-z#]+:.*\]$", re.I)          # [ar:Artist], [ti:Title], [length:...]
 WORD = re.compile(r"<\d+:\d{1,2}(?:[.:]\d{1,3})?>")     # enhanced LRC: a time per word
+# what taggers and lyrics sites put where the words would be, for a song without any
+PLACEHOLDER = re.compile(r"instrumental(?: version| track| music)?|(?:original )?(?:sound ?track|score)|"
+                         r"no lyrics?(?: found| available)?|lyrics? not (?:found|available)|n/?a|none|-+", re.I)
 
 
 def parse(text: str) -> tuple[bool, list[dict]]:
@@ -48,6 +51,12 @@ def parse(text: str) -> tuple[bool, list[dict]]:
     while plain and not plain[-1]:
         plain.pop()
     return False, [{"t": None, "text": line} for line in plain]
+
+
+def has_words(lines: list[dict]) -> bool:
+    """Whether the lines hold any words, rather than notes, dashes or "[Instrumental]"."""
+    said = [w for w in (line["text"].strip(" \t[]()*♪♫.!") for line in lines) if w]
+    return bool(said) and not (len(said) <= 2 and all(PLACEHOLDER.fullmatch(w) for w in said))
 
 
 def sidecar(audio: str) -> str | None:
@@ -139,7 +148,9 @@ def lrclib(artist: str, title: str, album: str, duration: float) -> dict | None:
 
 def _answer(source: str, text: str, instrumental: bool = False, colors: list[str] | None = None) -> dict:
     synced, lines = parse(text)
-    return {"source": source if lines or instrumental else None, "synced": synced, "lines": lines,
+    if not has_words(lines):            # "Instrumental", "Soundtrack", only notes: nothing to sing along to
+        instrumental, lines = instrumental or bool(lines), []
+    return {"source": source if lines or instrumental else None, "synced": synced and bool(lines), "lines": lines,
             "instrumental": instrumental and not lines, "colors": colors or []}
 
 
@@ -152,11 +163,13 @@ def for_track(s, t: Track) -> dict:
     if t.subsong < 0:                       # chip files hold many songs and no lyrics
         if (lrc := sidecar(t.path)):
             try:
-                return _answer("file", read_text(lrc), colors=colors)
+                if (got := _answer("file", read_text(lrc), colors=colors))["lines"]:
+                    return got
             except OSError:
                 log.warning("couldn't read %s", lrc)
         if t.kind == "music" and (text := from_tags(t.path)):
-            return _answer("tags", text, colors=colors)
+            if (got := _answer("tags", text, colors=colors))["lines"]:
+                return got                  # placeholder words in the tags: LRCLIB may know better
     if t.kind != "music" or not (t.artist or t.albumartist) or not t.title:
         return _answer("", "", colors=colors)
     kept = s.get(LyricsCache, t.id)

@@ -7,7 +7,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { fmtTime } from "../api";
 import { playRandom, toggleLike } from "../actions";
-import { hasLyrics, LyricsCard, LyricsLines, LyricsSource, tinted, useLyrics } from "../components/Lyrics";
+import { hasLyrics, LyricsCard, LyricsLines, LyricsSource, noLyrics, tinted, useLyrics } from "../components/Lyrics";
 import { useStationHistory } from "../components/StationHistory";
 import { Art } from "../components/ui";
 import { engine } from "../player/engine";
@@ -41,7 +41,7 @@ function LyricsMode({ cur }: { cur: PlayItem | null }) {
           <LyricsLines lyrics={q.data} className="lyr-fill" />
           <div className="lyr-foot"><LyricsSource lyrics={q.data} /></div>
         </>
-      ) : <p className="lyr-none">{!cur ? "Nothing is playing." : q.isFetching ? "Looking for lyrics…" : "No lyrics found for this song."}</p>}
+      ) : <p className="lyr-none">{noLyrics(cur, q)}</p>}
     </aside>
   );
 }

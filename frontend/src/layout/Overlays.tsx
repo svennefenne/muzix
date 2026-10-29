@@ -5,7 +5,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { api, fmtNumber, fmtTime } from "../api";
 import { playTracks, queryClient, toggleQueuedLike, usePlaylistPicker } from "../actions";
 import { CastButton, CastNote } from "../components/CastButton";
-import { hasLyrics, LyricsCard, LyricsLines, LyricsSource, tinted, useLyrics } from "../components/Lyrics";
+import { hasLyrics, LyricsCard, LyricsLines, LyricsSource, noLyrics, tinted, useLyrics } from "../components/Lyrics";
 import { useStationHistory } from "../components/StationHistory";
 import { Art, Modal, Switch } from "../components/ui";
 import { engine } from "../player/engine";
@@ -277,7 +277,7 @@ export function LyricsSheet() {
       </div>
       {q.data && hasLyrics(q.data)
         ? <LyricsLines lyrics={q.data} className="lyr-big" />
-        : <p className="lyr-none">{q.isFetching ? "Looking for lyrics…" : "No lyrics found for this song."}</p>}
+        : <p className="lyr-none">{noLyrics(cur, q)}</p>}
       <div className="lyr-sheet-foot">
         {q.data && <LyricsSource lyrics={q.data} />}
         <SeekBar />
