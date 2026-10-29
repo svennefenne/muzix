@@ -190,12 +190,13 @@ export default function Podcasts() {
           <div className="grid">
             {subs.data.map((f) => (
               <Link key={f.id} to={`/podcasts/${f.id}`} className="card">
-                <Art src={f.image} name={f.title} />
+                <div className="art-dot">
+                  <Art src={f.image} name={f.title} />
+                  {f.new && <NewDot label="New episodes" />}
+                </div>
                 <AdminCog kind="podcast" id={f.id} title={f.title} />
                 <div className="card-title ellipsis">{f.title}</div>
-                <div className="card-sub ellipsis">
-                  {f.new && <NewDot label="New episodes" />}{f.unplayed ? `${f.unplayed} unplayed` : f.author}
-                </div>
+                <div className="card-sub ellipsis">{f.unplayed ? `${f.unplayed} unplayed` : f.author}</div>
               </Link>
             ))}
           </div>

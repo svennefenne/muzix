@@ -178,6 +178,11 @@ img { display: block; }
 .kicker .sep { opacity: .5; padding: 0 .4em; }
 /* Spotify's blue dot: a new episode, or a podcast with one */
 .new-dot { display: inline-block; width: 8px; height: 8px; margin-right: 7px; border-radius: 50%; background: var(--new); vertical-align: .04em; }
+/* on a podcast's cover: in its top right corner, ringed so any cover shows it */
+.art-dot { position: relative; }
+.art-dot > .new-dot { position: absolute; top: 5px; right: 5px; width: 10px; height: 10px; margin: 0; box-shadow: 0 0 0 2px #000a; }
+.card .art-dot > .new-dot { top: 9px; right: 9px; width: 14px; height: 14px; box-shadow: 0 0 0 3px #000a; }
+.card:has(> .admin-cog) .art-dot > .new-dot { right: auto; left: 9px; }      /* the admin cog has that corner */
 .display {
   margin: 8px 0 16px; font-family: var(--font-display); font-weight: 900; text-transform: var(--display-case);
   font-size: clamp(44px, 7.4cqi, 104px); line-height: .9; letter-spacing: .01em;
@@ -808,9 +813,6 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
   padding-right: 10px; font-weight: 700; font-size: 13.5px; line-height: 1.25;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
-/* a podcast with something new: the blue dot on its cover's corner, ringed so any cover shows it */
-.quick-art { position: relative; }
-.quick-art .new-dot { position: absolute; top: 5px; right: 5px; width: 10px; height: 10px; margin: 0; box-shadow: 0 0 0 2px #000a; }
 @container page (max-width: 900px) { .quick-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 /* new episodes: the play button on the cover, the title on two lines */
 .ep-card-art { position: relative; }
