@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import case, delete, func, or_, select, text, true
 from sqlalchemy.orm import Session
 
-from .. import art, serial
+from .. import art, lyrics, serial
 from ..db import get_db
 from ..models import Album, Artist, Book, FilePlaylist, FilePlaylistItem, Like, PlayEvent, RecentSearch, Track, User
 from ..security import current_user
@@ -237,6 +237,20 @@ def random_tracks(db: Session = Depends(get_db), user: User = Depends(current_us
     if system:
         q = q.where(on_system(system))
     return tracks_json(db, user, db.scalars(q.order_by(func.random()).limit(n)).all())
+
+
+# ---------------------------------------------------------------- lyrics
+
+@router.get("/tracks/{track_id}/lyrics")
+def track_lyrics(track_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """The song's lyrics, synced when there are times: {source, synced, lines: [{t, text}],
+    instrumental, colors} (colors: the cover's, for the lyrics' background)."""
+    t = db.get(Track, track_id)
+    if t is None:
+        raise HTTPException(404, "No such song")
+    out = lyrics.for_track(db, t)
+    db.commit()
+    return out
 
 
 # ---------------------------------------------------------------- autoplay

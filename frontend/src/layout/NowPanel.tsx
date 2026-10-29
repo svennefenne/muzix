@@ -1,21 +1,55 @@
 /** The right-hand "Now playing" panel of the desktop layout (Spotify's Now Playing view):
- * the cover, what's playing, the skin it put on, and what comes next. */
+ * the cover, what's playing, the skin it put on, its lyrics and what comes next. With the
+ * player bar's microphone the whole panel shows the lyrics. */
 
-import { Heart, History, ListMusic, Maximize2, Shuffle, X } from "lucide-react";
+import { ChevronLeft, Heart, History, ListMusic, Maximize2, Shuffle, X } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { fmtTime } from "../api";
 import { playRandom, toggleLike } from "../actions";
+import { hasLyrics, LyricsCard, LyricsLines, LyricsSource, tinted, useLyrics } from "../components/Lyrics";
 import { useStationHistory } from "../components/StationHistory";
 import { Art } from "../components/ui";
 import { engine } from "../player/engine";
-import { usePlayer } from "../store/player";
+import { usePlayer, type PlayItem } from "../store/player";
 import { useUi } from "../store/ui";
 import { useActiveTheme } from "../theme/ThemeApplier";
 import { likeTip } from "./PlayerBar";
 
+/** The panel given over to the lyrics, on the cover's colour. */
+function LyricsMode({ cur }: { cur: PlayItem | null }) {
+  const setLyricsPanel = useUi((s) => s.setLyricsPanel);
+  const q = useLyrics(cur);
+  const look = tinted(q.data, "dock nppanel lyr-mode");
+  return (
+    <aside {...look} aria-label="Lyrics">
+      <div className="np-head">
+        <button className="iconbtn" aria-label="Back to now playing" onClick={() => setLyricsPanel(false)}><ChevronLeft size={16} /></button>
+        <h2 className="np-heading ellipsis">Lyrics</h2>
+      </div>
+      {cur && (
+        <div className="lyr-song">
+          <Art src={cur.art} name={cur.album || cur.title} size={96} />
+          <div className="lyr-song-text">
+            <b className="ellipsis">{cur.title}</b>
+            <span className="ellipsis">{cur.artist}</span>
+          </div>
+        </div>
+      )}
+      {q.data && hasLyrics(q.data) ? (
+        <>
+          <LyricsLines lyrics={q.data} className="lyr-fill" />
+          <div className="lyr-foot"><LyricsSource lyrics={q.data} /></div>
+        </>
+      ) : <p className="lyr-none">{!cur ? "Nothing is playing." : q.isFetching ? "Looking for lyrics…" : "No lyrics found for this song."}</p>}
+    </aside>
+  );
+}
+
 export function NowPanel() {
   const { setPref, setNowPlayingOpen, setQueueOpen, autoplay } = useUi();
+  const lyricsMode = useUi((s) => s.lyricsPanel);
+  const setLyricsPanel = useUi((s) => s.setLyricsPanel);
   const queue = usePlayer((s) => s.queue);
   const index = usePlayer((s) => s.index);
   const live = usePlayer((s) => s.liveTitle);
@@ -26,6 +60,7 @@ export function NowPanel() {
   const next = queue.slice(index + 1, index + 6);
   const isLiked = cur ? liked[cur.key] ?? !!cur.liked : false;
 
+  if (lyricsMode) return <LyricsMode cur={cur} />;
   return (
     <aside className="dock nppanel" aria-label="Now playing">
       <div className="np-head">
@@ -65,6 +100,7 @@ export function NowPanel() {
               <History size={14} /> Played on this station
             </button>
           )}
+          <LyricsCard item={cur} onExpand={() => setLyricsPanel(true)} />
 
           <section className="np-next">
             <div className="np-next-head">

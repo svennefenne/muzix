@@ -18,6 +18,11 @@ you choose from 98 colour schemes, each with a light and a dark version.
   Search remembers what you pick from its results, as Spotify does: they show
   as recent searches in the empty search box and on the Search page, each to
   remove, on every device you sign in on.
+- **Lyrics**, as on Spotify: synced lines that follow the song on the cover's
+  colour, in the now playing panel (the microphone gives them the whole panel)
+  and full screen on phones. They come from an .lrc file beside the song
+  (uploads bring theirs along), the song's own tags, or LRCLIB (lrclib.net), a
+  free lyrics database, which can be turned off on the admin page.
 - **Autoplay**: when the queue runs out, similar songs keep playing, picked by
   the genre tags of what you chose (game music: more from the same chips).
   Turn it off in the queue or in Settings.

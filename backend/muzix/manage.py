@@ -34,7 +34,7 @@ import httpx
 from PIL import Image, ImageOps
 from sqlalchemy import delete, func, or_, select, update
 
-from . import art, db, enrich, env, formats, jobs, scanner, serial
+from . import art, db, enrich, env, formats, jobs, lyrics, scanner, serial
 from .meta import tagwrite
 from .models import (Album, Artist, Book, EditRecord, Episode, Feed, FilePlaylist, Like, Playlist, Root, Station,
                      TagOverride, Track, TrashItem)
@@ -250,6 +250,7 @@ def delete_item(kind: str, id_: int) -> dict:
                             sources.append(folder)
                             left -= {p for p in left if p.startswith(folder + "/")}
             sources += sorted(left)
+            sources += [lrc for p in sorted(left) if (lrc := lyrics.sidecar(p))]     # their lyrics go too
             item = _to_trash(root, kind, title, subtitle, sources)
             _forget_tracks(s, [t.id for t in tracks])
             if kind == "artist":
@@ -596,21 +597,22 @@ def _refile(folder: str, target: str, moves: dict[str, str]) -> dict[str, str]:
         if os.path.normpath(target) != os.path.normpath(folder):
             _move(folder, target)
             done_folder = True
-        inside = {old: os.path.join(target, os.path.relpath(old, folder)) for old in moves}
-        temp = {}
-        for i, old in enumerate(moves):          # two steps, so A→B and B→A swaps can't collide
-            cur = inside[old]
-            if cur == moves[old]:
+        pairs = [(os.path.join(target, os.path.relpath(old, folder)), new) for old, new in moves.items()]
+        # a song's lyrics file goes with it: "1. Song.lrc" beside "1. Song.mp3"
+        pairs += [(lrc, os.path.splitext(new)[0] + ".lrc") for cur, new in pairs if (lrc := lyrics.sidecar(cur))]
+        temp = []
+        for i, (cur, new) in enumerate(pairs):   # two steps, so A→B and B→A swaps can't collide
+            if cur == new:
                 continue
             tmp = os.path.join(os.path.dirname(cur), f".muzix-rename-{i}{os.path.splitext(cur)[1]}")
             os.rename(cur, tmp)
             renamed.append((tmp, cur))
-            temp[old] = tmp
-        for old, tmp in temp.items():
-            if os.path.lexists(moves[old]):
-                raise ManageError(f"{moves[old]} is already there")
-            os.rename(tmp, moves[old])
-            renamed.append((moves[old], tmp))
+            temp.append((tmp, new))
+        for tmp, new in temp:
+            if os.path.lexists(new):
+                raise ManageError(f"{new} is already there")
+            os.rename(tmp, new)
+            renamed.append((new, tmp))
     except (OSError, ManageError):
         for a, b in reversed(renamed):
             try:
@@ -930,7 +932,10 @@ def edit_track(id_: int, fields: dict, remember: bool = True) -> dict:
                 if os.path.lexists(new_path):
                     notes.append("Not renamed: a file of that name is already there")
                 else:
+                    lrc = lyrics.sidecar(t.path)
                     os.rename(t.path, new_path)
+                    if lrc and not os.path.lexists(lrc_to := os.path.splitext(new_path)[0] + ".lrc"):
+                        os.rename(lrc, lrc_to)
                     s.execute(update(TagOverride).where(TagOverride.path == t.path).values(path=new_path))
                     t.path = renamed = new_path
         elif changes and not same_album:

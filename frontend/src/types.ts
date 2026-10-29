@@ -23,6 +23,15 @@ export interface Prefs {
   browse?: Record<string, BrowsePref>;   // sort and display mode per page
 }
 
+export interface LyricLine { t: number | null; text: string }
+export interface Lyrics {
+  source: "file" | "tags" | "lrclib" | null;
+  synced: boolean;
+  lines: LyricLine[];
+  instrumental: boolean;
+  colors: string[];          // the cover's, for the background
+}
+
 export type LibraryView = "genres" | "artists" | "albums";
 export type DisplayMode = "list" | "grid" | "gallery";
 export interface BrowsePref { display?: DisplayMode; sort?: string; hide_finished?: boolean; collapsed?: boolean }

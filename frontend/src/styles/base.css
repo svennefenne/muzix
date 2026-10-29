@@ -898,6 +898,84 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
   background: none; color: var(--text); text-align: left; cursor: pointer;
 }
 .np-qrow:hover { background: color-mix(in srgb, var(--text) 7%, transparent); }
+
+/* ---------------------------------------------------------------- lyrics */
+
+/* the words' three states: the skin's own text colours, or white on the cover's colour */
+.lyr-card, .lyr-sheet, .lyr-mode { --lyr-now: var(--text); --lyr-next: var(--text-dim); --lyr-past: var(--text-faint); }
+.lyr-tinted { --lyr-now: #fff; --lyr-next: rgb(255 255 255 / .64); --lyr-past: rgb(255 255 255 / .5); color: #fff; }
+.lyr-card { margin-top: 24px; padding: 14px 16px 12px; border-radius: var(--radius); background: color-mix(in srgb, var(--text) 6%, transparent); }
+.lyr-card.lyr-tinted, .lyr-mode.lyr-tinted, .lyr-sheet.lyr-tinted { background: var(--lyr-bg); }
+.lyr-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.lyr-head h3 { margin: 0; font: 800 15px/1.2 var(--font-ui); color: var(--lyr-now); }
+.lyr-expand {
+  display: grid; place-items: center; width: 30px; height: 30px; margin-right: -6px; border: 0; border-radius: 50%;
+  background: none; color: var(--lyr-next); cursor: pointer;
+}
+.lyr-expand:hover { color: var(--lyr-now); background: color-mix(in srgb, var(--lyr-now) 12%, transparent); }
+
+.lyr-lines {
+  position: relative; max-height: 264px; padding-bottom: 120px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none;
+  mask-image: linear-gradient(transparent, #000 14px, #000 calc(100% - 36px), transparent);
+}
+.lyr-lines::-webkit-scrollbar { display: none; }
+.lyr {
+  display: block; width: 100%; margin: 0; padding: 3px 0; border: 0; background: none; text-align: left;
+  font: 800 19px/1.32 var(--font-ui); letter-spacing: -.005em; text-transform: none; color: var(--lyr-now);
+  overflow-wrap: anywhere; transition: color .35s cubic-bezier(.2, .7, .3, 1);
+}
+.lyr.next { color: var(--lyr-next); }
+.lyr.past { color: var(--lyr-past); }
+.lyr svg { vertical-align: -.1em; }
+button.lyr { cursor: pointer; }
+button.lyr:hover { color: var(--lyr-now); text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 5px; }
+.lyr-src { margin: 10px 0 0; font-size: 11.5px; line-height: 1.4; color: var(--lyr-past); }
+.lyr-src a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.lyr-src a:hover { color: var(--lyr-now); }
+.lyr-none { margin: 0; padding: 24px 18px; color: var(--lyr-next); }
+
+/* the now playing panel given over to the lyrics */
+.lyr-mode { color: var(--lyr-now); }
+.lyr-mode .np-head { padding-left: 10px; }
+.lyr-mode .iconbtn { color: var(--lyr-now); border-color: color-mix(in srgb, var(--lyr-now) 30%, transparent); background: none; }
+.lyr-song { display: grid; grid-template-columns: 48px minmax(0, 1fr); align-items: center; gap: 12px; padding: 2px 18px 12px; }
+.lyr-song .art { width: 48px; border-radius: 6px; box-shadow: none; }
+.lyr-song-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.lyr-song-text b { font-size: 14px; }
+.lyr-song-text span { font-size: 12.5px; color: var(--lyr-next); }
+.lyr-lines.lyr-fill { flex: 1; min-height: 0; max-height: none; padding: 10px 18px 45vh; }
+.lyr-fill .lyr { font-size: 24px; line-height: 1.28; padding: 5px 0; }
+.lyr-foot { padding: 4px 18px 14px; }
+.lyr-foot .lyr-src { margin: 0; }
+
+/* full screen: the phone's lyrics, and the full-screen player's Lyrics button */
+.lyr-sheet {
+  position: fixed; inset: 0; z-index: 58; display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
+  padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); background: var(--bg); color: var(--lyr-now);
+  animation: lyr-up .32s cubic-bezier(.2, .8, .2, 1);
+}
+@keyframes lyr-up { from { transform: translateY(28px); opacity: 0; } }
+.lyr-sheet-head { display: grid; grid-template-columns: 40px minmax(0, 1fr) 40px; align-items: center; gap: 8px; padding: 14px 16px 6px; }
+.lyr-sheet-head .iconbtn { width: 40px; height: 40px; border: 0; background: none; color: var(--lyr-now); }
+.lyr-sheet-title { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; text-align: center; }
+.lyr-sheet-title b { max-width: 100%; font-size: 15px; }
+.lyr-sheet-title span { max-width: 100%; font-size: 13px; color: var(--lyr-next); }
+.lyr-lines.lyr-big {
+  width: min(100%, 880px); max-height: none; justify-self: center; padding: 20px 24px 45vh;
+  mask-image: linear-gradient(transparent, #000 28px, #000 calc(100% - 72px), transparent);
+}
+.lyr-big .lyr { font-size: clamp(26px, 3.4vw, 46px); line-height: 1.22; padding: 6px 0; }
+.lyr-sheet-foot {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 20px;
+  width: min(100%, 880px); justify-self: center; padding: 6px 24px 22px;
+}
+.lyr-sheet-foot .lyr-src { grid-column: 1 / -1; margin: 0; }
+.lyr-sheet-foot .progress { max-width: none; color: var(--lyr-next); }
+.lyr-sheet-foot .ctl.play { width: 56px; height: 56px; background: var(--lyr-now); color: var(--lyr-bg, var(--bg)); }
+.lyr-tinted .bar .track { background: rgb(255 255 255 / .26); }
+.lyr-tinted .bar .fill, .lyr-tinted .bar:hover .fill, .lyr-tinted .bar .knob { background: #fff; }
+.np-lyrics-card { display: none; }
+@media (prefers-reduced-motion: reduce) { .lyr-sheet { animation: none; } .lyr { transition: none; } }
 .np-qrow:focus-visible { outline-offset: -2px; }
 .np-qrow .art { width: 40px; border-radius: 4px; box-shadow: none; }
 .np-qrow .art-fallback { font-size: 12px; padding: 2px; }
@@ -1133,6 +1211,10 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
   .np-seek { margin-top: 10px; }
   .np-desktop-actions { display: none !important; }
   .np-phone { display: block; }
+  .np-lyrics-card { display: block; }
+  .lyr-card.phone { margin-top: 18px; cursor: pointer; }
+  .lyr-card.phone .lyr-lines { max-height: 216px; pointer-events: none; }
+  .lyr-sheet-foot { padding: 6px 22px 18px; }
   .np-transport { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
   .np-transport .ctl { width: 48px; height: 48px; color: var(--text); }
   .np-transport .ctl.on, .np-extra .ctl.on { color: var(--primary); }

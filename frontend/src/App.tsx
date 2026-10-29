@@ -11,7 +11,7 @@ import { Display, Kicker, Loading, MenuHost } from "./components/ui";
 import { MiniPlayer, TabBar } from "./layout/Mobile";
 import { NowPanel } from "./layout/NowPanel";
 import { Sidebar } from "./layout/Sidebar";
-import { Footer, NowPlaying, PlaylistPicker, QueueDrawer, Toast } from "./layout/Overlays";
+import { Footer, LyricsSheet, NowPlaying, PlaylistPicker, QueueDrawer, Toast } from "./layout/Overlays";
 import { PlayerBar } from "./layout/PlayerBar";
 import { focusQuickSearch } from "./layout/QuickSearch";
 import { isTyping, TopBar } from "./layout/TopBar";
@@ -165,6 +165,7 @@ function Shell() {
       <TabBar />
       <QueueDrawer />
       <NowPlaying />
+      <LyricsSheet />
       <PlaylistPicker />
       <StationHistory />
       <MenuHost />

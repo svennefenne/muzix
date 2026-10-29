@@ -23,6 +23,8 @@ interface UiState {
   autoplay: boolean;             // similar songs once the queue runs out
   queueOpen: boolean;
   nowPlayingOpen: boolean;
+  lyricsPanel: boolean;          // the now playing panel shows the lyrics
+  lyricsSheet: boolean;          // the lyrics full screen
   adminMode: boolean;            // admins: a cog on every item, to edit, hide or delete it (per device)
   toast: { text: string; kind: "info" | "error"; id: number; action?: ToastAction } | null;
   setUser: (u: User | null) => void;
@@ -30,6 +32,8 @@ interface UiState {
   setBrowse: (key: string, patch: BrowsePref) => void;
   setQueueOpen: (v: boolean) => void;
   setNowPlayingOpen: (v: boolean) => void;
+  setLyricsPanel: (v: boolean) => void;
+  setLyricsSheet: (v: boolean) => void;
   setAdminMode: (v: boolean) => void;
   notify: (text: string, kind?: "info" | "error", action?: ToastAction) => void;
 }
@@ -86,6 +90,8 @@ export const useUi = create<UiState>((set, get) => ({
   autoplay: initial.autoplay ?? true,
   queueOpen: false,
   nowPlayingOpen: false,
+  lyricsPanel: false,
+  lyricsSheet: false,
   adminMode: (() => {
     try {
       return localStorage.getItem("muzix.admin") === "1";
@@ -131,6 +137,8 @@ export const useUi = create<UiState>((set, get) => ({
   },
   setQueueOpen: (v) => set({ queueOpen: v }),
   setNowPlayingOpen: (v) => set({ nowPlayingOpen: v }),
+  setLyricsPanel: (v) => set({ lyricsPanel: v }),
+  setLyricsSheet: (v) => set({ lyricsSheet: v }),
   setAdminMode: (v) => {
     set({ adminMode: v });
     try {

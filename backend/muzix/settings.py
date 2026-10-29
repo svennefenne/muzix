@@ -40,6 +40,10 @@ SCHEMA: list[Spec] = [
          "Where detailed genres (\"death metal\", \"goa trance\") come from. They pick the genre skin.",
          choices=["musicbrainz", "lastfm", "off"]),
     Spec("lastfm_api_key", "secret", "", "Library", "Last.fm API key"),
+    Spec("lyrics_online", "bool", True, "Library", "Look up lyrics online",
+         "Songs without lyrics of their own (an .lrc file beside them, or lyrics in their tags) get "
+         "them from LRCLIB (lrclib.net), a free, open lyrics database. It's sent the artist, title, "
+         "album and length of the song playing, nothing else."),
     # playback
     Spec("transcode_format", "choice", "flac", "Playback", "Transcode to",
          "Format for files a browser can't play (WavPack, chiptunes, trackers, MIDI).",

@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, Heart, History, ListMusic, Pause, Play, Plus, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, X } from "lucide-react";
+import { ChevronDown, Heart, History, ListMusic, MicVocal, Pause, Play, Plus, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, X } from "lucide-react";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, fmtNumber, fmtTime } from "../api";
 import { playTracks, queryClient, toggleQueuedLike, usePlaylistPicker } from "../actions";
 import { CastButton, CastNote } from "../components/CastButton";
+import { hasLyrics, LyricsCard, LyricsLines, LyricsSource, tinted, useLyrics } from "../components/Lyrics";
 import { useStationHistory } from "../components/StationHistory";
 import { Art, Modal, Switch } from "../components/ui";
 import { engine } from "../player/engine";
@@ -236,9 +237,61 @@ function FlipCover({ cur }: { cur: PlayItem | null }) {
   );
 }
 
+/** The full-screen player's way to the lyrics (lean-back: lyrics across the whole screen). */
+function LyricsButton() {
+  const cur = usePlayer((s) => (s.index >= 0 ? s.queue[s.index] : null));
+  const q = useLyrics(cur);
+  const open = useUi((s) => s.setLyricsSheet);
+  if (!hasLyrics(q.data)) return null;
+  return <button className="btn" onClick={() => open(true)}><MicVocal size={15} /> Lyrics</button>;
+}
+
+/** The lyrics full screen, as on Spotify's phone app: the cover's colour, big words, and the
+ * song's time and play button at the bottom. */
+export function LyricsSheet() {
+  const open = useUi((s) => s.lyricsSheet);
+  const setOpen = useUi((s) => s.setLyricsSheet);
+  const cur = usePlayer((s) => (s.index >= 0 ? s.queue[s.index] : null));
+  const playing = usePlayer((s) => s.playing);
+  const q = useLyrics(cur);
+  useEffect(() => {
+    if (!open) return;
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopImmediatePropagation();     // the full-screen player underneath stays open
+      setOpen(false);
+    };
+    window.addEventListener("keydown", key, true);
+    return () => window.removeEventListener("keydown", key, true);
+  }, [open, setOpen]);
+  if (!open || !cur) return null;
+  const look = tinted(q.data, "lyr-sheet");
+  return (
+    <div {...look} role="dialog" aria-label={`Lyrics: ${cur.title}`}>
+      <div className="lyr-sheet-head">
+        <button className="iconbtn" aria-label="Close the lyrics" data-tip-key="Esc" onClick={() => setOpen(false)}><ChevronDown size={20} /></button>
+        <div className="lyr-sheet-title">
+          <b className="ellipsis">{cur.title}</b>
+          <span className="ellipsis">{cur.artist}</span>
+        </div>
+      </div>
+      {q.data && hasLyrics(q.data)
+        ? <LyricsLines lyrics={q.data} className="lyr-big" />
+        : <p className="lyr-none">{q.isFetching ? "Looking for lyrics…" : "No lyrics found for this song."}</p>}
+      <div className="lyr-sheet-foot">
+        {q.data && <LyricsSource lyrics={q.data} />}
+        <SeekBar />
+        <button className="ctl play" aria-label={playing ? "Pause" : "Play"} data-tip-key="Space" onClick={() => engine.toggle()}>
+          {playing ? <Pause size={26} fill="currentColor" /> : <Play size={26} fill="currentColor" style={{ marginLeft: 3 }} />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function NowPlaying() {
   const showHistory = useStationHistory((s) => s.show);
-  const { nowPlayingOpen, setNowPlayingOpen } = useUi();
+  const { nowPlayingOpen, setNowPlayingOpen, setLyricsSheet } = useUi();
   const cur = usePlayer((s) => (s.index >= 0 ? s.queue[s.index] : null));
   const live = usePlayer((s) => s.liveTitle);
   const theme = useActiveTheme();
@@ -269,6 +322,7 @@ export function NowPlaying() {
               <Visualizer />
               <div className="np-seek"><SeekBar /></div>
               <PhoneTransport />
+              <div className="np-lyrics-card"><LyricsCard item={cur} phone onExpand={() => setLyricsSheet(true)} /></div>
               <div className="row-actions np-desktop-actions" style={{ marginTop: 18 }}>
                 <button className="btn" data-tip="Previous song" data-tip-key="P" onClick={() => engine.prev()}>Previous</button>
                 <button className="btn accent" data-tip="Play or pause" data-tip-key="Space" onClick={() => engine.toggle()}>Play / pause</button>
@@ -276,6 +330,7 @@ export function NowPlaying() {
                 {cur.kind === "radio" && (
                   <button className="btn" onClick={() => showHistory(String(cur.id), cur.title)}><History size={15} /> Played here</button>
                 )}
+                <LyricsButton />
                 <CastButton className="btn" size={15} label />
               </div>
               <div className="np-desktop-actions"><CastNote /></div>

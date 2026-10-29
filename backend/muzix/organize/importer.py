@@ -15,7 +15,7 @@ from pathlib import Path
 import yaml
 from sqlalchemy import select
 
-from .. import db, env, formats, jobs, settings
+from .. import db, env, formats, jobs, lyrics, settings
 from ..models import Artist, Root
 
 PLUGIN_DIR = Path(__file__).parent / "beetsplug"
@@ -73,17 +73,22 @@ class Beet:
     def __init__(self, ctx, config: str):
         self.ctx, self.config = ctx, config
 
-    def __call__(self, *args, check=True):
+    def __call__(self, *args, check=True, quiet=False):
         cmd = [BEET, "-c", self.config, *args]
         self.ctx.log("$ beet " + " ".join(args)[:300])
         r = subprocess.run(cmd, capture_output=True, text=True, cwd=str(env.BEETS_DIR),
                            env={**os.environ, "BEETSDIR": str(env.BEETS_DIR)}, timeout=6 * 3600)
         out = (r.stdout + r.stderr).strip()
-        for line in out.splitlines()[-40:]:
+        for line in [] if quiet else out.splitlines()[-40:]:
             self.ctx.log("  " + line[:300])
         if check and r.returncode != 0:
             raise RuntimeError(f"beet {args[0]} failed ({r.returncode})")
         return out
+
+    def songs(self, query: str) -> dict[str, tuple[str, str]]:
+        """id -> (path, title) of the songs a query finds."""
+        rows = (line.split("\t", 2) for line in self("ls", "-f", "$id\t$path\t$title", query, quiet=True).splitlines())
+        return {r[0]: (r[1], r[2]) for r in rows if len(r) == 3}
 
 
 def upload_root(kind: str) -> str | None:
@@ -142,8 +147,13 @@ def import_upload(ctx: jobs.JobContext, batch: str):
             beet("fetchart", "-q", tag, check=False)
         beet("mplan", tag)
         ctx.update(0.65, "writing tags and moving files")
+        before = beet.songs(tag)
         beet("write", tag)
         beet("move", tag)
+        after = beet.songs(tag)
+        moved = {path: after[i][0] for i, (path, _) in before.items() if i in after}
+        if n := lyrics.carry(moved, {path: title for path, title in before.values()}):
+            ctx.log(f"{n} lyrics files went along with their songs")
         beet("embedart", "-y", tag, "artpath::.", check=False)
         beet("extractart", "-a", "-n", "cover", tag, "^artpath::.", check=False)
         for r, _, fs in os.walk(music_root):

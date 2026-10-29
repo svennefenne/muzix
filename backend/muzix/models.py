@@ -224,6 +224,17 @@ class RecentSearch(Base):
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
 
 
+class LyricsCache(Base):
+    """What LRCLIB had for a song (or that it had nothing, until it's time to ask again)."""
+    __tablename__ = "lyrics"
+    track_id: Mapped[int] = mapped_column(ForeignKey("tracks.id", ondelete="CASCADE"), primary_key=True)
+    synced: Mapped[str] = mapped_column(Text, default="")
+    plain: Mapped[str] = mapped_column(Text, default="")
+    instrumental: Mapped[bool] = mapped_column(Boolean, default=False)
+    found: Mapped[bool] = mapped_column(Boolean, default=False)
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class ArtVersion(Base):
     """How many times a picture has changed: part of its address, so browsers fetch it again."""
     __tablename__ = "art_versions"

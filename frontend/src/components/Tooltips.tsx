@@ -129,7 +129,14 @@ export function Tooltips() {
     };
     const onBlur = () => shown && show(null);
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && shown && show(null);
-    const onScroll = () => {
+    // only what moved its element: lyrics scrolling along elsewhere leave a tip be
+    const onScroll = (e: Event) => {
+      const moved = e.target instanceof Node ? e.target : document;
+      if (shown && !(moved === document || moved.contains(shown.el))) return;
+      cancel();
+      if (shown) show(null);
+    };
+    const onWheel = () => {
       cancel();
       if (shown) show(null);
     };
@@ -145,7 +152,7 @@ export function Tooltips() {
     document.addEventListener("focusout", onBlur);
     document.addEventListener("keydown", onKey);
     document.addEventListener("scroll", onScroll, true);
-    document.addEventListener("wheel", onScroll, { passive: true });
+    document.addEventListener("wheel", onWheel, { passive: true });
     return () => {
       window.clearTimeout(timer);
       rewritten.disconnect();
@@ -159,7 +166,7 @@ export function Tooltips() {
       document.removeEventListener("focusout", onBlur);
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("scroll", onScroll, true);
-      document.removeEventListener("wheel", onScroll);
+      document.removeEventListener("wheel", onWheel);
     };
   }, []);
 

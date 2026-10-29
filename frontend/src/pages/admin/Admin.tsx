@@ -342,7 +342,8 @@ function UploadArea() {
           <div className="h3">Drop files or whole folders here</div>
           <div className="dim" style={{ maxWidth: 520 }}>
             Music is matched with MusicBrainz, gets cover art and a main genre, and is filed as Genre/Artist/Artist - Year - Album
-            in the music upload folder. Chiptunes and tracker modules go to the VGM upload folder.
+            in the music upload folder. Lyrics (.lrc files beside their songs) go along with them. Chiptunes and tracker
+            modules go to the VGM upload folder.
           </div>
           <div className="row-actions" onClick={(e) => e.stopPropagation()}>
             <button className="btn" onClick={() => fileInput.current?.click()}>Choose files</button>
