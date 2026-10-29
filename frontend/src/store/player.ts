@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { create } from "zustand";
 import type { CastState } from "../player/cast";
 import type { Book, Episode, OnlineTrack, Station, Track } from "../types";
@@ -67,6 +68,12 @@ export function fromEpisode(e: Episode, feedTitle?: string, feedImage?: string):
     artist: feedTitle || e.feed_title || "", art: e.image || feedImage || null, duration: e.duration,
     src: e.stream, resume: e.finished ? 0 : e.position,
   };
+}
+
+/** The episodes started here (the queue up to what plays): their blue dots go at once, not on the next fetch. */
+export function useStartedEpisodes(): Set<number> {
+  const ids = usePlayer((s) => s.queue.slice(0, s.index + 1).filter((q) => q.kind === "episode").map((q) => q.id).join(" "));
+  return useMemo(() => new Set(ids.split(" ").filter(Boolean).map(Number)), [ids]);
 }
 
 export function fromStation(s: Station): PlayItem {

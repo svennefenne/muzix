@@ -322,7 +322,7 @@ class Subscription(Base):
     feed_id: Mapped[int] = mapped_column(ForeignKey("feeds.id", ondelete="CASCADE"), primary_key=True)
     auto_download: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
-    seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)   # its page last opened
+    seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)   # its page last opened (no longer used)
 
 
 class Episode(Base):

@@ -1,8 +1,8 @@
-"""Spotify's blue dots: new episodes until they're started, and a podcast's dot until its page is opened."""
+"""Spotify's blue dots: new episodes until they're started, and a podcast's dot while it has one."""
 from datetime import datetime, timedelta, timezone
 
 from muzix import db
-from muzix.api import me, podcasts as api
+from muzix.api import library, me, podcasts as api
 from muzix.models import Episode, EpisodeProgress, Feed, Subscription, User
 
 
@@ -37,16 +37,17 @@ def test_new_episodes_and_podcasts_get_a_blue_dot():
     assert not any(e["new"] for e in page(oid)["episodes"])
     assert dots(uid) == (True, True)
 
-    # opening the page takes the podcast's dot away, the episodes keep theirs
-    with db.session() as s:
-        api.seen(fid, db=s, user=s.get(User, uid))
-    assert dots(uid) == (False, False)
+    # opening the page leaves the dots be: the podcast keeps its own while it has a new episode
     assert [e["title"] for e in page(uid)["episodes"] if e["new"]] == ["late find", "after"]
-
-    # an episode found after the visit brings it back, even one that came out before (a slow feed)
-    with db.session() as s:
-        s.get(Subscription, (uid, fid)).seen_at = t0 + timedelta(days=5)
     assert dots(uid) == (True, True)
+
+    # the home page shows them, newest first, with the podcast they're from
+    with db.session() as s:
+        home = library.home(db=s, user=s.get(User, uid))
+        assert [e["title"] for e in home["new_episodes"]] == ["late find", "after"]
+        assert home["new_podcasts"] == [{"id": fid, "title": "Dots", "image": "", "new": 2}]
+        stranger = library.home(db=s, user=s.get(User, oid))
+        assert stranger["new_episodes"] == [] and stranger["new_podcasts"] == []
 
     # starting the new ones takes every dot away
     with db.session() as s:
@@ -131,3 +132,43 @@ def test_episodes_read_before_show_notes_were_kept_get_them_from_the_whole_feed(
     with httpx.Client(transport=httpx.MockTransport(answer)) as client, db.session() as s:
         podcasts.fetch(s.get(Feed, fid), client)
     assert asked == [None, '"v1"']     # all filled in: back to asking only for changes
+
+
+def test_marking_older_episodes_finished_and_undoing_it():
+    t0 = datetime.now(timezone.utc) - timedelta(days=100)
+    with db.session() as s:
+        u = User(username="catch-up", password_hash="x")
+        f = Feed(url="https://example.com/catch-up.xml", title="Catch up")
+        s.add_all([u, f])
+        s.flush()
+        eps = [Episode(feed_id=f.id, guid=f"c{n}", title=f"Ep {n}", published=t0 + timedelta(days=n), duration=600 + n)
+               for n in range(1, 7)]
+        eps.append(Episode(feed_id=f.id, guid="twin", title="Ep 4b", published=t0 + timedelta(days=4)))   # same day as Ep 4
+        eps.append(Episode(feed_id=f.id, guid="undated", title="Undated"))
+        s.add_all(eps)
+        s.flush()
+        s.add(EpisodeProgress(user_id=u.id, episode_id=eps[1].id, position=120))                     # Ep 2: started
+        s.add(EpisodeProgress(user_id=u.id, episode_id=eps[0].id, position=601, finished=True))      # Ep 1: done
+        uid, fid, ep4b = u.id, f.id, eps[6].id
+
+    def finished():
+        with db.session() as s:
+            page = api.feed(fid, db=s, user=s.get(User, uid))
+            return [e["title"] for e in page["episodes"] if e["finished"]]
+
+    # on "Ep 4b": everything under it on the newest-first page, the undated one aside
+    with db.session() as s:
+        got = api.finish_older(ep4b, db=s, user=s.get(User, uid))
+    assert got["marked"] == 3
+    assert finished() == ["Ep 4", "Ep 3", "Ep 2", "Ep 1"]
+    assert {b["started"] for b in got["before"]} == {True, False}
+
+    # undo: Ep 2 is started again where it was, the others as if never touched
+    with db.session() as s:
+        api.restore(api.Restore(episodes=got["before"]), db=s, user=s.get(User, uid))
+    assert finished() == ["Ep 1"]
+    with db.session() as s:
+        page = api.feed(fid, db=s, user=s.get(User, uid))
+        by_title = {e["title"]: e for e in page["episodes"]}
+        assert by_title["Ep 2"]["position"] == 120
+        assert s.get(EpisodeProgress, (uid, by_title["Ep 3"]["id"])) is None

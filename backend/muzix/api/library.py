@@ -13,6 +13,7 @@ from .. import art, lyrics, serial
 from ..db import get_db
 from ..models import Album, Artist, Book, FilePlaylist, FilePlaylistItem, Like, PlayEvent, RecentSearch, Track, User
 from ..security import current_user
+from .podcasts import whats_new
 
 router = APIRouter(prefix="/api", tags=["library"])
 ALBUM_SORTS = {
@@ -94,6 +95,7 @@ def home(db: Session = Depends(get_db), user: User = Depends(current_user)):
         "rediscover": [serial.album(a, lk) for a in rnd],
         "vgm": [serial.album(a, lk) for a in vgm],
         "genres": genres(db, user, limit=12),
+        **whats_new(db, user),
     }
 
 

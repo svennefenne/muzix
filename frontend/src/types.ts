@@ -160,6 +160,8 @@ export interface Home {
   rediscover: Album[];
   vgm: Album[];
   genres: Genre[];
+  new_podcasts: { id: number; title: string; image: string; new: number }[];     // with new episodes, latest first
+  new_episodes: Episode[];
 }
 
 export interface Playlist {
@@ -205,7 +207,7 @@ export interface Feed {
   subscribed: boolean;
   auto_download: boolean;
   unplayed: number | null;
-  new: boolean;                 // a new episode since its page was last opened
+  new: boolean;                 // it has a new episode
   last_checked: string | null;
   episodes?: Episode[];         // a podcast's page: the first of them, in its order
   total?: number;               // all its episodes

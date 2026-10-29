@@ -1,24 +1,49 @@
 import { useQuery } from "@tanstack/react-query";
-import { Check, CircleCheck, Download, Pause, Play, Plus, RefreshCw, Rss, Upload } from "lucide-react";
+import { Check, CircleCheck, Download, ListChecks, MoreHorizontal, Pause, Play, Plus, RefreshCw, Rss, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ago, api, fmtLong, fmtTime } from "../api";
 import { queryClient } from "../actions";
 import { AdminCog } from "../components/AdminMode";
 import { Segmented } from "../components/Browse";
-import { Art, Display, Empty, Kicker, Loading, Modal, NewDot, Section, Switch } from "../components/ui";
+import { Art, Display, Empty, Kicker, Loading, Modal, NewDot, Section, Switch, useMenu } from "../components/ui";
 import { engine } from "../player/engine";
-import { fromEpisode, usePlayer } from "../store/player";
+import { fromEpisode, usePlayer, useStartedEpisodes } from "../store/player";
 import { useUi } from "../store/ui";
 import type { Episode, EpisodeDetail, Feed, PodcastHit } from "../types";
 
+/** Episodes were marked: the lists with their ticks and dots are fetched again. */
+function podcastsChanged() {
+  for (const key of ["podcast", "podcasts", "podcasts-latest", "episode", "sidebar", "home"]) queryClient.invalidateQueries({ queryKey: [key] });
+}
+
+/** Everything under an episode on its podcast's page (the ones out before it) marked finished, with an undo. */
+async function finishOlder(e: Episode) {
+  const notify = useUi.getState().notify;
+  const r = await api.post<{ marked: number; before: unknown[] }>(`/api/podcasts/episodes/${e.id}/finish-older`);
+  podcastsChanged();
+  if (!r.marked) return notify("The older episodes are already finished");
+  notify(`Marked ${r.marked} older episode${r.marked === 1 ? "" : "s"} as finished`, "info", {
+    label: "Undo",
+    run: () => void api.post("/api/podcasts/episodes/restore", { episodes: r.before }).then(podcastsChanged),
+  });
+}
+
 function EpisodeRow({ e, feed }: { e: Episode; feed?: Feed }) {
   const notify = useUi((s) => s.notify);
+  const showMenu = useMenu((s) => s.show);
   const pct = e.duration ? Math.min(100, (e.position / e.duration) * 100) : 0;
-  // started here: its dot goes now rather than when the list is next fetched
-  const started = usePlayer((s) => s.queue.slice(0, s.index + 1).some((q) => q.key === `episode:${e.id}`));
+  const started = useStartedEpisodes().has(e.id);
+  const menu = (ev: { clientX: number; clientY: number }) => showMenu(ev, [
+    {
+      label: e.finished ? "Mark as unplayed" : "Mark as played", icon: <CircleCheck size={16} />,
+      onClick: () => void api.put(`/api/podcasts/episodes/${e.id}/progress`, { position: e.finished ? 0 : e.duration, finished: !e.finished })
+        .then(podcastsChanged),
+    },
+    ...(e.published ? [{ label: "Mark older as finished", icon: <ListChecks size={16} />, onClick: () => void finishOlder(e) }] : []),
+  ]);
   return (
-    <div className="list-row ep-row" style={{ alignItems: "flex-start" }}>
+    <div className="list-row ep-row" style={{ alignItems: "flex-start" }} onContextMenu={(ev) => { ev.preventDefault(); menu(ev); }}>
       <button className="btn round" style={{ width: 42, height: 42 }} aria-label={`Play ${e.title}`}
               onClick={() => engine.play([fromEpisode(e, feed?.title, feed?.image)])}>
         <Play size={16} fill="currentColor" />
@@ -41,6 +66,9 @@ function EpisodeRow({ e, feed }: { e: Episode; feed?: Feed }) {
             notify("Downloading in the background");
           }}><Download size={15} /></button>
         )}
+        <button className="mini" aria-label={`More options for ${e.title}`} data-tip="More: mark as played, mark older as finished" onClick={menu}>
+          <MoreHorizontal size={15} />
+        </button>
       </div>
     </div>
   );
@@ -204,14 +232,6 @@ export function PodcastPage() {
     queryKey: ["podcast", Number(id), order, hideFinished, limit], placeholderData: (before) => before,
     queryFn: () => api.get<Feed>(`/api/podcasts/${id}`, { order, hide_finished: hideFinished, limit }),
   });
-  const subscribed = !!q.data?.subscribed;
-  // opening the page is seeing what's new: the podcast's dot goes from the library
-  useEffect(() => {
-    if (!subscribed) return;
-    api.post(`/api/podcasts/${id}/seen`).then(() => {
-      for (const key of ["sidebar", "podcasts"]) queryClient.invalidateQueries({ queryKey: [key] });
-    }).catch(() => {});
-  }, [id, subscribed]);
   if (!q.data) return <div className="page"><Loading /></div>;
   const f = q.data;
   const eps = f.episodes || [];
@@ -286,10 +306,6 @@ export function EpisodePage() {
   const play = () => (here ? engine.toggle() : engine.play([fromEpisode(e, f.title, f.image)]));
   // a timestamp in the notes: there, in this episode
   const playAt = (t: number) => (here ? engine.seek(t, true) : engine.play([{ ...fromEpisode(e, f.title, f.image), resume: t }]));
-  const changed = () => {
-    q.refetch();
-    for (const key of ["podcast", "podcasts", "podcasts-latest", "sidebar"]) queryClient.invalidateQueries({ queryKey: [key] });
-  };
   const when = e.published && new Date(e.published).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
   return (
     <div className="page">
@@ -320,7 +336,7 @@ export function EpisodePage() {
             )}
             <button className="btn ghost" onClick={async () => {
               await api.put(`/api/podcasts/episodes/${e.id}/progress`, { position: e.finished ? 0 : e.duration, finished: !e.finished });
-              changed();
+              podcastsChanged();
             }}><CircleCheck size={15} /> {e.finished ? "Mark as unplayed" : "Mark as played"}</button>
           </div>
         </div>

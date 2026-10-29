@@ -39,7 +39,7 @@ def episode_json(e: Episode, prog: EpisodeProgress | None, feed: Feed | None = N
 
 
 # Spotify's blue dot: an episode that came out after you subscribed is new until you start it,
-# and a podcast is marked while one of those has come in since you last opened its page
+# and a podcast is marked while it has one of those
 
 def _utc(d: datetime) -> datetime:
     """As SQLite gives it back: UTC without a zone."""
@@ -51,16 +51,28 @@ def is_new(e: Episode, sub: Subscription | None, prog: EpisodeProgress | None) -
     return sub is not None and prog is None and out is not None and _utc(out) > _utc(sub.created_at)
 
 
+def _new(q, user_id: int):
+    """Narrows a query on episodes to the user's new ones."""
+    return (q.join(Subscription, (Subscription.feed_id == Episode.feed_id) & (Subscription.user_id == user_id))
+            .outerjoin(EpisodeProgress, (EpisodeProgress.episode_id == Episode.id) & (EpisodeProgress.user_id == user_id))
+            .where(EpisodeProgress.episode_id.is_(None),
+                   func.coalesce(Episode.published, Episode.added_at) > Subscription.created_at))
+
+
 def fresh_feeds(db: Session, user_id: int) -> set[int]:
-    """The subscribed podcasts with a new episode the user hasn't seen on their page."""
-    came = func.coalesce(Episode.added_at, Episode.published)     # when Muzix first read it
-    return set(db.scalars(
-        select(Episode.feed_id).distinct()
-        .join(Subscription, (Subscription.feed_id == Episode.feed_id) & (Subscription.user_id == user_id))
-        .outerjoin(EpisodeProgress, (EpisodeProgress.episode_id == Episode.id) & (EpisodeProgress.user_id == user_id))
-        .where(EpisodeProgress.episode_id.is_(None),
-               func.coalesce(Episode.published, Episode.added_at) > Subscription.created_at,
-               came > func.coalesce(Subscription.seen_at, Subscription.created_at))))
+    """The subscribed podcasts with a new episode."""
+    return set(db.scalars(_new(select(Episode.feed_id).distinct(), user_id)))
+
+
+def whats_new(db: Session, user: User, limit: int = 12) -> dict:
+    """For the home page: the user's newest new episodes, and the podcasts with any (latest first)."""
+    out = func.coalesce(Episode.published, Episode.added_at)
+    feeds = db.execute(_new(select(Feed, func.count()).select_from(Episode).join(Feed, Feed.id == Episode.feed_id), user.id)
+                       .group_by(Feed.id).order_by(func.max(out).desc())).all()
+    rows = db.execute(_new(select(Episode, Feed, Subscription).join(Feed, Feed.id == Episode.feed_id), user.id)
+                      .order_by(out.desc()).limit(limit)).all()
+    return {"new_podcasts": [{"id": f.id, "title": f.title or f.url, "image": f.image, "new": n} for f, n in feeds],
+            "new_episodes": [episode_json(e, None, f, sub) for e, f, sub in rows]}
 
 
 @router.get("")
@@ -138,7 +150,14 @@ def genres(user: User = Depends(current_user)):
 @router.get("/top")
 def top(genre: int | None = None, user: User = Depends(current_user)):
     """The charts for this server's country: overall, or for one category."""
-    country = (settings.get("radio_country") or "us").lower()
+    try:
+        return _top((settings.get("radio_country") or "us").lower(), genre)
+    except (httpx.HTTPError, ValueError) as e:      # Apple slow or down: try again next time
+        log.info("podcast charts: %s", e)
+        raise HTTPException(502, "The charts can't be reached right now")
+
+
+def _top(country: str, genre: int | None) -> list[dict]:
     if genre:
         r = httpx.get(f"https://itunes.apple.com/{country}/rss/toppodcasts/limit=50/genre={genre}/json",
                       timeout=15, follow_redirects=True)
@@ -183,16 +202,6 @@ def feed(feed_id: int, order: str = "newest", hide_finished: bool = False, limit
     sub = db.get(Subscription, (user.id, feed_id))
     return {**feed_json(f, sub), "total": total, "finished": finished,
             "episodes": [episode_json(e, p, sub=sub) for e, p in rows]}
-
-
-@router.post("/{feed_id}/seen")
-def seen(feed_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    """The podcast's page was opened: its dot in the library goes (its new episodes keep theirs)."""
-    sub = db.get(Subscription, (user.id, feed_id))
-    if sub is not None:
-        sub.seen_at = datetime.now(timezone.utc)
-        db.commit()
-    return {"ok": True}
 
 
 class SubSettings(BaseModel):
@@ -273,6 +282,55 @@ def progress(episode_id: int, body: Progress, db: Session = Depends(get_db), use
     row = db.get(EpisodeProgress, (user.id, episode_id)) or EpisodeProgress(user_id=user.id, episode_id=episode_id)
     row.position, row.finished, row.updated_at = body.position, body.finished, datetime.now(timezone.utc)
     db.merge(row)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/episodes/{episode_id}/finish-older")
+def finish_older(episode_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Marks the podcast's episodes that came out before this one as finished: everything under it
+    on the podcast's page, newest first. Says how they were, so it can be undone."""
+    e = db.get(Episode, episode_id)
+    if e is None:
+        raise HTTPException(404, "No such episode")
+    if e.published is None:
+        raise HTTPException(400, "This episode has no date to go by")
+    older = (Episode.published < e.published) | ((Episode.published == e.published) & (Episode.id < e.id))
+    rows = db.execute(select(Episode, EpisodeProgress)
+                      .outerjoin(EpisodeProgress, (EpisodeProgress.episode_id == Episode.id) & (EpisodeProgress.user_id == user.id))
+                      .where(Episode.feed_id == e.feed_id, Episode.published.is_not(None), older,
+                             func.coalesce(EpisodeProgress.finished, False).is_(False))).all()
+    now, before = datetime.now(timezone.utc), []
+    for ep, p in rows:
+        before.append({"id": ep.id, "position": p.position if p else 0, "started": p is not None})
+        row = p or EpisodeProgress(user_id=user.id, episode_id=ep.id)
+        row.position, row.finished, row.updated_at = ep.duration or 0, True, now
+        db.add(row)
+    db.commit()
+    return {"marked": len(before), "before": before}
+
+
+class Before(BaseModel):
+    id: int
+    position: float = 0
+    started: bool = False
+
+
+class Restore(BaseModel):
+    episodes: list[Before]
+
+
+@router.post("/episodes/restore")
+def restore(body: Restore, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Undoes "mark older as finished": each episode as it was, started or not."""
+    for b in body.episodes:
+        row = db.get(EpisodeProgress, (user.id, b.id))
+        if row is None:
+            continue
+        if b.started:
+            row.position, row.finished = b.position, False
+        else:
+            db.delete(row)
     db.commit()
     return {"ok": True}
 
