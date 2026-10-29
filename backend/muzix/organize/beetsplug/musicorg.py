@@ -107,6 +107,16 @@ REGGAE, WORLD, COMEDY, KIDS = "Reggae & Ska", "World", "Comedy", "Children's"
 MAIN_GENRES = (METAL, ROCK, POP, PSY, ELEC, HIPHOP, JAZZ, SOUL, FOLK, CLASS, OST,
                REGGAE, WORLD, COMEDY, KIDS)
 UNCAT, DUPES = "Uncategorized", "Duplicates"
+# "Gunhouse (Original Video Game Soundtrack)", "Loop Ring Chop Drink OST", "Somewhere (Original Score)"
+SOUNDTRACK_TITLE = re.compile(r"\b(o\.?s\.?t|sound\s?track|original\s+(?:[\w-]+\s+){0,3}score)\b", re.I)
+# a release that says it is a single: "Grey (Single)", "Grey [Single]", "Grey - Single"
+SINGLE_MARK = re.compile(r"(?:\s*[(\[]\s*single\s*[)\]]|\s+-\s+single)\s*$", re.I)
+
+
+def single_release(title, tracktotal):
+    """A release of one song is a single, not a song from an album, when MusicBrainz or the
+    file itself says "1 of 1", or when its title says so ("Grey (Single)")."""
+    return (tracktotal or 0) == 1 or bool(SINGLE_MARK.search(title or ""))
 
 _ABBR = {"M": METAL, "R": ROCK, "P": POP, "PSY": PSY, "E": ELEC, "H": HIPHOP,
          "J": JAZZ, "S": SOUL, "C": FOLK, "CL": CLASS, "ST": OST,
@@ -518,6 +528,10 @@ class MusicOrgPlugin(BeetsPlugin):
             "overrides": "~/.local/share/musicorg/genre-overrides.yaml",
             # {"artist name": "Genre folder"} for artists already in the library (written by Muzix)
             "artist_genres": "",
+            # albums titled "... (Original Soundtrack)", "OST" or "Original Score": "nogenre" =
+            # Soundtrack when nothing else matched, "always" = Soundtrack even if the artist's
+            # other albums live in another genre folder
+            "soundtrack_titles": "nogenre",
         })
         self.register_listener("import_task_created", self.on_task_created)
         self._mapper = None
@@ -1099,9 +1113,14 @@ class MusicOrgPlugin(BeetsPlugin):
             title = a.album if present(a.album) else ""
             year = a.year or 0
             reason = ""
+            single = len(items) == 1 and single_release(title, items[0].tracktotal)
+            # "Grey (Single)" by itself: the song is "Grey"
+            if single and SINGLE_MARK.search(title) and SINGLE_MARK.search(items[0].title or ""):
+                items[0].title = SINGLE_MARK.sub("", items[0].title)
+                items[0].store()
             if all(os.path.dirname(o) == root for o in origs):
                 reason = "loose file in root folder"
-            elif len(items) == 1 and not (matched and (items[0].tracktotal or 0) == 1):
+            elif len(items) == 1 and not single:
                 reason = "single song from an album"
             elif not matched and (not artist or not title):
                 reason = "missing artist/album tags"
@@ -1127,6 +1146,14 @@ class MusicOrgPlugin(BeetsPlugin):
             k = nkey(d["artist"])
             return (k, d["album"].mb_albumartistid or "") if len(mb_ids[k]) > 1 else (k, "")
 
+        # soundtrack albums: their title says what they are
+        st_mode = self.config["soundtrack_titles"].as_str()
+        for d in info.values():
+            if not SOUNDTRACK_TITLE.search(d["title"] or ""):
+                continue
+            if d["reason"] == "no genre match" or (st_mode == "always" and d["reason"] == ""):
+                d["genre"], d["reason"], d["soundtrack"] = OST, "", st_mode == "always"
+
         votes, weight = defaultdict(Counter), defaultdict(Counter)
         for d in info.values():
             if d["reason"] == "" and d["artist"] and nkey(d["artist"]) != va_key:
@@ -1136,6 +1163,8 @@ class MusicOrgPlugin(BeetsPlugin):
                     weight[k][g] += s
         for d in info.values():
             k = artist_key(d)
+            if d.get("soundtrack"):
+                continue   # soundtrack_titles: always
             if k in votes and d["reason"] in ("", "no genre match"):
                 d["genre"] = max(votes[k], key=lambda g: (votes[k][g], weight[k][g]))
                 d["reason"] = ""
@@ -1144,7 +1173,7 @@ class MusicOrgPlugin(BeetsPlugin):
         known = self._artist_genres()
         for d in info.values():
             g = known.get(nkey(d["artist"]))
-            if g and d["reason"] in ("", "no genre match"):
+            if g and d["reason"] in ("", "no genre match") and not d.get("soundtrack"):
                 d["genre"], d["reason"] = g, ""
 
         # hand-made corrections win: "artist" or "artist - album" -> genre

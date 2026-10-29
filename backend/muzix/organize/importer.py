@@ -48,7 +48,9 @@ def beets_config(music_root: str, batch: str) -> str:
         "embedart": {"auto": False, "maxwidth": 600, "quality": 88, "ifempty": False, "remove_art_file": False},
         "musicorg": {"lastfm_cache": str(env.BEETS_DIR / "lastfm-cache.json"),
                      "overrides": str(env.DATA_DIR / "genre-overrides.yaml"),
-                     "artist_genres": str(env.BEETS_DIR / "artist-genres.json")},
+                     "artist_genres": str(env.BEETS_DIR / "artist-genres.json"),
+                     # the owner's rule: soundtracks go to Soundtrack, whatever else the artist plays
+                     "soundtrack_titles": "always"},
         "ui": {"color": False},
     }
     if settings.get("upload_genre_folders"):
