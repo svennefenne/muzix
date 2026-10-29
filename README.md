@@ -15,6 +15,8 @@ you choose from 98 colour schemes, each with a light and a dark version.
 
 - **Music library**: albums, artists, genres, playlists, likes, play history,
   full-text search, album colours, gapless-feeling queue with prefetch.
+  Reloading the page (F5) keeps the queue and carries on where the music was,
+  playing if it played (a browser that wants a click first asks for one).
   Search remembers what you pick from its results, as Spotify does: they show
   as recent searches in the empty search box and on the Search page, each to
   remove, on every device you sign in on.

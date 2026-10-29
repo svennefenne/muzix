@@ -1,12 +1,12 @@
 /** Plays the queue: one <audio> element, a Web Audio analyser for the visualizer
  * and skin backdrops, and the bookkeeping around it (play counts, resume
- * positions, media keys, prefetching the next song's render). */
+ * positions, media keys, prefetching the next song's render, carrying on after a reload). */
 
 import { api, sized } from "../api";
 import { report } from "../components/ErrorBoundary";
 import { fromEpisode, fromTrack, usePlayer, type PlayItem } from "../store/player";
 import { useUi } from "../store/ui";
-import type { Episode, Track } from "../types";
+import type { Episode, Track, User } from "../types";
 import { appPlayer } from "./app";
 import { caster, type CastHooks } from "./cast";
 import { spotify } from "./spotify";
@@ -22,6 +22,28 @@ interface Remote {
   seek(t: number): void;
   setVolume(volume: number, muted: boolean): void;
   stopMedia(): void;
+}
+
+/** What a reload (F5) carries on from, kept for this tab only. */
+const KEPT_QUEUE = "muzix.queue";
+const KEPT_AT = "muzix.at";
+
+interface Kept { user: number; index: number; position: number; playing: boolean; remote: boolean; counted: boolean }
+
+function keep(key: string, value: unknown) {
+  try {
+    sessionStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* full, or not allowed */
+  }
+}
+
+function kept<T>(key: string): T | null {
+  try {
+    return JSON.parse(sessionStorage.getItem(key) || "null");
+  } catch {
+    return null;
+  }
 }
 
 class Engine {
@@ -48,6 +70,9 @@ class Engine {
   private lastTick = 0;
   private filling: Promise<boolean> | null = null;   // autoplay looking for more
   private askedNext = "";                              // the episode whose next one was asked for
+  private reloaded = "";                               // the item a reload carries on with
+  private held = "";                                   // the item the browser held back after a reload, till a click
+  private woken = false;                               // a click just started it
 
   constructor() {
     // tells iOS this page plays music, so its audio keeps going with the screen off (Safari 17+)
@@ -136,6 +161,7 @@ class Engine {
       else if (this.autoplayDue()) this.fillAutoplay();
     });
     this.mediaSession();
+    this.acrossReloads();
   }
 
   private get remote(): Remote | null {
@@ -197,15 +223,15 @@ class Engine {
   }
 
   toggle() {
-    const cur = usePlayer.getState().current();
-    if (!cur) return;
+    const s = usePlayer.getState();
+    const cur = s.current();
+    if (!cur || this.woken) return;
     if (this.remote) return this.remote.toggle();
+    if (this.loadedKey !== cur.key) return this.load(true, s.position || undefined);
     if (cur.kind === "spotify") return spotify.toggle();
     this.ensureAudioGraph();
-    if (this.el.paused) {
-      if (this.loadedKey !== cur.key) this.load(true);
-      else this.el.play().catch(() => {});
-    } else this.el.pause();
+    if (this.el.paused) this.el.play().catch(() => {});
+    else this.el.pause();
   }
 
   next(auto = false) {
@@ -365,6 +391,8 @@ class Engine {
     const item = s.current();
     window.clearInterval(this.radioTimer);
     if (!item) return;
+    const reloaded = this.reloaded === item.key;
+    this.reloaded = "";
     this.saveProgress();
     this.scrobbled = false;
     this.prefetched = "";
@@ -374,7 +402,7 @@ class Engine {
     if (item.kind === "spotify") {
       this.el.pause();
       this.loadedKey = item.key;
-      spotify.playItem(item);
+      spotify.playItem(at === undefined ? item : { ...item, resume: at });
       this.updateMediaSession(item);
       return;
     }
@@ -396,12 +424,13 @@ class Engine {
       this.ensureAudioGraph();
       this.el.play().catch((e) => {
         usePlayer.getState().set({ playing: false, buffering: false });
+        if (e?.name !== "NotAllowedError") return;
+        // after a reload the browser may want a click first
+        if (reloaded) return this.playOnTouch(item.key);
         // a phone may refuse to start the next song while the screen is off
-        if (e?.name === "NotAllowedError") {
-          this.stalled = true;
-          this.note("refused to start");
-          report("media", `The browser wouldn't start ${item.title}: ${e.message}`);
-        }
+        this.stalled = true;
+        this.note("refused to start");
+        report("media", `The browser wouldn't start ${item.title}: ${e.message}`);
       });
     }
     if (item.kind === "radio") this.pollRadio(item);
@@ -530,6 +559,84 @@ class Engine {
     }).catch(() => {});
     window.setTimeout(poll, 4000);
     this.radioTimer = window.setInterval(poll, 15000);
+  }
+
+  // ------------------------------------------------------------ across a reload
+
+  /** The queue, and where it stood, are kept for this tab: after a reload (F5) the music carries
+   * on from there, playing if it played. Not in the app: its own player plays on through a reload. */
+  private acrossReloads() {
+    if (appPlayer.available) return;
+    const queue = kept<{ user: number; queue: PlayItem[] }>(KEPT_QUEUE);
+    const at = kept<Kept>(KEPT_AT);
+    const start = (user: User) => {
+      this.carryOn(user, queue, at);
+      let last = 0;
+      const where = () => {
+        const s = usePlayer.getState();
+        last = Date.now();
+        const playing = s.playing || s.buffering || this.held === s.current()?.key;
+        keep(KEPT_AT, { user: user.id, index: s.index, position: s.position, playing, remote: !!this.remote,
+                        counted: this.scrobbled } satisfies Kept);
+      };
+      usePlayer.subscribe((s, prev) => {
+        if (s.queue !== prev.queue) keep(KEPT_QUEUE, { user: user.id, queue: s.queue });
+        if (s.index !== prev.index || s.playing !== prev.playing || Date.now() - last > 3000) where();
+      });
+      window.addEventListener("pagehide", where);
+      document.addEventListener("visibilitychange", () => document.hidden && where());
+    };
+    // once signed in: the streams need it, and the sound quality is a preference
+    const user = useUi.getState().user;
+    if (user) return start(user);
+    const off = useUi.subscribe((u) => {
+      if (!u.user) return;
+      off();
+      start(u.user);
+    });
+  }
+
+  private carryOn(user: User, saved: { user: number; queue: PlayItem[] } | null, at: Kept | null) {
+    const s = usePlayer.getState();
+    const item = at && saved?.queue[at.index];
+    if (!item || saved.user !== user.id || at.user !== user.id || s.queue.length) return;
+    const pos = item.kind === "radio" ? 0 : at.position;
+    s.set({ queue: saved.queue, index: at.index });
+    // a speaker that played may still play: it says what (player/cast.ts), and the queue is in place meanwhile
+    const here = !at.remote && !this.remote;
+    if (here && at.playing) {
+      this.reloaded = item.key;
+      this.load(true, pos);
+    } else if (here && item.kind !== "radio" && item.kind !== "spotify") this.load(false, pos);
+    else {
+      s.set({ position: pos, duration: item.duration });
+      this.updateMediaSession(item);
+    }
+    this.scrobbled = at.counted;
+  }
+
+  /** The browser wouldn't play without being clicked first: the first click or key press carries
+   * on. A click on play itself doesn't then pause it again. */
+  private playOnTouch(key: string) {
+    const ask = "The browser held the music back after the reload: click anywhere to carry on";
+    const stop = () => {
+      this.held = "";
+      if (useUi.getState().toast?.text === ask) useUi.setState({ toast: null });
+      window.removeEventListener("click", go, true);
+      window.removeEventListener("keydown", go, true);
+    };
+    const go = () => {
+      const s = usePlayer.getState();
+      if (s.current()?.key !== key || s.playing || this.remote) return stop();
+      this.woken = true;
+      window.setTimeout(() => (this.woken = false));
+      this.ensureAudioGraph();
+      this.el.play().then(stop, () => {});
+    };
+    this.held = key;
+    window.addEventListener("click", go, true);
+    window.addEventListener("keydown", go, true);
+    useUi.getState().notify(ask, "info", { label: "Play", run: go });
   }
 
   // ------------------------------------------------------------ while the screen is off
