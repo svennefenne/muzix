@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { lazy, type RefObject, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { lazy, type RefObject, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Route, Routes, useLocation, useNavigate, useNavigationType } from "react-router-dom";
+import { queryClient } from "./actions";
 import { api } from "./api";
 import { AdminHost } from "./components/AdminMode";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -59,6 +60,43 @@ function Shortcuts() {
   return null;
 }
 
+/** F5 (or Ctrl+R) while music plays: the page's data is fetched afresh and the page drawn again,
+ * while the music plays on without a break. A new version of Muzix needs the real thing: then
+ * the page reloads, and the music carries on where it was (player/engine.ts). Ctrl+F5, Shift+F5
+ * and the browser's own button reload as ever. */
+function useSoftReload(redraw: () => void) {
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      const f5 = e.key === "F5" && !e.ctrlKey && !e.shiftKey && !e.metaKey && !e.altKey;
+      const r = (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "r";
+      const s = usePlayer.getState();
+      if ((!f5 && !r) || !(s.playing || s.buffering)) return;
+      e.preventDefault();
+      if (e.repeat) return;
+      newVersion().then((newer) => {
+        if (newer) return location.reload();
+        queryClient.invalidateQueries();
+        redraw();
+        useUi.getState().notify("Refreshed: the music plays on");
+      });
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [redraw]);
+}
+
+/** Whether the server has a newer Muzix than this page runs: its page loads other scripts. */
+async function newVersion() {
+  const ours = [...document.scripts].map((el) => el.getAttribute("src") || "").filter((src) => src.startsWith("/assets/"));
+  try {
+    const r = await fetch("/", { cache: "no-store" });
+    const theirs = r.ok ? [...(await r.text()).matchAll(/<script[^>]*\ssrc="(\/assets\/[^"]+)"/g)].map((m) => m[1]) : [];
+    return theirs.length > 0 && theirs.join(" ") !== ours.join(" ");
+  } catch {
+    return false;
+  }
+}
+
 /** Where each page was scrolled, by history entry: going back (or forward) returns there; a new
  * page starts at the top. */
 const scrolledTo = new Map<string, number>();
@@ -111,7 +149,9 @@ function Shell() {
   const loc = useLocation();
   const npPanel = useUi((s) => s.npPanel);
   const scroll = useRef<HTMLDivElement>(null);
+  const [drawn, setDrawn] = useState(0);
   useScrollMemory(scroll);
+  useSoftReload(useCallback(() => setDrawn((n) => n + 1), []));
   return (
     <div className="shell">
       <ThemeApplier />
@@ -121,7 +161,7 @@ function Shell() {
       <Sidebar />
       <main className="frame">
         <div className="frame-scroll" ref={scroll}>
-          <ErrorBoundary resetKey={loc.pathname}>
+          <ErrorBoundary resetKey={loc.pathname} key={drawn}>
           <Suspense fallback={<div className="page"><Loading /></div>}>
             <Routes>
               <Route path="/" element={<Home />} />
