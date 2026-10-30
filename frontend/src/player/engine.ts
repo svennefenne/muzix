@@ -1,6 +1,7 @@
-/** Plays the queue: one <audio> element, a Web Audio analyser for the visualizer
- * and skin backdrops, and the bookkeeping around it (play counts, resume
- * positions, media keys, prefetching the next song's render, carrying on after a reload). */
+/** Plays the queue: two <audio> elements (one plays, the other holds the next song, so one
+ * song follows another without a gap), a Web Audio analyser for the visualizer and skin
+ * backdrops, and the bookkeeping around it (play counts, resume positions, media keys,
+ * riding out a dropped connection, carrying on after a reload). */
 
 import { api, sized } from "../api";
 import { report } from "../components/ErrorBoundary";
@@ -10,6 +11,7 @@ import type { Episode, Track, User } from "../types";
 import { appPlayer } from "./app";
 import { caster, type CastHooks } from "./cast";
 import { spotify } from "./spotify";
+import { onMobileData, onNetworkChange, stash } from "./stash";
 
 /** What plays the queue instead of the page's own audio element: a Cast speaker, or the Android app's player. */
 interface Remote {
@@ -46,21 +48,32 @@ function kept<T>(key: string): T | null {
   }
 }
 
+/** What the spare element can load ahead: files, not live radio or Spotify. */
+const loadsAhead = (it: PlayItem) => it.kind !== "radio" && it.kind !== "spotify";
+
+/** What's downloaded whole away from wifi: songs and episodes, not hours-long audiobook files. */
+const stashable = (it: PlayItem) => loadsAhead(it) && it.duration <= 7200 && (it.duration > 0 || it.kind === "track" || it.kind === "online");
+
 class Engine {
-  el: HTMLAudioElement;
+  el: HTMLAudioElement;          // the element that plays
+  private spare: HTMLAudioElement;   // the next song, loaded and waiting
+  private spareKey = "";
+  private spareAt = 0;
+  private spareRefused = false;  // the browser wouldn't start the spare by itself (iOS): one element it is
+  private drawn = -1;            // shuffle's pick for the song after this one, drawn early so it can load
   ctx: AudioContext | null = null;
   analyser: AnalyserNode | null = null;
   private offset = 0;            // where a progressive stream started (seconds)
   private loadedKey = "";
   private scrobbled = false;
-  private prefetched = "";
+  private retryTimer: number | undefined;   // a song waiting for the connection to come back
   private lastSave = 0;
   private radioTimer: number | undefined;
   private stallTimer: number | undefined;   // a station that stops delivering
   private radioRetries = 0;
   private steadyTimer: number | undefined;
   private freq: Uint8Array<ArrayBuffer> | null = null;
-  private copy: MediaStream | null = null;          // the element's sound, copied for the analyser
+  private copies = new Map<HTMLAudioElement, MediaStream>();   // each element's sound, copied for the analyser
   private copyTrack = "";
   private copySource: MediaStreamAudioSourceNode | null = null;
   private hiddenAt = 0;          // while the page is hidden (the screen off): since when, and what playback did
@@ -78,38 +91,10 @@ class Engine {
     // tells iOS this page plays music, so its audio keeps going with the screen off (Safari 17+)
     const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
     if (session) session.type = "playback";
-    this.el = new Audio();
-    this.el.preload = "auto";
-    const el = this.el;
-    // first, so they see the song that ended rather than the next one
-    for (const ev of ["playing", "waiting", "stalled", "pause", "ended", "error"]) el.addEventListener(ev, () => this.note(ev));
+    this.el = this.element();
+    this.spare = this.element();
     document.addEventListener("visibilitychange", () => this.onVisibility());
-    el.addEventListener("timeupdate", () => this.onTime());
-    el.addEventListener("playing", () => {
-      usePlayer.getState().set({ playing: true, buffering: false, error: "" });
-      this.listen();
-      window.clearTimeout(this.stallTimer);
-      // a minute of steady radio earns the reconnects back
-      window.clearTimeout(this.steadyTimer);
-      this.steadyTimer = window.setTimeout(() => (this.radioRetries = 0), 60_000);
-    });
-    el.addEventListener("pause", () => usePlayer.getState().set({ playing: false }));
-    el.addEventListener("waiting", () => {
-      usePlayer.getState().set({ buffering: true });
-      window.clearTimeout(this.steadyTimer);
-      // radio that stalls this long gets a fresh connection
-      if (usePlayer.getState().current()?.kind === "radio" && !this.remote) {
-        window.clearTimeout(this.stallTimer);
-        this.stallTimer = window.setTimeout(() => this.reconnectRadio(), 12_000);
-      }
-    });
-    el.addEventListener("canplay", () => usePlayer.getState().set({ buffering: false }));
-    el.addEventListener("ended", () => this.onEnded());
-    el.addEventListener("error", () => this.onError());
-    el.addEventListener("loadedmetadata", () => {
-      const cur = usePlayer.getState().current();
-      if (cur && !cur.duration && isFinite(el.duration)) usePlayer.getState().set({ duration: el.duration });
-    });
+    onNetworkChange(() => this.stashAhead());
     this.applyVolume();
     spotify.onEnded = () => this.next(true);
     // on a Cast speaker (or in the Android app) that plays; we keep the books (plays, resume points, radio titles)
@@ -117,6 +102,8 @@ class Engine {
       onStart: () => {
         this.el.pause();
         spotify.pause();
+        this.dropSpare();
+        this.stashAhead();
       },
       onItem: (key) => {
         const item = usePlayer.getState().queue.find((i) => i.key === key);
@@ -152,8 +139,11 @@ class Engine {
     appPlayer.connect();
     usePlayer.subscribe((s, prev) => {
       if (s.volume !== prev.volume || s.muted !== prev.muted) this.applyVolume();
-      if (s.speed !== prev.speed) el.playbackRate = s.speed;
-      if (s.index !== prev.index || s.queue !== prev.queue || s.repeat !== prev.repeat) this.upNext();
+      if (s.speed !== prev.speed) this.el.playbackRate = s.speed;
+      if (s.index !== prev.index || s.queue !== prev.queue || s.repeat !== prev.repeat || s.shuffle !== prev.shuffle) {
+        this.upNext();
+        this.stashAhead();
+      }
     });
     useUi.subscribe((u, prev) => {
       if (u.autoplay === prev.autoplay) return;
@@ -166,6 +156,34 @@ class Engine {
 
   private get remote(): Remote | null {
     return caster.active ? caster : appPlayer.active ? appPlayer : null;
+  }
+
+  /** One of the two elements. What happens counts only from the one that plays. */
+  private element() {
+    const el = new Audio();
+    el.preload = "auto";
+    const on = (ev: string, fn: () => void) => el.addEventListener(ev, () => el === this.el && fn());
+    // first, so they see the song that ended rather than the next one
+    for (const ev of ["playing", "waiting", "stalled", "pause", "ended", "error"]) on(ev, () => this.note(ev));
+    on("timeupdate", () => this.onTime());
+    on("playing", () => {
+      usePlayer.getState().set({ playing: true, buffering: false, error: "" });
+      this.listen();
+      window.clearTimeout(this.stallTimer);
+      // a minute of steady radio earns the reconnects back
+      window.clearTimeout(this.steadyTimer);
+      this.steadyTimer = window.setTimeout(() => (this.radioRetries = 0), 60_000);
+    });
+    on("pause", () => usePlayer.getState().set({ playing: false }));
+    on("waiting", () => this.onWaiting());
+    on("canplay", () => usePlayer.getState().set({ buffering: false }));
+    on("ended", () => this.onEnded());
+    on("error", () => this.onError());
+    on("loadedmetadata", () => {
+      const cur = usePlayer.getState().current();
+      if (cur && !cur.duration && isFinite(el.duration)) usePlayer.getState().set({ duration: el.duration });
+    });
+    return el;
   }
 
   // ------------------------------------------------------------ queue control
@@ -239,11 +257,7 @@ class Engine {
     if (!s.queue.length) return;
     if (this.remote) return this.remote.next();
     if (auto && s.repeat === "one") return this.again();
-    let idx = s.index + 1;
-    if (s.shuffle && s.queue.length > 1) {
-      do idx = Math.floor(Math.random() * s.queue.length);
-      while (idx === s.index);
-    }
+    let idx = s.shuffle && s.queue.length > 1 ? this.ahead(1)[0] : s.index + 1;
     if (idx >= s.queue.length) {
       if (s.repeat === "all") idx = 0;
       else {
@@ -284,10 +298,12 @@ class Engine {
 
   stop() {
     window.clearTimeout(this.stallTimer);
+    window.clearTimeout(this.retryTimer);
     this.el.pause();
     this.el.removeAttribute("src");
     this.el.load();
     this.loadedKey = "";
+    this.dropSpare();
     spotify.pause();
   }
 
@@ -395,9 +411,9 @@ class Engine {
     this.reloaded = "";
     this.saveProgress();
     this.scrobbled = false;
-    this.prefetched = "";
     this.radioRetries = 0;
     window.clearTimeout(this.stallTimer);
+    window.clearTimeout(this.retryTimer);
     s.set({ position: at ?? item.resume ?? 0, duration: item.duration, liveTitle: "", error: "", buffering: autoplay });
     if (item.kind === "spotify") {
       this.el.pause();
@@ -410,7 +426,13 @@ class Engine {
     const start = at ?? item.resume ?? 0;
     this.offset = 0;
     this.loadedKey = item.key;
-    this.el.src = this.srcFor(item, 0);
+    // the next song, loaded while the last one played, takes over without a gap
+    const ahead = this.spareKey === item.key && start < 0.5 && !this.spareRefused && !this.spare.error;
+    if (ahead) this.swap();
+    else {
+      this.dropSpare();
+      this.el.src = stash.url(item.key) ?? this.srcFor(item, 0);
+    }
     this.el.playbackRate = item.kind === "book" || item.kind === "episode" ? s.speed : 1;
     if (start > 0.5) {
       // native files seek in place; streams that can't are restarted at the offset
@@ -427,6 +449,13 @@ class Engine {
         if (e?.name !== "NotAllowedError") return;
         // after a reload the browser may want a click first
         if (reloaded) return this.playOnTouch(item.key);
+        // a browser that only lets an element play that was started by a tap (iOS): back to the one
+        // that played, which loads each song itself from now on
+        if (ahead) {
+          this.spareRefused = true;
+          this.swap();
+          return this.load(true);
+        }
         // a phone may refuse to start the next song while the screen is off
         this.stalled = true;
         this.note("refused to start");
@@ -435,7 +464,75 @@ class Engine {
     }
     if (item.kind === "radio") this.pollRadio(item);
     this.updateMediaSession(item);
-    this.prefetchNext();
+    this.stashAhead();
+  }
+
+  // ------------------------------------------------------------ the next song, ahead of time
+
+  /** The items that play after this one, as far as `n` (shuffle knows only its next pick). */
+  private ahead(n: number): number[] {
+    const s = usePlayer.getState();
+    if (s.index < 0) return [];
+    if (s.shuffle && s.queue.length > 1) {
+      if (this.drawn < 0 || this.drawn >= s.queue.length || this.drawn === s.index) {
+        do this.drawn = Math.floor(Math.random() * s.queue.length);
+        while (this.drawn === s.index);
+      }
+      return [this.drawn];
+    }
+    const out: number[] = [];
+    for (let i = s.index + 1; out.length < n; i++) {
+      if (i >= s.queue.length) {
+        if (s.repeat !== "all") break;
+        i = 0;
+      }
+      if (i === s.index) break;
+      out.push(i);
+    }
+    return out;
+  }
+
+  /** The next song loads into the spare element while this one plays, and takes over the moment
+   * this one ends. That also starts a chip tune's render, or an online tune's download. */
+  private readyNext() {
+    const s = usePlayer.getState();
+    const next = s.repeat === "one" ? undefined : s.queue[this.ahead(1)[0] ?? -1];
+    if (!next || this.remote || this.spareRefused || !loadsAhead(next) || (next.resume ?? 0) > 0.5) return;
+    const whole = stash.url(next.key);
+    // loaded already, unless the whole file has come since; one that failed (no connection) tries again now and then
+    if (this.spareKey === next.key && (!whole || this.spare.src === whole) && (!this.spare.error || Date.now() - this.spareAt < 5000)) return;
+    this.spareKey = next.key;
+    this.spareAt = Date.now();
+    this.spare.src = whole ?? this.srcFor(next, 0);
+  }
+
+  /** The spare plays from now on; the element that played waits for the song after. */
+  private swap() {
+    const done = this.el;
+    this.el = this.spare;
+    this.spare = done;
+    this.spareKey = "";
+    done.pause();
+    done.removeAttribute("src");
+    done.load();
+    this.applyVolume();
+    this.listen();
+  }
+
+  private dropSpare() {
+    this.spareKey = "";
+    if (!this.spare.getAttribute("src")) return;
+    this.spare.removeAttribute("src");
+    this.spare.load();
+  }
+
+  /** Away from wifi: the song that plays and the next two, downloaded whole (player/stash.ts). */
+  private stashAhead() {
+    const s = usePlayer.getState();
+    const keep = [this.loadedKey, this.spareKey];
+    if (this.remote || !onMobileData() || s.index < 0) return stash.set([], keep);
+    const items = [s.index, ...this.ahead(2)].map((i) => s.queue[i]).filter((it) => it && stashable(it));
+    stash.set(items.map((it) => ({ key: it.key, url: this.srcFor(it, 0) })), keep);
   }
 
   seek(t: number, play?: boolean) {
@@ -448,8 +545,9 @@ class Engine {
     if (this.remote) return this.remote.seek(t);
     const local = t - this.offset;
     const el = this.el;
-    const canSeek = el.seekable.length > 0 && local >= 0 && el.seekable.end(el.seekable.length - 1) >= local - 1
-      && isFinite(el.duration);
+    const whole = el.src.startsWith("blob:");
+    const canSeek = whole || (el.seekable.length > 0 && local >= 0 && el.seekable.end(el.seekable.length - 1) >= local - 1
+      && isFinite(el.duration));
     if (canSeek) {
       el.currentTime = local;
     } else {
@@ -479,7 +577,7 @@ class Engine {
     if ((item.kind === "track" || item.kind === "online") && item.duration && pos > item.duration + 1.5) this.onEnded();
   }
 
-  /** Bookkeeping as playback moves on, here or on a Cast speaker: plays, resume points, prefetch. */
+  /** Bookkeeping as playback moves on, here or on a Cast speaker: plays, resume points, the next song. */
   private progress(pos: number, mediaDuration = 0) {
     const s = usePlayer.getState();
     const item = s.current();
@@ -491,7 +589,7 @@ class Engine {
       api.post("/api/plays", { track_id: item.id }).catch(() => {});
     }
     if (Date.now() - this.lastSave > 10000) this.saveProgress();
-    if (dur && dur - pos < 30) this.prefetchNext();
+    if (dur && dur - pos < 45 && !this.remote) this.readyNext();
   }
 
   private onEnded() {
@@ -515,24 +613,81 @@ class Engine {
     if (this.remote) return;
     const item = usePlayer.getState().current();
     if (!item || !this.el.getAttribute("src")) return;
+    if (item.kind === "radio") return this.failed(item);
+    // the connection dropped: the downloaded copy plays on, or the song waits for the connection
+    const lost = () => this.rescue() || this.awaitConnection(item);
+    if (this.el.error?.code === MediaError.MEDIA_ERR_NETWORK) return lost();
+    // a song that wouldn't start says only that it couldn't (Chrome): the file, or the connection?
+    const err = this.el.error;
+    const src = this.el.currentSrc;
+    reachable().then((up) => {
+      if (usePlayer.getState().current()?.key !== item.key) return;
+      if (up) this.failed(item, err, src);
+      else lost();
+    });
+  }
+
+  private failed(item: PlayItem, err = this.el.error, src = this.el.currentSrc) {
     if (item.kind === "radio" && this.reconnectRadio()) return;
     const msg = item.kind === "radio" ? "The station isn't answering" : `Couldn't play ${item.title}`;
     usePlayer.getState().set({ error: msg, playing: false, buffering: false });
     useUi.getState().notify(msg, "error");
-    const err = this.el.error;
-    report("media", `${msg}: media error ${err?.code ?? "?"} ${err?.message || ""}`, `\n${this.el.currentSrc}`);
+    report("media", `${msg}: media error ${err?.code ?? "?"} ${err?.message || ""}`, `\n${src}`);
     if (item.kind === "track" || item.kind === "online") window.setTimeout(() => {
       if (usePlayer.getState().current()?.key === item.key) this.next(true);
     }, 2500);
   }
 
-  private prefetchNext() {
+  // ------------------------------------------------------------ a dropped connection
+
+  /** The music ran dry. Radio that stays silent gets a fresh connection; a song with a copy
+   * downloaded ahead plays on from it; a song that stops halfway for long is started again
+   * where it stopped (a connection that hung). */
+  private onWaiting() {
+    const item = usePlayer.getState().current();
+    usePlayer.getState().set({ buffering: true });
+    window.clearTimeout(this.steadyTimer);
+    if (!item || this.remote) return;
+    window.clearTimeout(this.stallTimer);
+    if (item.kind === "radio") this.stallTimer = window.setTimeout(() => this.reconnectRadio(), 12_000);
+    else if (!this.rescue() && this.el.currentTime > 0) {
+      this.stallTimer = window.setTimeout(() => usePlayer.getState().current()?.key === item.key && this.awaitConnection(item), 20_000);
+    }
+  }
+
+  /** Over to the copy downloaded ahead, at the same spot. */
+  private rescue(): boolean {
+    const cur = usePlayer.getState().current();
+    const whole = cur && stash.url(cur.key);
+    if (!whole || this.el.src === whole) return false;
+    const at = this.offset + this.el.currentTime;
+    const el = this.el;
+    this.offset = 0;
+    el.src = whole;
+    el.addEventListener("loadedmetadata", () => (el.currentTime = at), { once: true });
+    el.play().catch(() => {});
+    this.note("over to the downloaded copy");
+    return true;
+  }
+
+  /** No connection and no copy: the song waits, and carries on where it stopped once the
+   * connection is back (out of a tunnel, say), instead of skipping song after song. */
+  private awaitConnection(item: PlayItem) {
     const s = usePlayer.getState();
-    const next = s.queue[s.index + 1];
-    if (!next || (next.kind !== "track" && next.kind !== "online") || this.prefetched === next.key) return;
-    this.prefetched = next.key;
-    // starts the render of chiptunes/trackers (and an online tune's download) so the next song starts at once
-    fetch(next.src + (next.src.includes("?") ? "&" : "?") + "prefetch=1", { credentials: "same-origin" }).catch(() => {});
+    const at = s.position;
+    const counted = this.scrobbled;
+    s.set({ buffering: true, error: "Waiting for the connection…" });
+    window.clearTimeout(this.retryTimer);
+    const again = () => {
+      window.removeEventListener("online", again);
+      window.clearTimeout(this.retryTimer);
+      if (usePlayer.getState().current()?.key !== item.key || this.remote) return;
+      this.load(true, at);
+      this.scrobbled = counted;
+      usePlayer.getState().set({ error: "Waiting for the connection…" });   // till it plays
+    };
+    window.addEventListener("online", again);
+    this.retryTimer = window.setTimeout(again, 5000);
   }
 
   saveProgress(finished = false) {
@@ -697,18 +852,21 @@ class Engine {
       ctx.addEventListener("statechange", () => {
         this.note(`audio graph ${ctx.state}`);
         // the music itself plays through the graph here: stopping it silenced the music
-        if (this.hiddenAt && !this.copy && ctx.state !== "running" && !this.el.paused) this.stalled = true;
+        if (this.hiddenAt && !this.copies.size && ctx.state !== "running" && !this.el.paused) this.stalled = true;
       });
-      const el = this.el as HTMLAudioElement & { captureStream?: () => MediaStream };
-      if (typeof el.captureStream === "function") {
-        this.copy = el.captureStream();
-        this.copy.addEventListener("addtrack", () => this.listen());
+      const els = [this.el, this.spare] as (HTMLAudioElement & { captureStream?: () => MediaStream })[];
+      if (typeof els[0].captureStream === "function") {
+        for (const el of els) {
+          const copy = el.captureStream!();
+          copy.addEventListener("addtrack", () => this.listen());
+          this.copies.set(el, copy);
+        }
         const silent = ctx.createGain();
         silent.gain.value = 0;
         this.analyser.connect(silent).connect(ctx.destination);   // keeps the analyser running
         this.listen();
       } else {
-        ctx.createMediaElementSource(this.el).connect(this.analyser);
+        for (const el of els) ctx.createMediaElementSource(el).connect(this.analyser);
         this.analyser.connect(ctx.destination);
       }
     } catch {
@@ -716,14 +874,15 @@ class Engine {
     }
   }
 
-  /** Points the analyser at the copy's newest audio track: every song brings one, and Chrome
-   * leaves the old ones in the stream, silent. */
+  /** Points the analyser at the playing element's newest audio track: every song brings one, and
+   * Chrome leaves the old ones in the stream, silent. */
   private listen() {
-    if (!this.ctx || !this.copy || !this.analyser) return;
-    const tracks = this.copy.getAudioTracks();
+    const copy = this.copies.get(this.el);
+    if (!this.ctx || !copy || !this.analyser) return;
+    const tracks = copy.getAudioTracks();
     const track = tracks.at(-1);
     for (const old of tracks.slice(0, -1)) {
-      this.copy.removeTrack(old);
+      copy.removeTrack(old);
       old.stop();
     }
     if (!track || track.id === this.copyTrack) return;
@@ -756,7 +915,7 @@ class Engine {
   private applyVolume() {
     const s = usePlayer.getState();
     if (this.remote) return this.remote.setVolume(s.muted ? 0 : s.volume, s.muted);
-    this.el.volume = s.muted ? 0 : s.volume ** 1.6;   // perceptual curve
+    for (const el of [this.el, this.spare]) el.volume = s.muted ? 0 : s.volume ** 1.6;   // perceptual curve
     spotify.setVolume(s.muted ? 0 : s.volume);
   }
 
@@ -783,6 +942,11 @@ class Engine {
     });
     document.title = `${live || item.title} · ${item.artist || useUi.getState().siteName}`;
   }
+}
+
+/** Whether Muzix answers: a song that won't start may just be out of reach. */
+function reachable() {
+  return fetch("/api/health", { cache: "no-store", signal: AbortSignal.timeout(8000) }).then((r) => r.ok, () => false);
 }
 
 function isLastPart(item: PlayItem) {

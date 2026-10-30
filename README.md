@@ -14,9 +14,16 @@ you choose from 98 colour schemes, each with a light and a dark version.
 ## Features
 
 - **Music library**: albums, artists, genres, playlists, likes, play history,
-  full-text search, album colours, gapless-feeling queue with prefetch.
-  Reloading the page (F5) keeps the queue and carries on where the music was,
-  playing if it played (a browser that wants a click first asks for one).
+  full-text search, album colours, a gapless queue (the next song loads
+  while one plays and takes over the moment it ends). On mobile data (Chrome
+  on Android says when) the song that plays and the next two are downloaded
+  whole, so a tunnel or a dead spot doesn't stop the music; a song without a
+  copy waits for the connection and carries on where it stopped, instead of
+  being skipped.
+  F5 (or Ctrl+R) while music plays refreshes the page without a break in it.
+  A real reload (the browser's button, Ctrl+F5, a new version of Muzix) keeps
+  the queue and carries on where the music was, playing if it played (a
+  browser that wants a click first asks for one).
   Search remembers what you pick from its results, as Spotify does: they show
   as recent searches in the empty search box and on the Search page, each to
   remove, on every device you sign in on.
@@ -198,7 +205,9 @@ server" in the account menu asks again. The Cast button (or the output switcher
 in the notification) moves the queue to a Google Cast speaker and back, with the
 same signed links as casting from Chrome, so the app has to be connected to
 Muzix's https address for it. Spotify playback isn't in the app; open Muzix in
-Chrome for that.
+Chrome for that. Away from wifi (or on a phone's hotspot) the app downloads the
+song that plays and the next two into its cache (1 GB at most), so the music
+plays on through tunnels; a dropped connection is waited out, never skipped.
 
 Install it from <https://github.com/svennefenne/muzix/releases/latest/download/muzix-android.apk>
 (the phone asks once to allow installs from the browser); later versions install

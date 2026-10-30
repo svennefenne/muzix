@@ -29,7 +29,7 @@ android {
         minSdk = 29
         targetSdk = 35
         versionCode = commits.get()
-        versionName = "0.3.1"
+        versionName = "0.4.0"
     }
 
     buildFeatures {
@@ -68,6 +68,9 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.11.1")
     implementation("androidx.media3:media3-session:1.11.1")
     implementation("androidx.media3:media3-cast:1.11.1")
+    // the songs downloaded ahead (Buffering.kt)
+    implementation("androidx.media3:media3-datasource:1.11.1")
+    implementation("androidx.media3:media3-database:1.11.1")
     // the speaker picker's dialogs
     implementation("androidx.mediarouter:mediarouter:1.8.1")
     implementation("androidx.appcompat:appcompat:1.7.1")
