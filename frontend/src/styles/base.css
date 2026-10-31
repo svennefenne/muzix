@@ -662,7 +662,7 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
 .np-artist-link:hover { color: var(--text); text-decoration-color: currentColor; }
 
 /* the big cover turns over to the album's songs */
-.np-flip { position: relative; aspect-ratio: 1; perspective: 1800px; }
+.np-flip { position: relative; aspect-ratio: 1; perspective: 1800px; touch-action: pan-y; }   /* sideways is a swipe to another song */
 .np-flip-inner { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform .6s cubic-bezier(.2, .75, .25, 1); }
 .np-flip.flipped .np-flip-inner { transform: rotateY(180deg); }
 .np-face { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; border-radius: calc(var(--radius) * .7); }

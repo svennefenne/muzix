@@ -20,7 +20,7 @@ interface Remote {
   jump(index: number): unknown;
   toggle(): unknown;
   next(): void;
-  prev(): void;
+  prev(always?: boolean): void;
   seek(t: number): void;
   setVolume(volume: number, muted: boolean): void;
   stopMedia(): void;
@@ -288,10 +288,12 @@ class Engine {
     usePlayer.getState().set({ playing: false });
   }
 
-  prev() {
-    if (this.remote) return this.remote.prev();
+  /** The song before; a few seconds into a song it starts over instead, unless `always` (a
+   * swipe, where the cover before is what comes in). */
+  prev(always = false) {
+    if (this.remote) return this.remote.prev(always);
     const s = usePlayer.getState();
-    if (s.position > 4 || s.index <= 0) return this.seek(0);
+    if ((s.position > 4 && !always) || s.index <= 0) return this.seek(0);
     s.set({ index: s.index - 1 });
     this.load(true);
   }

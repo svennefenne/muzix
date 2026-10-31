@@ -322,10 +322,10 @@ class Caster {
     else if (s.repeat === "all") this.loadQueue(0);
   }
 
-  prev() {
+  prev(always = false) {
     const m = this.media();
     const s = usePlayer.getState();
-    if (s.position > 4 || s.index <= 0) return this.seek(0);
+    if ((s.position > 4 && !always) || s.index <= 0) return this.seek(0);
     const onSpeaker = m?.items?.findIndex((i) => i.itemId === m.currentItemId) ?? -1;
     if (m && onSpeaker > 0) m.queuePrev(() => {}, () => {});
     else this.loadQueue(s.index - 1);

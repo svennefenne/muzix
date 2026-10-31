@@ -191,10 +191,10 @@ class AppPlayer {
     else if (s.repeat === "all" && this.playableFrom(0, 1) >= 0) this.loadQueue(this.playableFrom(0, 1));
   }
 
-  prev() {
+  prev(always = false) {
     const s = usePlayer.getState();
     const i = this.playableFrom(s.index - 1, -1);
-    if (s.position > 4 || i < 0) return this.seek(0);
+    if ((s.position > 4 && !always) || i < 0) return this.seek(0);
     this.jump(i);
   }
 
