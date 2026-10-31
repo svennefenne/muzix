@@ -3,6 +3,7 @@ import { ChevronDown, Heart, History, ListMusic, MicVocal, Pause, Play, Plus, Re
 import { Fragment, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, fmtNumber, fmtTime } from "../api";
+import { useBackCloses } from "../backCloses";
 import { playTracks, queryClient, toggleQueuedLike, usePlaylistPicker } from "../actions";
 import { CastButton, CastNote } from "../components/CastButton";
 import { hasLyrics, LyricsCard, LyricsLines, LyricsSource, noLyrics, tinted, useLyrics } from "../components/Lyrics";
@@ -266,6 +267,7 @@ export function LyricsSheet() {
     window.addEventListener("keydown", key, true);
     return () => window.removeEventListener("keydown", key, true);
   }, [open, setOpen]);
+  useBackCloses("muzixLyrics", open, setOpen);
   if (!open || !cur) return null;
   const look = tinted(q.data, "lyr-sheet");
   return (
@@ -302,6 +304,7 @@ export function NowPlaying() {
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, [setNowPlayingOpen]);
+  useBackCloses("muzixPlayer", nowPlayingOpen, setNowPlayingOpen);
   if (!nowPlayingOpen) return null;
   return (
     <div className="nowplaying">
@@ -318,7 +321,8 @@ export function NowPlaying() {
               <div className="np-big-title">{live || cur.title}</div>
               <div className="lede" style={{ fontSize: 20 }}>
                 {live ? cur.title : cur.artistId
-                  ? <Link className="np-artist-link" to={`/artist/${cur.artistId}`} onClick={() => setNowPlayingOpen(false)}>{cur.artist}</Link>
+                  // the artist's page takes the player's place in the history: back goes to the page under it
+                  ? <Link className="np-artist-link" to={`/artist/${cur.artistId}`} replace onClick={() => setNowPlayingOpen(false)}>{cur.artist}</Link>
                   : cur.artist}
               </div>
               <Visualizer />
