@@ -18,7 +18,7 @@ Muzix is a self-hosted, Spotify-style player for everything you own: your music 
 
 ## Positioning
 
-- **The app dresses up for what's playing.** Genre skins restyle the whole interface for the music (death metal turns it into a death metal record, chiptunes get pixel fonts and CRT scanlines, jazz gets Blue Note duotones). When no skin applies, users choose from 98 colour schemes, each with a light and a dark version.
+- **The app dresses up for what's playing.** Genre skins restyle the whole interface for the music (death metal turns it into a death metal record, chiptunes get pixel fonts and CRT scanlines, jazz gets Blue Note colours and art deco type). Covers are never restyled: a skin dresses the interface around them. When no skin applies, users choose from 98 colour schemes, each with a light and a dark version.
 - **Everything in one place.** The music library, VGM, audiobooks, podcasts, radio and Spotify share one library, search, queue and player.
 - **Chiptunes done right.** Every tracker and console format plays natively, a game's loop points are honoured (intro, N loops, fade) and multi-song files show each song as its own track. VGM is a first-class section, not an afterthought.
 - **Built around a real organizing pipeline.** Uploads are matched with MusicBrainz (beets), get cover art and a main genre, and are filed as `Genre/Artist/Artist - Year - Album/…`, the same scheme as the owner's library.

@@ -60,7 +60,6 @@ export function ThemeApplier() {
     root.dataset.skin = s?.id || "";
     root.dataset.headline = s?.headline || "none";
     root.dataset.frame = s?.frame || "plain";
-    root.dataset.artfx = s?.artfx || "none";
     root.dataset.backdrop = s?.backdrop || "space";
     root.style.setProperty("--font-display", s?.display || "'Saira', system-ui, sans-serif");
     root.style.setProperty("--font-ui", s?.ui || "'Saira', system-ui, sans-serif");

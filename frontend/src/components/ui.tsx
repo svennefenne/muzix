@@ -11,8 +11,7 @@ export function Art({ src, name, size = 300, round, className = "", onClick }: {
   useEffect(() => {
     setFailed(false);
   }, [src]);
-  const pixel = document.documentElement.dataset.artfx === "pixel";
-  const url = src ? sized(src, pixel ? 64 : size) : src;
+  const url = src ? sized(src, size) : src;
   const hue = hashHue(name || "");
   return (
     <div className={`art ${round ? "round" : ""} ${className}`} onClick={onClick}

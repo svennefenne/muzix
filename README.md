@@ -6,10 +6,11 @@ your Spotify account built in. Runs as one Docker container (made for Unraid).
 
 **The app dresses up for what's playing.** Put on death metal and the whole
 interface turns into a death metal record: bone-on-blood blackletter, a thorned
-frame, gritty covers and embers rising with the bass. Psytrance gets UV neon and
-a fractal mandala, chiptunes get pixel fonts, CRT scanlines and a warp starfield,
-jazz gets Blue Note duotones. There are 25 genre skins, and when none applies
-you choose from 98 colour schemes, each with a light and a dark version.
+frame and embers rising with the bass. Psytrance gets UV neon and a fractal
+mandala, chiptunes get pixel fonts, CRT scanlines and a warp starfield, jazz gets
+Blue Note colours and art deco type. The covers always stay as they are: a skin
+dresses the interface around them. There are 25 genre skins, and when none
+applies you choose from 98 colour schemes, each with a light and a dark version.
 
 ## Features
 
