@@ -4,7 +4,7 @@
 import {
   BookOpen, Gamepad2, Heart, House, Library, LogOut, MoreHorizontal, Music2, Pause, Play, Podcast, Radio, Search, Settings, Shield, SkipForward, X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { toggleQueuedLike } from "../actions";
 import { api } from "../api";
@@ -13,6 +13,7 @@ import { Art } from "../components/ui";
 import { engine } from "../player/engine";
 import { usePlayer } from "../store/player";
 import { useUi } from "../store/ui";
+import { useSwipeSongs } from "../swipeSongs";
 
 const MORE = [
   { to: "/vgm", label: "VGM", sub: "Chiptunes and tracker music", icon: Gamepad2 },
@@ -31,18 +32,25 @@ export function MiniPlayer() {
   const castOn = usePlayer((s) => s.castState === "connected");
   const hasNext = usePlayer((s) => s.index < s.queue.length - 1 || s.repeat === "all" || (s.shuffle && s.queue.length > 1));
   const open = useUi((s) => s.setNowPlayingOpen);
+  const box = useRef<HTMLDivElement>(null);
+  const slide = useRef<HTMLDivElement>(null);
+  const swiped = useSwipeSongs(box, !!cur && cur.kind !== "book" && cur.kind !== "episode", slide);
   if (!cur) return <div className="miniplayer-slot" />;
   return (
     <div className="miniplayer-slot">
-      {/* a tap opens the full player, except on its buttons */}
-      <div className="miniplayer" role="button" tabIndex={0} aria-label="Open the player"
-           onClick={(e) => !(e.target as Element).closest("button") && open(true)}
+      {/* a tap opens the full player, except on its buttons; a swipe changes the song */}
+      <div ref={box} className="miniplayer" role="button" tabIndex={0} aria-label="Open the player"
+           onClick={(e) => !swiped.current && !(e.target as Element).closest("button") && open(true)}
            onKeyDown={(e) => e.key === "Enter" && e.target === e.currentTarget && open(true)}>
-        <Art src={cur.art} name={cur.album || cur.title} size={96} />
-        <div className="mp-text">
-          <div className="mp-title ellipsis">{live || cur.title}</div>
-          {castOn && !error ? <CastNote className="mp-sub cast-note" />
-            : <div className={`mp-sub ellipsis ${error ? "error-text" : ""}`}>{error || (live ? cur.title : cur.artist)}</div>}
+        <div className="mp-now">
+          <div ref={slide} className="mp-slide">
+            <Art src={cur.art} name={cur.album || cur.title} size={96} />
+            <div className="mp-text">
+              <div className="mp-title ellipsis">{live || cur.title}</div>
+              {castOn && !error ? <CastNote className="mp-sub cast-note" />
+                : <div className={`mp-sub ellipsis ${error ? "error-text" : ""}`}>{error || (live ? cur.title : cur.artist)}</div>}
+            </div>
+          </div>
         </div>
         {/* cast and like go first when the screen is narrow (see .miniplayer-slot) */}
         <CastButton className="mp-play mp-cast" size={20} />

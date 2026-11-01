@@ -1181,7 +1181,11 @@ button.lyr:hover { color: var(--lyr-now); text-decoration: underline; text-decor
     align-items: center;
     height: 56px; margin-bottom: 4px; padding: 0 4px 0 8px; border-radius: 8px; overflow: hidden; cursor: pointer;
     background: color-mix(in srgb, var(--primary) 22%, var(--surface-2)); box-shadow: 0 8px 24px #0008;
+    touch-action: pan-y;   /* sideways is a swipe to another song */
   }
+  /* the cover and the words, which a swipe slides off under the buttons and the rounded edge */
+  .mp-now { grid-column: span 2; align-self: stretch; margin-left: -8px; padding-left: 8px; overflow: hidden; }
+  .mp-slide { display: grid; grid-template-columns: 40px minmax(0, 1fr); align-items: center; height: 100%; }
   .miniplayer .art { width: 40px; border-radius: 4px; box-shadow: none; }
   .miniplayer .art-fallback { font-size: 12px; padding: 2px; }
   .mp-text { min-width: 0; }
