@@ -13,7 +13,7 @@ import { MiniPlayer, TabBar } from "./layout/Mobile";
 import { NowPanel } from "./layout/NowPanel";
 import { Sidebar } from "./layout/Sidebar";
 import { Footer, LyricsSheet, NowPlaying, PlaylistPicker, QueueDrawer, Toast } from "./layout/Overlays";
-import { PlayerBar } from "./layout/PlayerBar";
+import { PlayerBar, SKIP } from "./layout/PlayerBar";
 import { focusQuickSearch } from "./layout/QuickSearch";
 import { isTyping, TopBar } from "./layout/TopBar";
 import Home from "./pages/Home";
@@ -46,13 +46,16 @@ function Shortcuts() {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") return search();
       if (isTyping(e) || e.ctrlKey || e.metaKey || e.altKey) return;
       const s = usePlayer.getState();
+      // in an episode or an audiobook: the arrows skip as its buttons do, and P goes to the one before it
+      const spoken = s.current()?.kind === "book" || s.current()?.kind === "episode";
+      const skip = e.shiftKey ? 30 : spoken ? SKIP : 5;
       if (e.key === " ") { e.preventDefault(); engine.toggle(); }
       else if (e.key === "/") search();
-      else if (e.key === "ArrowRight") engine.seek(s.position + (e.shiftKey ? 30 : 5));
-      else if (e.key === "ArrowLeft") engine.seek(s.position - (e.shiftKey ? 30 : 5));
+      else if (e.key === "ArrowRight") engine.seek(s.position + skip);
+      else if (e.key === "ArrowLeft") engine.seek(s.position - skip);
       else if (e.key.toLowerCase() === "m") s.set({ muted: !s.muted });
       else if (e.key.toLowerCase() === "n") engine.next();
-      else if (e.key.toLowerCase() === "p") engine.prev();
+      else if (e.key.toLowerCase() === "p") { if (!spoken) engine.prev(); else if (s.index > 0) engine.prev(true); }
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);

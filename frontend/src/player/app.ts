@@ -42,6 +42,7 @@ class AppPlayer {
   private state: AppState | null = null;
   private offset = 0;              // where the current song's stream started, when it was restarted at a time
   private handed = new Set<string>();
+  private asked = "";              // the item we last started; one the app goes on to by itself starts at 0
 
   get active() {
     return this.connected;
@@ -140,6 +141,7 @@ class AppPlayer {
     const now = this.state?.key === items[0].key;
     const direct = now ? !!this.state?.seekable && !this.offset : this.direct(items[0]);
     this.offset = direct ? 0 : into;
+    this.asked = items[0].key;
     this.handed = new Set(items.map((it) => it.key));
     const token = await this.token();
     this.send({
@@ -171,10 +173,15 @@ class AppPlayer {
     this.send({ t: this.state.playing ? "pause" : "play" });
   }
 
+  /** The app starts an item it has from the beginning: one to carry on in (an episode left halfway)
+   * is handed over again, starting there. */
   jump(index: number) {
-    const key = usePlayer.getState().queue[index]?.key;
-    if (key && this.handed.has(key)) this.send({ t: "jump", key });
-    else this.loadQueue(index);
+    const it = usePlayer.getState().queue[index];
+    const at = it?.resume ?? 0;
+    if (it && this.handed.has(it.key) && at <= 0.5) {
+      this.asked = it.key;
+      this.send({ t: "jump", key: it.key });
+    } else this.loadQueue(index, at);
   }
 
   /** The nearest playable item from `from`, stepping by `step`; -1 if there's none. */
@@ -287,6 +294,10 @@ class AppPlayer {
     s.set({ index, duration: item.duration, position: offset });
     this.hooks?.onItem(key);
     this.speed();
+    // gone on by itself (the last one ended, or the lock screen's next) to an episode heard halfway: on from there
+    const at = item.resume ?? 0;
+    if (key !== this.asked && at > 0.5 && offset < 0.5) this.seek(at);
+    this.asked = "";
   }
 
   private onState(st: AppState) {

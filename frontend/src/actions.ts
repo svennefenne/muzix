@@ -10,6 +10,17 @@ export const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1, refetchOnWindowFocus: false } },
 });
 
+/** Episodes were marked or played: the lists with their ticks, dots and progress are fetched again. */
+export function podcastsChanged() {
+  for (const key of ["podcast", "podcasts", "podcasts-latest", "episode", "sidebar", "home"]) queryClient.invalidateQueries({ queryKey: [key] });
+}
+
+// an episode or audiobook played to its end, or left for another: its page and lists show where it got to
+engine.onSaved = (item) => {
+  if (item.kind === "episode") return podcastsChanged();
+  for (const key of ["book", "books", "home"]) queryClient.invalidateQueries({ queryKey: [key] });
+};
+
 export async function playAlbum(id: number, opts: { shuffle?: boolean; startTrack?: number; queue?: boolean } = {}) {
   const a = await queryClient.fetchQuery({ queryKey: ["album", id], queryFn: () => api.get<AlbumDetail>(`/api/albums/${id}`) });
   if (opts.shuffle && a.track_count > a.tracks.length) return playRandom({ album_id: id, kind: "all", n: 300 });

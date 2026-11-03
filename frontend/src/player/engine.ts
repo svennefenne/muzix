@@ -65,6 +65,7 @@ class Engine {
   analyser: AnalyserNode | null = null;
   private offset = 0;            // where a progressive stream started (seconds)
   private loadedKey = "";
+  private loadedAt = 0;          // where it got to, kept for when it's left for another item
   private scrobbled = false;
   private retryTimer: number | undefined;   // a song waiting for the connection to come back
   private lastSave = 0;
@@ -86,6 +87,8 @@ class Engine {
   private reloaded = "";                               // the item a reload carries on with
   private held = "";                                   // the item the browser held back after a reload, till a click
   private woken = false;                               // a click just started it
+  /** An episode or audiobook finished or left, its place saved: the pages that list it fetch again. */
+  onSaved: ((item: PlayItem) => void) | null = null;
 
   constructor() {
     // tells iOS this page plays music, so its audio keeps going with the screen off (Safari 17+)
@@ -111,6 +114,7 @@ class Engine {
         this.saveProgress();
         this.scrobbled = false;
         this.loadedKey = key;
+        this.loadedAt = usePlayer.getState().position;
         usePlayer.getState().set({ liveTitle: "", error: "" });
         if (item) {
           this.updateMediaSession(item);
@@ -138,6 +142,7 @@ class Engine {
     caster.load();
     appPlayer.connect();
     usePlayer.subscribe((s, prev) => {
+      if (s.position !== prev.position && s.current()?.key === this.loadedKey) this.loadedAt = s.position;
       if (s.volume !== prev.volume || s.muted !== prev.muted) this.applyVolume();
       if (s.speed !== prev.speed) this.el.playbackRate = s.speed;
       if (s.index !== prev.index || s.queue !== prev.queue || s.repeat !== prev.repeat || s.shuffle !== prev.shuffle) {
@@ -261,10 +266,11 @@ class Engine {
     if (idx >= s.queue.length) {
       if (s.repeat === "all") idx = 0;
       else {
-        // the queue ran out: autoplay may still be finding what comes next
+        // the queue ran out: autoplay may still be finding what comes next. Clicked with nothing
+        // after it, next does nothing (and an episode isn't marked as heard).
         const more = this.upNext();
-        if (more) more.then((found) => (found ? this.next(auto) : this.finish()));
-        else this.finish();
+        if (more) more.then((found) => (found ? this.next(auto) : auto && this.finish()));
+        else if (auto) this.finish();
         return;
       }
     }
@@ -412,6 +418,7 @@ class Engine {
     const reloaded = this.reloaded === item.key;
     this.reloaded = "";
     this.saveProgress();
+    this.loadedAt = at ?? item.resume ?? 0;
     this.scrobbled = false;
     this.radioRetries = 0;
     window.clearTimeout(this.stallTimer);
@@ -692,17 +699,25 @@ class Engine {
     this.retryTimer = window.setTimeout(again, 5000);
   }
 
+  /** An episode's or audiobook's place, saved. One left for another keeps the place it got to, in
+   * the queue too, so going back to it carries on there; one left at its very end has been heard
+   * (the app or a speaker goes on by itself, and tells where it is only every few seconds). */
   saveProgress(finished = false) {
     const s = usePlayer.getState();
     const item = s.queue.find((i) => i.key === this.loadedKey);
     if (!item) return;
     this.lastSave = Date.now();
-    const pos = item.key === s.current()?.key ? s.position : 0;
+    if (item.kind !== "book" && item.kind !== "episode") return;
+    const left = item.key !== s.current()?.key;
+    const pos = left ? this.loadedAt : s.position;
+    const done = finished || (left && item.duration > 0 && pos > item.duration - 15);
+    if (left) s.set({ queue: s.queue.map((it) => (it === item ? { ...it, resume: done ? 0 : pos } : it)) });
+    const saved = () => (done || left) && this.onSaved?.(item);
     if (item.kind === "book" && item.bookId) {
       const total = (item.partOffset || 0) + pos;
-      api.put(`/api/books/${item.bookId}/progress`, { position: total, finished: finished && isLastPart(item) }).catch(() => {});
+      api.put(`/api/books/${item.bookId}/progress`, { position: total, finished: done && isLastPart(item) }).then(saved, () => {});
     } else if (item.kind === "episode") {
-      api.put(`/api/podcasts/episodes/${item.id}/progress`, { position: pos, finished }).catch(() => {});
+      api.put(`/api/podcasts/episodes/${item.id}/progress`, { position: pos, finished: done }).then(saved, () => {});
     }
   }
 

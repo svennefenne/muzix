@@ -14,6 +14,7 @@ import { engine } from "../player/engine";
 import { usePlayer } from "../store/player";
 import { useUi } from "../store/ui";
 import { useSwipeSongs } from "../swipeSongs";
+import { hasNext as canNext, SpokenSteps } from "./PlayerBar";
 
 const MORE = [
   { to: "/vgm", label: "VGM", sub: "Chiptunes and tracker music", icon: Gamepad2 },
@@ -30,11 +31,12 @@ export function MiniPlayer() {
   const error = usePlayer((s) => s.error);
   const frac = usePlayer((s) => (s.duration ? Math.min(1, s.position / s.duration) : 0));
   const castOn = usePlayer((s) => s.castState === "connected");
-  const hasNext = usePlayer((s) => s.index < s.queue.length - 1 || s.repeat === "all" || (s.shuffle && s.queue.length > 1));
+  const hasNext = usePlayer(canNext);
   const open = useUi((s) => s.setNowPlayingOpen);
   const box = useRef<HTMLDivElement>(null);
   const slide = useRef<HTMLDivElement>(null);
-  const swiped = useSwipeSongs(box, !!cur && cur.kind !== "book" && cur.kind !== "episode", slide);
+  const spoken = cur?.kind === "book" || cur?.kind === "episode";
+  const swiped = useSwipeSongs(box, !!cur && !spoken, slide);
   if (!cur) return <div className="miniplayer-slot" />;
   return (
     <div className="miniplayer-slot">
@@ -52,8 +54,9 @@ export function MiniPlayer() {
             </div>
           </div>
         </div>
-        {/* cast and like go first when the screen is narrow (see .miniplayer-slot) */}
-        <CastButton className="mp-play mp-cast" size={20} />
+        {/* cast and like go first when the screen is narrow (see .miniplayer-slot); an episode or
+            audiobook has the steps and the skips instead, and the full player has cast */}
+        {spoken ? <SpokenSteps className="mp-play" size={22} stepSize={17} /> : <CastButton className="mp-play mp-cast" size={20} />}
         {cur.kind === "track" && (
           <button className={`mp-play mp-like ${cur.liked ? "on" : ""}`} aria-label="Like" aria-pressed={!!cur.liked}
                   onClick={() => toggleQueuedLike(cur)}>
@@ -63,9 +66,11 @@ export function MiniPlayer() {
         <button className="mp-play" aria-label={playing ? "Pause" : "Play"} onClick={() => engine.toggle()}>
           {playing ? <Pause size={22} fill="currentColor" /> : <Play size={22} fill="currentColor" />}
         </button>
-        <button className="mp-play" aria-label="Next song" disabled={!hasNext} onClick={() => engine.next()}>
-          <SkipForward size={20} fill="currentColor" />
-        </button>
+        {spoken ? <SpokenSteps forward className="mp-play" size={22} stepSize={17} /> : (
+          <button className="mp-play" aria-label="Next song" disabled={!hasNext} onClick={() => engine.next()}>
+            <SkipForward size={20} fill="currentColor" />
+          </button>
+        )}
         {cur.kind !== "radio" && <div className="mp-progress"><div style={{ width: `${frac * 100}%` }} /></div>}
       </div>
     </div>

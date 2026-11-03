@@ -5,7 +5,7 @@ import { fmtTime } from "../api";
 import { toggleQueuedLike } from "../actions";
 import { CastButton, CastNote } from "../components/CastButton";
 import { MicButton } from "../components/Lyrics";
-import { Art } from "../components/ui";
+import { Art, Skip15 } from "../components/ui";
 import { engine } from "../player/engine";
 import { usePlayer, type PlayItem, type Repeat as RepeatMode } from "../store/player";
 import { useUi } from "../store/ui";
@@ -19,10 +19,41 @@ export const repeatTip = (r: RepeatMode) => ({
 })[r];
 export const likeTip = (on: boolean) => (on ? "Remove from your liked songs" : "Save to your liked songs");
 
-export function nextTip(s: { queue: PlayItem[]; index: number; shuffle: boolean; repeat: RepeatMode }) {
+type Queue = { queue: PlayItem[]; index: number; shuffle: boolean; repeat: RepeatMode };
+
+/** Whether something plays after this: the next button has somewhere to go. */
+export const hasNext = (s: Queue) => s.index < s.queue.length - 1 || s.repeat === "all" || (s.shuffle && s.queue.length > 1);
+
+export function nextTip(s: Queue) {
   if (s.shuffle && s.queue.length > 1) return "Next: a random song from the queue";
   const next = s.queue[s.index + 1] ?? (s.repeat === "all" ? s.queue[0] : undefined);
   return next ? `Next: ${next.title}${next.artist ? ` · ${next.artist}` : ""}` : "Next";
+}
+
+/** Seconds the buttons skip in an episode or an audiobook. */
+export const SKIP = 15;
+
+/** An episode's (or an audiobook's) transport has both: the episode (or part) before and after it,
+ * and 15 seconds back and on. One side of play: the step back and then the skip back, or the
+ * skip on and then the step on. */
+export function SpokenSteps({ forward, size, stepSize, className = "ctl" }: { forward?: boolean; size: number; stepSize: number; className?: string }) {
+  const unit = usePlayer((s) => (s.current()?.kind === "book" ? "part" : "episode"));
+  const can = usePlayer((s) => (forward ? hasNext(s) : s.index > 0));
+  const tip = usePlayer((s) => (forward ? nextTip(s) : s.index > 0 ? `Previous: ${s.queue[s.index - 1].title}` : ""));
+  const Step = forward ? SkipForward : SkipBack;
+  const step = (
+    <button key="step" className={`${className} ${forward ? "" : "step-back"}`} aria-label={`${forward ? "Next" : "Previous"} ${unit}`} data-tip={tip} data-tip-key={forward ? "N" : "P"}
+            disabled={!can} onClick={() => (forward ? engine.next() : engine.prev(true))}>
+      <Step size={stepSize} fill="currentColor" />
+    </button>
+  );
+  const skip = (
+    <button key="skip" className={className} aria-label={`${forward ? "Forward" : "Back"} ${SKIP} seconds`} data-tip={`${forward ? "Forward" : "Back"} ${SKIP} seconds`}
+            data-tip-key={forward ? "→" : "←"} onClick={() => engine.seek(usePlayer.getState().position + (forward ? SKIP : -SKIP))}>
+      <Skip15 forward={forward} size={size} />
+    </button>
+  );
+  return forward ? <>{skip}{step}</> : <>{step}{skip}</>;
 }
 
 const QUALITY: Record<string, string> = { lossless: "lossless FLAC", high: "Opus at 160-192 kbit/s", low: "Opus at 96 kbit/s" };
@@ -115,19 +146,20 @@ export function PlayerBar() {
                   onClick={() => s.set({ shuffle: !s.shuffle })}>
             <Shuffle size={17} />
           </button>
-          <button className="ctl" aria-label={spoken ? "Back 15 seconds" : "Previous"}
-                  data-tip={spoken ? "Back 15 seconds" : s.position > 4 ? "Back to the start of the song" : "Previous"} data-tip-key={spoken ? "←" : "P"}
-                  onClick={() => (spoken ? engine.seek(s.position - 15) : engine.prev())}>
-            <SkipBack size={19} fill="currentColor" />
-          </button>
+          {spoken ? <SpokenSteps size={22} stepSize={16} /> : (
+            <button className="ctl" aria-label="Previous" data-tip={s.position > 4 ? "Back to the start of the song" : "Previous"} data-tip-key="P"
+                    onClick={() => engine.prev()}>
+              <SkipBack size={19} fill="currentColor" />
+            </button>
+          )}
           <button className="ctl play" aria-label={s.playing ? "Pause" : "Play"} data-tip-key="Space" onClick={() => engine.toggle()}>
             {s.playing ? <Pause size={19} fill="currentColor" /> : <Play size={19} fill="currentColor" style={{ marginLeft: 2 }} />}
           </button>
-          <button className="ctl" aria-label={spoken ? "Forward 30 seconds" : "Next"}
-                  data-tip={spoken ? "Forward 30 seconds" : nextTip(s)} data-tip-key={spoken ? "→" : "N"}
-                  onClick={() => (spoken ? engine.seek(s.position + 30) : engine.next())}>
-            <SkipForward size={19} fill="currentColor" />
-          </button>
+          {spoken ? <SpokenSteps forward size={22} stepSize={16} /> : (
+            <button className="ctl" aria-label="Next" data-tip={nextTip(s)} data-tip-key="N" onClick={() => engine.next()}>
+              <SkipForward size={19} fill="currentColor" />
+            </button>
+          )}
           <button className={`ctl ${s.repeat !== "off" ? "on" : ""}`} aria-label={`Repeat: ${s.repeat}`} data-tip={repeatTip(s.repeat)}
                   onClick={() => s.set({ repeat: s.repeat === "off" ? "all" : s.repeat === "all" ? "one" : "off" })}>
             {s.repeat === "one" ? <Repeat1 size={17} /> : <Repeat size={17} />}

@@ -3,7 +3,7 @@ import { Check, CircleCheck, Download, ListChecks, MoreHorizontal, Pause, Play, 
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ago, api, fmtLong, fmtTime } from "../api";
-import { queryClient } from "../actions";
+import { podcastsChanged, queryClient } from "../actions";
 import { AdminCog } from "../components/AdminMode";
 import { Segmented } from "../components/Browse";
 import { Art, Display, Empty, Kicker, Loading, Modal, NewDot, Section, Switch, useMenu } from "../components/ui";
@@ -11,11 +11,6 @@ import { engine } from "../player/engine";
 import { fromEpisode, usePlayer, useStartedEpisodes } from "../store/player";
 import { useUi } from "../store/ui";
 import type { Episode, EpisodeDetail, Feed, PodcastHit } from "../types";
-
-/** Episodes were marked: the lists with their ticks and dots are fetched again. */
-function podcastsChanged() {
-  for (const key of ["podcast", "podcasts", "podcasts-latest", "episode", "sidebar", "home"]) queryClient.invalidateQueries({ queryKey: [key] });
-}
 
 /** Everything under an episode on its podcast's page (the ones out before it) marked finished, with an undo. */
 async function finishOlder(e: Episode) {
@@ -29,10 +24,20 @@ async function finishOlder(e: Episode) {
   });
 }
 
+/** Where an episode is: as the player has it while it's the one playing, otherwise as last saved. */
+function useEpisodeAt(e: Episode) {
+  const key = `episode:${e.id}`;
+  const here = usePlayer((s) => s.current()?.key === key);
+  const playing = usePlayer((s) => s.current()?.key === key && (s.playing || s.buffering));
+  const position = usePlayer((s) => (s.current()?.key === key ? s.position : e.position));
+  const pct = e.duration ? Math.min(100, (position / e.duration) * 100) : 0;
+  return { here, playing, position, pct };
+}
+
 function EpisodeRow({ e, feed }: { e: Episode; feed?: Feed }) {
   const notify = useUi((s) => s.notify);
   const showMenu = useMenu((s) => s.show);
-  const pct = e.duration ? Math.min(100, (e.position / e.duration) * 100) : 0;
+  const { here, playing, pct } = useEpisodeAt(e);
   const started = useStartedEpisodes().has(e.id);
   const play = () => engine.play([fromEpisode(e, feed?.title, feed?.image)]);
   const menu = (ev: { clientX: number; clientY: number }) => showMenu(ev, [
@@ -73,19 +78,21 @@ function EpisodeRow({ e, feed }: { e: Episode; feed?: Feed }) {
     menu(ev);
   };
   // played: a slim row with just what tells it apart; the description is for the ones still to hear
-  if (e.finished) {
+  if (e.finished && !here) {
     return <div className="list-row ep-row done" onContextMenu={context}><div className="grow">{kicker}{title}</div>{actions}</div>;
   }
   return (
-    <div className="list-row ep-row" style={{ alignItems: "flex-start" }} onContextMenu={context}>
-      <button className="btn round" style={{ width: 42, height: 42 }} aria-label={`Play ${e.title}`} onClick={play}>
-        <Play size={16} fill="currentColor" />
+    <div className={`list-row ep-row ${here ? "on" : ""}`} style={{ alignItems: "flex-start" }} onContextMenu={context}>
+      {/* the one in the player pauses and goes on from here */}
+      <button className={`btn round ${here ? "accent" : ""}`} style={{ width: 42, height: 42 }}
+              aria-label={`${playing ? "Pause" : here ? "Continue" : "Play"} ${e.title}`} onClick={here ? () => engine.toggle() : play}>
+        {playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
       </button>
       <div className="grow">
         {kicker}
         {title}
         <div className="dim" style={{ fontSize: 13, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{e.description}</div>
-        {pct > 0 && <div className="progressbar" style={{ marginTop: 8, maxWidth: 260 }}><div style={{ width: `${pct}%` }} /></div>}
+        {(pct > 0 || here) && <div className="progressbar" style={{ marginTop: 8, maxWidth: 260 }}><div style={{ width: `${pct}%` }} /></div>}
       </div>
       {actions}
     </div>
@@ -276,7 +283,7 @@ export function PodcastPage() {
                   Download new episodes
                 </label>
                 <label className="row-actions dim" style={{ gap: 8 }}
-                       data-tip={`When an episode ends, the next unplayed one below it in the list plays: ${order === "oldest" ? "a newer one, as the list goes oldest first" : "an older one, as the list goes newest first"}`}>
+                       data-tip={`When an episode ends, the next unplayed one below it in the list plays: ${order === "oldest" ? "a newer one, as the list goes oldest first" : "an older one, as the list goes newest first"}. With none left below it, the nearest one above it plays.`}>
                   <Switch checked={f.autoplay} onChange={async (v) => {
                     await api.put(`/api/podcasts/${f.id}/subscription`, { autoplay: v });
                     await q.refetch();
@@ -322,15 +329,17 @@ export function PodcastPage() {
 
 export function EpisodePage() {
   const { eid } = useParams();
-  const notify = useUi((s) => s.notify);
   const q = useQuery({ queryKey: ["episode", Number(eid)], queryFn: () => api.get<EpisodeDetail>(`/api/podcasts/episodes/${eid}`) });
-  const here = usePlayer((s) => s.current()?.key === `episode:${eid}`);
-  const playing = usePlayer((s) => s.playing);
   if (q.isError) return <div className="page"><Empty title="No such episode" /></div>;
   if (!q.data) return <div className="page"><Loading /></div>;
-  const e = q.data;
+  return <EpisodeView e={q.data} />;
+}
+
+function EpisodeView({ e }: { e: EpisodeDetail }) {
+  const notify = useUi((s) => s.notify);
+  const { here, playing, position, pct } = useEpisodeAt(e);
+  const finished = e.finished && !here;   // played again: it shows where it is
   const f = e.feed;
-  const pct = e.duration ? Math.min(100, (e.position / e.duration) * 100) : 0;
   const play = () => (here ? engine.toggle() : engine.play([fromEpisode(e, f.title, f.image)]));
   // a timestamp in the notes: there, in this episode
   const playAt = (t: number) => (here ? engine.seek(t, true) : engine.play([{ ...fromEpisode(e, f.title, f.image), resume: t }]));
@@ -346,11 +355,11 @@ export function EpisodePage() {
             <Link to={`/podcasts/${f.id}`}><b>{f.title}</b></Link>
             {when && <span className="dotsep">{when}</span>}
             {e.duration > 0 && <span className="dotsep">{fmtLong(e.duration)}</span>}
-            {e.finished ? <span className="dotsep">Played</span>
-              : pct > 0 ? <span className="dotsep">{fmtLong(e.duration - e.position)} left</span>
+            {finished ? <span className="dotsep">Played</span>
+              : pct > 0 ? <span className="dotsep">{fmtLong(e.duration - position)} left</span>
               : e.new && <span className="dotsep"><NewDot label="New episode" />New</span>}
           </div>
-          {pct > 0 && !e.finished && <div className="progressbar" style={{ maxWidth: 320, marginBottom: 18 }}><div style={{ width: `${pct}%` }} /></div>}
+          {pct > 0 && !finished && <div className="progressbar" style={{ maxWidth: 320, marginBottom: 18 }}><div style={{ width: `${pct}%` }} /></div>}
           <div className="row-actions">
             <button className="btn accent" onClick={play}>
               {here && playing ? <><Pause size={15} fill="currentColor" /> Pause</>

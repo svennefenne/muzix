@@ -204,3 +204,33 @@ def test_autoplay_plays_the_next_episode_in_the_pages_order():
     assert after("Ep 1") == "Undated" and after("Undated") is None
     assert after("Ep 1", "oldest") == "Ep 3"              # a serial, heard from the start
     assert after("Ep 4", "oldest") == "Undated"
+
+
+def test_autoplay_turns_round_when_nothing_is_left_the_pages_way():
+    """A back catalogue heard from the oldest on, with the page left newest first: the older ones are
+    all finished, so the next newer one plays."""
+    t0 = datetime.now(timezone.utc) - timedelta(days=100)
+    with db.session() as s:
+        u = User(username="catchup", password_hash="x")
+        f = Feed(url="https://example.com/catchup.xml", title="Catch up")
+        s.add_all([u, f])
+        s.flush()
+        eps = [Episode(feed_id=f.id, guid=f"c{n}", title=f"Ep {n}", published=t0 + timedelta(days=n)) for n in range(1, 5)]
+        s.add_all(eps)
+        s.add(Subscription(user_id=u.id, feed_id=f.id, autoplay=True))
+        s.flush()
+        for done in eps[:2]:
+            s.add(EpisodeProgress(user_id=u.id, episode_id=done.id, position=60, finished=True))
+        uid, ids = u.id, {e.title: e.id for e in eps}
+
+    def after(title, order="newest"):
+        with db.session() as s:
+            nxt = api.next_episode(ids[title], order=order, db=s, user=s.get(User, uid))["next"]
+            return nxt and nxt["title"]
+
+    assert after("Ep 3") == "Ep 4"                         # Ep 2 and Ep 1 below it are heard
+    assert after("Ep 4") == "Ep 3"                         # the page's way first
+    assert after("Ep 2", "oldest") == "Ep 3"
+    with db.session() as s:
+        s.add(EpisodeProgress(user_id=uid, episode_id=ids["Ep 3"], position=60, finished=True))
+    assert after("Ep 4") is None                           # nothing left either way

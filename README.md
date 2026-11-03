@@ -83,8 +83,11 @@ applies you choose from 98 colour schemes, each with a light and a dark version.
   Each podcast remembers its own order (newest or oldest first) and whether
   finished episodes are hidden; an episode's menu marks it, or every older one,
   as finished. With a podcast's Autoplay on, the next unplayed episode in that
-  order plays when one ends. An episode opens its own page with the full
-  show notes: links work and timestamps (12:34) play from there.
+  order plays when one ends (with none left that way, the nearest one the other
+  way). The player skips 15 seconds back and on and steps to the episode before
+  or after, and an episode left halfway carries on there when you go back to it.
+  An episode opens its own page with the full show notes: links work and
+  timestamps (12:34) play from there.
 - **Internet radio**: tens of thousands of stations from radio-browser.info,
   saved stations, live "now playing" titles.
 - **Spotify**: your playlists, saved albums and liked songs in Muzix style,

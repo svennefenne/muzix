@@ -15,7 +15,7 @@ import { useUi } from "../store/ui";
 import { useSwipeSongs } from "../swipeSongs";
 import { useActiveTheme } from "../theme/ThemeApplier";
 import type { AlbumDetail, Home, Playlist } from "../types";
-import { likeTip, nextTip, repeatTip, SeekBar, shuffleTip } from "./PlayerBar";
+import { likeTip, nextTip, repeatTip, SeekBar, shuffleTip, SpokenSteps } from "./PlayerBar";
 import { toggleFullscreen } from "./TopBar";
 
 export function Footer() {
@@ -149,25 +149,38 @@ function PhoneTransport() {
   const cur = s.current();
   const setQueueOpen = useUi((u) => u.setQueueOpen);
   const spoken = cur?.kind === "book" || cur?.kind === "episode";
+  const shuffle = (
+    <button className={`ctl ${s.shuffle ? "on" : ""}`} aria-label="Shuffle" aria-pressed={s.shuffle} data-tip={shuffleTip(s.shuffle)}
+            onClick={() => s.set({ shuffle: !s.shuffle })}><Shuffle size={22} /></button>
+  );
+  const repeat = (
+    <button className={`ctl ${s.repeat !== "off" ? "on" : ""}`} aria-label={`Repeat: ${s.repeat}`} data-tip={repeatTip(s.repeat)}
+            onClick={() => s.set({ repeat: s.repeat === "off" ? "all" : s.repeat === "all" ? "one" : "off" })}>
+      {s.repeat === "one" ? <Repeat1 size={22} /> : <Repeat size={22} />}
+    </button>
+  );
   return (
     <div className="np-phone">
+      {/* an episode or audiobook has the steps and the skips either side of play; shuffle and repeat go below */}
       <div className="np-transport">
-        <button className={`ctl ${s.shuffle ? "on" : ""}`} aria-label="Shuffle" aria-pressed={s.shuffle} data-tip={shuffleTip(s.shuffle)}
-                onClick={() => s.set({ shuffle: !s.shuffle })}><Shuffle size={22} /></button>
-        <button className="ctl" aria-label={spoken ? "Back 15 seconds" : "Previous"} data-tip-key={spoken ? "←" : "P"}
-                onClick={() => (spoken ? engine.seek(s.position - 15) : engine.prev())}><SkipBack size={30} fill="currentColor" /></button>
+        {spoken ? <SpokenSteps size={34} stepSize={24} /> : (
+          <>
+            {shuffle}
+            <button className="ctl" aria-label="Previous" data-tip-key="P" onClick={() => engine.prev()}><SkipBack size={30} fill="currentColor" /></button>
+          </>
+        )}
         <button className="ctl play" aria-label={s.playing ? "Pause" : "Play"} data-tip-key="Space" onClick={() => engine.toggle()}>
           {s.playing ? <Pause size={30} fill="currentColor" /> : <Play size={30} fill="currentColor" style={{ marginLeft: 3 }} />}
         </button>
-        <button className="ctl" aria-label={spoken ? "Forward 30 seconds" : "Next"} data-tip={spoken ? "Forward 30 seconds" : nextTip(s)}
-                data-tip-key={spoken ? "→" : "N"} onClick={() => (spoken ? engine.seek(s.position + 30) : engine.next())}><SkipForward size={30} fill="currentColor" /></button>
-        <button className={`ctl ${s.repeat !== "off" ? "on" : ""}`} aria-label={`Repeat: ${s.repeat}`} data-tip={repeatTip(s.repeat)}
-                onClick={() => s.set({ repeat: s.repeat === "off" ? "all" : s.repeat === "all" ? "one" : "off" })}>
-          {s.repeat === "one" ? <Repeat1 size={22} /> : <Repeat size={22} />}
-        </button>
+        {spoken ? <SpokenSteps forward size={34} stepSize={24} /> : (
+          <>
+            <button className="ctl" aria-label="Next" data-tip={nextTip(s)} data-tip-key="N" onClick={() => engine.next()}><SkipForward size={30} fill="currentColor" /></button>
+            {repeat}
+          </>
+        )}
       </div>
       <div className="np-extra">
-        {cur?.kind === "track" ? (
+        {spoken ? <>{shuffle}{repeat}</> : cur?.kind === "track" ? (
           <button className={`ctl ${cur.liked ? "on" : ""}`} aria-label="Like" aria-pressed={!!cur.liked} data-tip={likeTip(!!cur.liked)}
                   onClick={() => toggleQueuedLike(cur)}>
             <Heart size={22} fill={cur.liked ? "currentColor" : "none"} />

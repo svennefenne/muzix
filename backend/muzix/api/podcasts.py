@@ -291,7 +291,8 @@ def progress(episode_id: int, body: Progress, db: Session = Depends(get_db), use
 @router.get("/episodes/{episode_id}/next")
 def next_episode(episode_id: int, order: str = "newest", db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Autoplay: the episode after this one on the podcast's page, in its order, skipping the
-    finished ones. None when the podcast's autoplay is off or the list ends."""
+    finished ones. With none left that way (heard from the oldest on, with the page newest first),
+    the nearest one the other way. None when the podcast's autoplay is off or all are finished."""
     e = db.get(Episode, episode_id)
     if e is None:
         raise HTTPException(404, "No such episode")
@@ -299,6 +300,14 @@ def next_episode(episode_id: int, order: str = "newest", db: Session = Depends(g
     if sub is None or not sub.autoplay:
         return {"next": None}
     oldest = order == "oldest"
+    nxt = _unheard_after(db, user.id, e, oldest) or _unheard_after(db, user.id, e, not oldest)
+    if nxt is None:
+        return {"next": None}
+    return {"next": episode_json(nxt, db.get(EpisodeProgress, (user.id, nxt.id)), db.get(Feed, e.feed_id), sub)}
+
+
+def _unheard_after(db: Session, user_id: int, e: Episode, oldest: bool) -> Episode | None:
+    """The first episode after `e` not finished, with the podcast's page sorted oldest or newest first."""
     # the page's order: by date either way, undated ones last
     if e.published is None:
         after = Episode.published.is_(None) & ((Episode.id > e.id) if oldest else (Episode.id < e.id))
@@ -306,16 +315,13 @@ def next_episode(episode_id: int, order: str = "newest", db: Session = Depends(g
         later = (Episode.published > e.published) if oldest else (Episode.published < e.published)
         tie = (Episode.published == e.published) & ((Episode.id > e.id) if oldest else (Episode.id < e.id))
         after = Episode.published.is_(None) | later | tie
-    nxt = db.scalar(select(Episode)
-                    .outerjoin(EpisodeProgress, (EpisodeProgress.episode_id == Episode.id) & (EpisodeProgress.user_id == user.id))
-                    .where(Episode.feed_id == e.feed_id, after, EpisodeProgress.finished.is_not(True))
-                    .order_by(Episode.published.is_(None),
-                              Episode.published.asc() if oldest else Episode.published.desc(),
-                              Episode.id.asc() if oldest else Episode.id.desc())
-                    .limit(1))
-    if nxt is None:
-        return {"next": None}
-    return {"next": episode_json(nxt, db.get(EpisodeProgress, (user.id, nxt.id)), db.get(Feed, e.feed_id), sub)}
+    return db.scalar(select(Episode)
+                     .outerjoin(EpisodeProgress, (EpisodeProgress.episode_id == Episode.id) & (EpisodeProgress.user_id == user_id))
+                     .where(Episode.feed_id == e.feed_id, after, EpisodeProgress.finished.is_not(True))
+                     .order_by(Episode.published.is_(None),
+                               Episode.published.asc() if oldest else Episode.published.desc(),
+                               Episode.id.asc() if oldest else Episode.id.desc())
+                     .limit(1))
 
 
 @router.post("/episodes/{episode_id}/finish-older")

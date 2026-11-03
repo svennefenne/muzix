@@ -563,6 +563,7 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
 .buttons { display: flex; align-items: center; gap: 14px; }
 .ctl { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; border: none; background: none; color: var(--text-dim); cursor: pointer; }
 .ctl:hover { color: var(--text); }
+.ctl:disabled { opacity: .35; cursor: default; color: var(--text-dim); }
 .ctl.on { color: var(--primary); }
 .ctl.play { width: 38px; height: 38px; background: var(--text); color: var(--bg); }
 .ctl.play:hover { transform: scale(1.06); color: var(--bg); }
@@ -714,6 +715,7 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
 .ep-open { display: block; font-weight: 700; color: var(--text); }
 .ep-open::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
 .ep-row:hover .ep-open { color: var(--primary); }
+.ep-row.on { border-color: color-mix(in srgb, var(--primary) 60%, var(--border)); }   /* the one in the player */
 .ep-open:focus-visible { outline: none; }
 .ep-open:focus-visible::after { outline: 2px solid var(--primary); outline-offset: 2px; }
 .ep-row button, .ep-row .badge { position: relative; z-index: 1; }
@@ -1192,8 +1194,8 @@ button.lyr:hover { color: var(--lyr-now); text-decoration: underline; text-decor
   .mp-play.on { color: var(--primary); }
   .mp-progress { position: absolute; left: 8px; right: 8px; bottom: 0; height: 2px; border-radius: 2px; overflow: hidden; background: color-mix(in srgb, var(--text) 18%, transparent); }
   .mp-progress div { height: 100%; background: var(--text); }
-  /* cast and like only where the title keeps about 120px */
-  @container miniplayer (max-width: 349px) { .mp-cast { display: none; } }
+  /* cast and like (in an episode: the step back) only where the title keeps about 120px */
+  @container miniplayer (max-width: 349px) { .mp-cast, .mp-play.step-back { display: none; } }
   @container miniplayer (max-width: 299px) { .mp-like { display: none; } }
 
   /* bottom tab bar */
