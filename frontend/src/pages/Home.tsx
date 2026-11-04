@@ -58,7 +58,7 @@ export default function Home() {
     <div className="page">
       <nav className="home-chips phone-only" aria-label="Sections">
         <button className="hchip on phone-only" onClick={() => playRandom({ kind: "music" })}><Shuffle size={14} /> Shuffle</button>
-        {[["/library", "Music"], ["/vgm", "VGM"], ["/audiobooks", "Audiobooks"], ["/podcasts", "Podcasts"], ["/radio", "Radio"], ["/spotify", "Spotify"]]
+        {[["/library", "Music"], ["/podcasts", "Podcasts"], ["/vgm", "VGM"], ["/audiobooks", "Audiobooks"], ["/radio", "Radio"], ["/spotify", "Spotify"]]
           .map(([to, label]) => (
             <Link key={to} to={to} className="hchip">
               {to === "/podcasts" && fresh.some((p) => p.dot) && <NewDot label="New episodes" />}{label}

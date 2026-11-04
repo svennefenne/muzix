@@ -17,9 +17,9 @@ import { useSwipeSongs } from "../swipeSongs";
 import { hasNext as canNext, SpokenSteps } from "./PlayerBar";
 
 const MORE = [
+  { to: "/podcasts", label: "Podcasts", sub: "Your shows and new episodes", icon: Podcast },
   { to: "/vgm", label: "VGM", sub: "Chiptunes and tracker music", icon: Gamepad2 },
   { to: "/audiobooks", label: "Audiobooks", sub: "Pick up where you left off", icon: BookOpen },
-  { to: "/podcasts", label: "Podcasts", sub: "Your shows and new episodes", icon: Podcast },
   { to: "/radio", label: "Radio", sub: "Stations from all over the world", icon: Radio },
   { to: "/spotify", label: "Spotify", sub: "Your Spotify, played in Muzix", icon: Music2 },
 ];

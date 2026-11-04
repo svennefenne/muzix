@@ -15,9 +15,9 @@ import { QuickSearch } from "./QuickSearch";
 export const TABS = [
   { to: "/", label: "Home", end: true },
   { to: "/library", label: "Library" },
+  { to: "/podcasts", label: "Podcasts" },
   { to: "/vgm", label: "VGM" },
   { to: "/audiobooks", label: "Audiobooks" },
-  { to: "/podcasts", label: "Podcasts" },
   { to: "/radio", label: "Radio" },
   { to: "/spotify", label: "Spotify" },
 ];
@@ -25,9 +25,9 @@ export const TABS = [
 /** The sections, as pills in the top bar on desktops (phones have them on Home). */
 const SECTIONS = [
   { to: "/library", label: "Music", icon: Disc3, tip: "Music: your library" },
+  { to: "/podcasts", label: "Podcasts", icon: Podcast, tip: "Podcasts: your shows and new episodes" },
   { to: "/vgm", label: "VGM", icon: Gamepad2, tip: "VGM: chiptunes and tracker music" },
   { to: "/audiobooks", label: "Audiobooks", icon: BookOpen, tip: "Audiobooks: pick up where you left off" },
-  { to: "/podcasts", label: "Podcasts", icon: Podcast, tip: "Podcasts: your shows and new episodes" },
   { to: "/radio", label: "Radio", icon: Radio, tip: "Radio: stations from all over the world" },
   { to: "/spotify", label: "Spotify", icon: Music2, tip: "Spotify: your Spotify, played in Muzix" },
 ];

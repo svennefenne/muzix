@@ -726,6 +726,16 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
 .ep-row.done { align-items: center; padding: 8px 14px; }
 .ep-row.done:not(:hover) .ep-open { color: var(--text-dim); }
 .ep-row.done .ep-open { font-size: 14px; }
+/* Continue listening: small cards side by side, one to a row on phones */
+.ep-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 8px; }
+.ep-card { padding: 10px 12px; }
+.ep-card .btn.round { width: 36px; height: 36px; flex-shrink: 0; }
+.ep-card .kicker { font-size: 10px; letter-spacing: .2em; }
+.ep-card .ep-open { font-size: 14px; }
+.ep-card-title { display: flex; align-items: baseline; gap: 10px; }
+.ep-card-title .ep-open { flex: 1; min-width: 0; }
+.ep-card-title span { flex-shrink: 0; font-size: 12px; color: var(--text-dim); }
+.ep-card .progressbar { height: 4px; margin-top: 7px; }
 .ep-head .display.small { font-size: clamp(28px, 3.8cqi, 48px); line-height: 1; }
 .show-notes { max-width: 760px; font-size: 15px; line-height: 1.6; color: var(--text-dim); }
 .show-notes p { margin: 0 0 12px; }

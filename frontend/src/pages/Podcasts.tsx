@@ -104,6 +104,28 @@ function EpisodeRow({ e, feed }: { e: Episode; feed?: Feed }) {
   );
 }
 
+/** A started episode in Continue listening, small: its show, its title and time left, how far, and play or pause. */
+function ContinueCard({ e }: { e: Episode }) {
+  const { here, playing, position, pct } = useEpisodeAt(e);
+  return (
+    <div className={`list-row ep-row ep-card ${here ? "on" : ""}`}>
+      <button className={`btn round ${here ? "accent" : ""}`} aria-label={`${playing ? "Pause" : "Continue"} ${e.title}`}
+              onClick={here ? () => engine.toggle() : () => engine.play([fromEpisode(e)])}>
+        {playing ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
+      </button>
+      <div className="grow">
+        <div className="kicker ellipsis">{e.feed_title}</div>
+        {/* the time left over the bar's end; a long title is cut short before it */}
+        <div className="ep-card-title">
+          <Link className="ep-open ellipsis" to={`/podcasts/episode/${e.id}`}>{e.title}</Link>
+          {e.duration > 0 && <span>{fmtLong(Math.max(60, e.duration - position))} left</span>}
+        </div>
+        <div className="progressbar"><div style={{ width: `${pct}%` }} /></div>
+      </div>
+    </div>
+  );
+}
+
 export default function Podcasts() {
   const nav = useNavigate();
   const notify = useUi((s) => s.notify);
@@ -201,7 +223,7 @@ export default function Podcasts() {
 
       {resume.data && resume.data.length > 0 && (
         <Section title="Continue listening">
-          <div className="list">{resume.data.map((e) => <EpisodeRow key={e.id} e={e} />)}</div>
+          <div className="ep-cards">{resume.data.map((e) => <ContinueCard key={e.id} e={e} />)}</div>
         </Section>
       )}
 
