@@ -23,6 +23,7 @@ declare global {
 
 export interface AppHooks extends CastHooks {
   onFinish(): void;                // the queue played to its end
+  onSaved(key: string): void;      // the app saved where an episode or audiobook was left, or that it was heard
 }
 
 interface AppState {
@@ -43,6 +44,9 @@ class AppPlayer {
   private offset = 0;              // where the current song's stream started, when it was restarted at a time
   private handed = new Set<string>();
   private asked = "";              // the item we last started; one the app goes on to by itself starts at 0
+  /** The app saves where episodes and audiobooks got to, and carries on in one heard partly, itself
+   * (since 0.5.0): the page sleeps with the screen off, the app's player doesn't. */
+  saves = false;
 
   get active() {
     return this.connected;
@@ -98,15 +102,16 @@ class AppPlayer {
 
   /** Whether the app gets the file as it is, and can seek in it; converted streams start at a time instead. */
   private direct(it: PlayItem) {
+    if (it.kind === "episode") return true;     // an episode's stream is the file, whatever the quality
     if (useUi.getState().quality !== "original" || it.kind === "radio") return false;
-    return it.castNative ?? (it.kind === "book" || it.kind === "episode");
+    return it.castNative ?? it.kind === "book";
   }
 
   private item(it: PlayItem, token: string, from = 0) {
     const art = it.art ? new URL(sized(it.art, 600), location.origin).toString() : "";
     return {
       key: it.key, url: this.url(it, from), title: it.title, artist: it.artist, album: it.album || "", art,
-      duration: it.kind === "radio" ? 0 : it.duration, offset: from, muzix: JSON.stringify(slim(it)),
+      duration: it.kind === "radio" ? 0 : it.duration, offset: from, resume: it.resume ?? 0, muzix: JSON.stringify(slim(it)),
       cast: castUrl(it, token, from), castMime: castMime(it), live: it.kind === "radio",
     };
   }
@@ -244,9 +249,10 @@ class AppPlayer {
     } catch {
       return;
     }
-    if (m.t === "hello") this.onHello(m as unknown as { queue: string[]; index: number; state: AppState });
+    if (m.t === "hello") this.onHello(m as unknown as Parameters<AppPlayer["onHello"]>[0]);
     else if (m.t === "item") this.onItem(m.key as string, (m.offset as number) || 0, m.muzix as string);
     else if (m.t === "state") this.onState(m as unknown as AppState);
+    else if (m.t === "saved") this.hooks?.onSaved(m.key as string);
     else if (m.t === "cast") usePlayer.getState().set({ castState: m.state as CastState, castDevice: (m.device as string) || "" });
     else if (m.t === "error") {
       const msg = `Couldn't play ${(m.title as string) || "this"}`;
@@ -257,8 +263,9 @@ class AppPlayer {
 
   /** The app answered: it plays from now on. If it already plays something (the page was
    * reloaded), its queue becomes ours. */
-  private onHello(m: { queue: string[]; index: number; state: AppState }) {
+  private onHello(m: { queue: string[]; index: number; state: AppState; saves?: boolean }) {
     this.connected = true;
+    this.saves = !!m.saves;
     this.hooks?.onStart();
     const s = usePlayer.getState();
     this.send({ t: "repeat", mode: s.repeat });
@@ -294,9 +301,10 @@ class AppPlayer {
     s.set({ index, duration: item.duration, position: offset });
     this.hooks?.onItem(key);
     this.speed();
-    // gone on by itself (the last one ended, or the lock screen's next) to an episode heard halfway: on from there
+    // gone on by itself (the last one ended, or the lock screen's next) to an episode heard halfway: on
+    // from there (a newer app does it itself, as the page may only see it much later)
     const at = item.resume ?? 0;
-    if (key !== this.asked && at > 0.5 && offset < 0.5) this.seek(at);
+    if (!this.saves && key !== this.asked && at > 0.5 && offset < 0.5) this.seek(at);
     this.asked = "";
   }
 

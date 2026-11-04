@@ -12,7 +12,7 @@ export const queryClient = new QueryClient({
 
 /** Episodes were marked or played: the lists with their ticks, dots and progress are fetched again. */
 export function podcastsChanged() {
-  for (const key of ["podcast", "podcasts", "podcasts-latest", "episode", "sidebar", "home"]) queryClient.invalidateQueries({ queryKey: [key] });
+  for (const key of ["podcast", "podcasts", "podcasts-latest", "podcasts-continue", "episode", "sidebar", "home"]) queryClient.invalidateQueries({ queryKey: [key] });
 }
 
 // an episode or audiobook played to its end, or left for another: its page and lists show where it got to

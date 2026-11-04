@@ -12,7 +12,7 @@ import com.google.android.gms.cast.MediaMetadata as CastMetadata
 
 /**
  * Queue entries as the page describes them (frontend/src/player/app.ts):
- * {key, url, title, artist, album, art, duration, offset, muzix, cast, castMime, live},
+ * {key, url, title, artist, album, art, duration, offset, resume, muzix, cast, castMime, live},
  * turned into the players' MediaItems. The page's own description travels along, so a
  * speaker can be given its version of the entry.
  */

@@ -30,10 +30,12 @@ import com.google.common.util.concurrent.ListenableFuture
  * when one is chosen. Requests to the Muzix server carry the login cookie; requests elsewhere
  * (a radio station's logo) don't, and a speaker gets signed links instead. Away from wifi the
  * next songs are downloaded ahead, and a dropped connection is waited out (Buffering.kt).
+ * Episodes and audiobooks have their places saved from here (Progress.kt).
  */
 class PlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
     private var precache: Precache? = null
+    private var progress: Progress? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -66,6 +68,7 @@ class PlaybackService : MediaSessionService() {
         val speaker = RemoteCastPlayer.Builder(this).setMediaItemConverter(CastItems()).build()
         val player = CastPlayer.Builder(this).setLocalPlayer(local).setRemotePlayer(speaker).build()
         precache = Precache(this, local, cache, writing).also { it.start() }
+        progress = Progress(player).also { it.start() }
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         session = MediaSession.Builder(this, player)
@@ -95,6 +98,8 @@ class PlaybackService : MediaSessionService() {
     override fun onDestroy() {
         precache?.stop()
         precache = null
+        progress?.stop()
+        progress = null
         session?.run {
             player.release()
             release()

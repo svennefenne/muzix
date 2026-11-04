@@ -69,6 +69,7 @@ class Engine {
   private scrobbled = false;
   private retryTimer: number | undefined;   // a song waiting for the connection to come back
   private lastSave = 0;
+  private saving: Promise<unknown> = Promise.resolve();   // places saved one after another, so the last one stays
   private radioTimer: number | undefined;
   private stallTimer: number | undefined;   // a station that stops delivering
   private radioRetries = 0;
@@ -130,6 +131,10 @@ class Engine {
     caster.attach(hooks);
     appPlayer.attach({
       ...hooks,
+      onSaved: (key) => {
+        const item = usePlayer.getState().queue.find((i) => i.key === key);
+        if (item) this.onSaved?.(item);
+      },
       onFinish: () => {
         this.saveProgress(true);
         usePlayer.getState().set({ playing: false, buffering: false });
@@ -143,6 +148,7 @@ class Engine {
     appPlayer.connect();
     usePlayer.subscribe((s, prev) => {
       if (s.position !== prev.position && s.current()?.key === this.loadedKey) this.loadedAt = s.position;
+      if (prev.playing && !s.playing) this.saveProgress();    // paused: an episode's place, saved now
       if (s.volume !== prev.volume || s.muted !== prev.muted) this.applyVolume();
       if (s.speed !== prev.speed) this.el.playbackRate = s.speed;
       if (s.index !== prev.index || s.queue !== prev.queue || s.repeat !== prev.repeat || s.shuffle !== prev.shuffle) {
@@ -712,13 +718,13 @@ class Engine {
     const pos = left ? this.loadedAt : s.position;
     const done = finished || (left && item.duration > 0 && pos > item.duration - 15);
     if (left) s.set({ queue: s.queue.map((it) => (it === item ? { ...it, resume: done ? 0 : pos } : it)) });
+    // the app saves the places itself, the page asleep or not (it tells when one was left or heard)
+    if (this.remote === appPlayer && appPlayer.saves) return;
     const saved = () => (done || left) && this.onSaved?.(item);
-    if (item.kind === "book" && item.bookId) {
-      const total = (item.partOffset || 0) + pos;
-      api.put(`/api/books/${item.bookId}/progress`, { position: total, finished: done && isLastPart(item) }).then(saved, () => {});
-    } else if (item.kind === "episode") {
-      api.put(`/api/podcasts/episodes/${item.id}/progress`, { position: pos, finished: done }).then(saved, () => {});
-    }
+    const put = item.kind === "book" && item.bookId
+      ? () => api.put(`/api/books/${item.bookId}/progress`, { position: (item.partOffset || 0) + pos, finished: done && isLastPart(item) })
+      : item.kind === "episode" ? () => api.put(`/api/podcasts/episodes/${item.id}/progress`, { position: pos, finished: done }) : null;
+    if (put) this.saving = this.saving.then(put).then(saved, () => {});
   }
 
   private pollRadio(item: PlayItem) {

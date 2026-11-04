@@ -19,7 +19,8 @@ import org.json.JSONObject
  * The web interface's way to the player. The page (frontend/src/player/app.ts) sends JSON
  * messages: the queue to play, and play, pause, seek, skip. The bridge answers with what plays
  * and where it is: on every change, and twice a second while the app is in view (every five
- * seconds behind the lock screen, enough for play counts and resume points).
+ * seconds behind the lock screen, for when the page is awake there; episodes' and audiobooks'
+ * places don't wait for it, the app saves them itself: Progress.kt).
  */
 class PlayerBridge(
     private val context: Context,
@@ -46,12 +47,14 @@ class PlayerBridge(
             val c = future.get()
             c.addListener(this)
             controller = c
+            Progress.onSaved = { key -> send(JSONObject().put("t", "saved").put("key", key)) }
             while (waiting.isNotEmpty()) handle(waiting.removeFirst())
             ticking(c.isPlaying)
         }, ContextCompat.getMainExecutor(context))
     }
 
     fun release() {
+        Progress.onSaved = null
         main.removeCallbacks(tick)
         controller?.release()
         controller = null
@@ -80,7 +83,7 @@ class PlayerBridge(
     private fun handle(m: JSONObject) {
         val c = controller ?: return
         when (val t = m.optString("t")) {
-            "hello" -> send(JSONObject().put("t", "hello").put("version", PlaybackService.USER_AGENT)
+            "hello" -> send(JSONObject().put("t", "hello").put("version", PlaybackService.USER_AGENT).put("saves", true)
                 .put("queue", JSONArray((0 until c.mediaItemCount).map { c.getMediaItemAt(it).carried() }))
                 .put("index", c.currentMediaItemIndex).put("state", state(c))).also { onHello() }
             "load" -> {
@@ -105,6 +108,7 @@ class PlayerBridge(
             "jump" -> {
                 val key = m.optString("key")
                 val index = (0 until c.mediaItemCount).firstOrNull { c.getMediaItemAt(it).mediaId == key } ?: return
+                Progress.asked = key            // from its start, as the page asks
                 c.seekTo(index, 0)
                 if (c.playbackState == Player.STATE_IDLE) c.prepare()
                 c.play()

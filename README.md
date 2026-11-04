@@ -86,6 +86,8 @@ applies you choose from 98 colour schemes, each with a light and a dark version.
   order plays when one ends (with none left that way, the nearest one the other
   way). The player skips 15 seconds back and on and steps to the episode before
   or after, and an episode left halfway carries on there when you go back to it.
+  Continue listening, at the top of the podcasts page, has the episodes you've
+  started and not finished, the latest first.
   An episode opens its own page with the full show notes: links work and
   timestamps (12:34) play from there.
 - **Internet radio**: tens of thousands of stations from radio-browser.info,
@@ -212,6 +214,8 @@ Muzix's https address for it. Spotify playback isn't in the app; open Muzix in
 Chrome for that. Away from wifi (or on a phone's hotspot) the app downloads the
 song that plays and the next two into its cache (1 GB at most), so the music
 plays on through tunnels; a dropped connection is waited out, never skipped.
+The app saves where episodes and audiobooks got to by itself (every 15 seconds,
+on pause, and when its card is closed), as the page sleeps with the screen off.
 
 Install it from <https://github.com/svennefenne/muzix/releases/latest/download/muzix-android.apk>
 (the phone asks once to allow installs from the browser); later versions install

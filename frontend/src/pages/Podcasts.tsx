@@ -37,7 +37,7 @@ function useEpisodeAt(e: Episode) {
 function EpisodeRow({ e, feed }: { e: Episode; feed?: Feed }) {
   const notify = useUi((s) => s.notify);
   const showMenu = useMenu((s) => s.show);
-  const { here, playing, pct } = useEpisodeAt(e);
+  const { here, playing, position, pct } = useEpisodeAt(e);
   const started = useStartedEpisodes().has(e.id);
   const play = () => engine.play([fromEpisode(e, feed?.title, feed?.image)]);
   const menu = (ev: { clientX: number; clientY: number }) => showMenu(ev, [
@@ -92,7 +92,12 @@ function EpisodeRow({ e, feed }: { e: Episode; feed?: Feed }) {
         {kicker}
         {title}
         <div className="dim" style={{ fontSize: 13, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{e.description}</div>
-        {(pct > 0 || here) && <div className="progressbar" style={{ marginTop: 8, maxWidth: 260 }}><div style={{ width: `${pct}%` }} /></div>}
+        {(pct > 0 || here) && (
+          <div className="ep-progress">
+            <div className="progressbar"><div style={{ width: `${pct}%` }} /></div>
+            {e.duration > 0 && <span>{fmtLong(Math.max(60, e.duration - position))} left</span>}
+          </div>
+        )}
       </div>
       {actions}
     </div>
@@ -104,6 +109,8 @@ export default function Podcasts() {
   const notify = useUi((s) => s.notify);
   const subs = useQuery({ queryKey: ["podcasts"], queryFn: () => api.get<Feed[]>("/api/podcasts") });
   const latest = useQuery({ queryKey: ["podcasts-latest"], queryFn: () => api.get<Episode[]>("/api/podcasts/latest") });
+  // fetched on each visit: what was heard elsewhere (the app, another device) since
+  const resume = useQuery({ queryKey: ["podcasts-continue"], queryFn: () => api.get<Episode[]>("/api/podcasts/continue", { limit: 6 }), staleTime: 0 });
   const [genre, setGenre] = useState<number | null>(null);
   const genres = useQuery({ queryKey: ["podcast-genres"], queryFn: () => api.get<{ id: number; name: string }[]>("/api/podcasts/genres"), staleTime: Infinity });
   const top = useQuery({
@@ -191,6 +198,12 @@ export default function Podcasts() {
       </div>
 
       {hits && <Section kicker="Search results" title={`"${term}"`}>{hits.length ? <HitGrid list={hits} /> : <Empty title="No podcasts found" />}</Section>}
+
+      {resume.data && resume.data.length > 0 && (
+        <Section title="Continue listening">
+          <div className="list">{resume.data.map((e) => <EpisodeRow key={e.id} e={e} />)}</div>
+        </Section>
+      )}
 
       <Section title="Your podcasts">
         {subs.data ? (subs.data.length ? (
@@ -356,7 +369,7 @@ function EpisodeView({ e }: { e: EpisodeDetail }) {
             {when && <span className="dotsep">{when}</span>}
             {e.duration > 0 && <span className="dotsep">{fmtLong(e.duration)}</span>}
             {finished ? <span className="dotsep">Played</span>
-              : pct > 0 ? <span className="dotsep">{fmtLong(e.duration - position)} left</span>
+              : pct > 0 ? <span className="dotsep">{fmtLong(Math.max(60, e.duration - position))} left</span>
               : e.new && <span className="dotsep"><NewDot label="New episode" />New</span>}
           </div>
           {pct > 0 && !finished && <div className="progressbar" style={{ maxWidth: 320, marginBottom: 18 }}><div style={{ width: `${pct}%` }} /></div>}

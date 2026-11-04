@@ -234,3 +234,28 @@ def test_autoplay_turns_round_when_nothing_is_left_the_pages_way():
     with db.session() as s:
         s.add(EpisodeProgress(user_id=uid, episode_id=ids["Ep 3"], position=60, finished=True))
     assert after("Ep 4") is None                           # nothing left either way
+
+
+def test_continue_listening_has_the_started_episodes_latest_first():
+    t0 = datetime.now(timezone.utc) - timedelta(days=1)
+    with db.session() as s:
+        u, other = User(username="halfway", password_hash="x"), User(username="halfway-other", password_hash="x")
+        f, g = Feed(url="https://example.com/half.xml", title="Half"), Feed(url="https://example.com/once.xml", title="Once")
+        s.add_all([u, other, f, g])
+        s.flush()
+        s.add(Subscription(user_id=u.id, feed_id=f.id))
+        eps = {name: Episode(feed_id=feed.id, guid=name, title=name, duration=600)
+               for name, feed in [("older", f), ("newer", f), ("heard", f), ("at the end", f), ("barely", f), ("unsubscribed", g), ("untouched", f)]}
+        s.add_all(eps.values())
+        s.flush()
+        for name, pos, done, hours in [("older", 120, False, 1), ("newer", 300, False, 5), ("heard", 600, True, 0),
+                                       ("at the end", 590, False, 0), ("barely", 2, False, 0), ("unsubscribed", 60, False, 3)]:
+            s.add(EpisodeProgress(user_id=u.id, episode_id=eps[name].id, position=pos, finished=done, updated_at=t0 + timedelta(hours=hours)))
+        s.add(EpisodeProgress(user_id=other.id, episode_id=eps["untouched"].id, position=200, updated_at=t0))
+        uid, oid = u.id, other.id
+
+    with db.session() as s:
+        listed = api.continue_listening(db=s, user=s.get(User, uid))
+        assert [(e["title"], e["position"], e["feed_title"]) for e in listed] == [
+            ("newer", 300, "Half"), ("unsubscribed", 60, "Once"), ("older", 120, "Half")]
+        assert [e["title"] for e in api.continue_listening(db=s, user=s.get(User, oid))] == ["untouched"]

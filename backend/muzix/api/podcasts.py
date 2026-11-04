@@ -100,6 +100,21 @@ def latest(db: Session = Depends(get_db), user: User = Depends(current_user), li
     return [episode_json(e, p, f, sub) for e, f, p, sub in rows]
 
 
+@router.get("/continue")
+def continue_listening(db: Session = Depends(get_db), user: User = Depends(current_user), limit: int = 10):
+    """Continue listening: the episodes started and not heard to the end, the latest listened to
+    first. One left in its last 15 seconds counts as heard, as the player has it."""
+    rows = db.execute(select(Episode, Feed, EpisodeProgress, Subscription)
+                      .join(Feed, Feed.id == Episode.feed_id)
+                      .join(EpisodeProgress, (EpisodeProgress.episode_id == Episode.id)
+                            & (EpisodeProgress.user_id == user.id))
+                      .outerjoin(Subscription, (Subscription.feed_id == Feed.id) & (Subscription.user_id == user.id))
+                      .where(EpisodeProgress.finished.is_(False), EpisodeProgress.position >= 5,
+                             (func.coalesce(Episode.duration, 0) == 0) | (EpisodeProgress.position < Episode.duration - 15))
+                      .order_by(EpisodeProgress.updated_at.desc()).limit(limit)).all()
+    return [episode_json(e, p, f, sub) for e, f, p, sub in rows]
+
+
 class SubscribeBody(BaseModel):
     url: str
 
