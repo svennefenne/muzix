@@ -106,6 +106,7 @@ interface PlayerState {
   error: string;
   castState: CastState;       // Google Cast speakers nearby / connected
   castDevice: string;         // the connected speaker's name
+  deviceVolume: { volume: number; muted: boolean } | null;   // another device plays: its volume (player/connect.ts)
   castSupport: "loading" | "ready" | "unsupported";   // can this browser cast at all
   castWhy: string;            // why not, when it can't
   current: () => PlayItem | null;
@@ -136,6 +137,7 @@ export const usePlayer = create<PlayerState>((set, get) => ({
   error: "",
   castState: "unavailable",
   castDevice: "",
+  deviceVolume: null,
   castSupport: "loading",
   castWhy: "",
   current: () => {

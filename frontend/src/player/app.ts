@@ -224,8 +224,10 @@ class AppPlayer {
     s.set({ position: t });
   }
 
+  /** The phone's media volume (`level`, since 0.7.1: what the other devices' sliders show);
+   * older apps set their player's own volume (`value`). */
   setVolume(volume: number, muted: boolean) {
-    this.send({ t: "volume", value: muted ? 0 : volume ** 1.6 });
+    this.send({ t: "volume", value: muted ? 0 : volume ** 1.6, muted, level: volume });
   }
 
   stopMedia() {
@@ -258,6 +260,7 @@ class AppPlayer {
     else if (m.t === "item") this.onItem(m.key as string, (m.offset as number) || 0, m.muzix as string);
     else if (m.t === "state") this.onState(m as unknown as AppState);
     else if (m.t === "saved") this.hooks?.onSaved(m.key as string);
+    else if (m.t === "volume") usePlayer.getState().set({ volume: m.value as number, muted: !!m.muted });
     else if (m.t === "cast") usePlayer.getState().set({ castState: m.state as CastState, castDevice: (m.device as string) || "" });
     else if (m.t === "error") {
       const msg = `Couldn't play ${(m.title as string) || "this"}`;
@@ -268,7 +271,9 @@ class AppPlayer {
 
   /** The app answered: it plays from now on. If it already plays something (the page was
    * reloaded), its queue becomes ours. */
-  private onHello(m: { queue: string[]; index: number; state: AppState; saves?: boolean; device?: string }) {
+  private onHello(m: { queue: string[]; index: number; state: AppState; saves?: boolean; device?: string; volume?: number }) {
+    // the phone's media volume is the volume here, before anything is sent to the app
+    if (typeof m.volume === "number") usePlayer.getState().set({ volume: m.volume });
     this.connected = true;
     this.saves = !!m.saves;
     this.deviceName = m.device || "";

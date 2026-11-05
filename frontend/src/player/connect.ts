@@ -24,6 +24,7 @@ interface Shared {
   queue?: PlayItem[];
   index: number; position: number; duration: number;
   playing: boolean; buffering: boolean; shuffle: boolean; repeat: Repeat;
+  volume?: number; muted?: boolean;
 }
 
 export interface Command {
@@ -66,7 +67,7 @@ function deviceName() {
   return os ? `${browser} on ${os}` : browser;
 }
 
-const SAME = ["index", "playing", "buffering", "duration", "shuffle", "repeat"] as const;
+const SAME = ["index", "playing", "buffering", "duration", "shuffle", "repeat", "volume", "muted"] as const;
 
 class Connect {
   private hooks: ConnectHooks | null = null;
@@ -83,6 +84,8 @@ class Connect {
   private sendTimer = 0;
   private lastSent = { position: 0, at: 0 };
   private heard = { position: 0, at: 0 };   // the position it told last, and when
+  private turned = 0;              // when the volume was changed here: what comes back meanwhile is older
+  private claimed = 0;             // when this device took the music over by itself (a speaker chosen here)
 
   get active() {
     return this.following;
@@ -192,7 +195,7 @@ class Connect {
     if (this.following || !this.ws || s.index < 0 || (active !== you && !s.playing)) return;
     const st: Shared = {
       index: s.index, position: s.position, duration: s.duration, playing: s.playing, buffering: s.buffering,
-      shuffle: s.shuffle, repeat: s.repeat,
+      shuffle: s.shuffle, repeat: s.repeat, volume: s.volume, muted: s.muted,
     };
     if (s.queue !== this.sentQueue || active !== you) st.queue = s.queue;
     this.sentQueue = s.queue;
@@ -214,7 +217,8 @@ class Connect {
     useDevices.setState({ devices: m.devices, active: m.active, you: m.you });
     window.clearTimeout(this.awayTimer);
     const elsewhere = !!m.active && m.active !== m.you;
-    if (elsewhere && !this.following) this.follow();
+    // just taken over here: the list may still name the device that played until the server hears of it
+    if (elsewhere && !this.following && Date.now() - this.claimed > 5000) this.follow();
     else if (!elsewhere && this.following) this.unfollow();
     // the device that plays dropped off: it may be back in a moment (a reload); if not, nothing plays
     if (elsewhere && !m.devices.some((d) => d.id === m.active)) {
@@ -225,6 +229,17 @@ class Connect {
     }
   }
 
+  /** This device plays from now on, through what it has here: a Cast speaker chosen while it followed
+   * another device takes the music over, and that device stops (as when it's chosen in the picker). */
+  claim() {
+    if (!this.following) return;
+    this.following = false;
+    this.claimed = Date.now();
+    this.sentQueue = null;
+    usePlayer.getState().set({ deviceVolume: null });
+    this.publish();
+  }
+
   private follow() {
     this.hooks?.onFollow();
     this.following = true;
@@ -233,6 +248,7 @@ class Connect {
 
   private unfollow() {
     this.following = false;
+    usePlayer.getState().set({ deviceVolume: null });
     this.hooks?.onUnfollow(usePlayer.getState().position);
   }
 
@@ -247,6 +263,8 @@ class Connect {
       ...(st.queue ? { queue: st.queue } : {}),
       index: st.index, position: st.position, duration: st.duration, playing: this.following && st.playing,
       buffering: this.following && st.buffering, shuffle: st.shuffle, repeat: st.repeat,
+      ...(this.following && st.volume !== undefined && Date.now() - this.turned > 1500
+        ? { deviceVolume: { volume: st.volume, muted: !!st.muted } } : {}),
     });
     this.applying = false;
     this.heard = { position: st.position, at: Date.now() };
@@ -260,6 +278,7 @@ class Connect {
     this.applying = true;
     usePlayer.getState().set({
       ...(st.queue ? { queue: st.queue } : {}), index: st.index, duration: st.duration, shuffle: st.shuffle, repeat: st.repeat,
+      deviceVolume: null,
     });
     this.applying = false;
     this.sentQueue = null;
@@ -317,8 +336,11 @@ class Connect {
     usePlayer.getState().set({ position: t });
   }
 
+  /** The volume there, shown here at once (this device's own volume stays as it was). */
   setVolume(volume: number, muted: boolean) {
     this.command({ cmd: "volume", volume, muted });
+    this.turned = Date.now();
+    usePlayer.getState().set({ deviceVolume: { volume, muted } });
   }
 
   stopMedia() {

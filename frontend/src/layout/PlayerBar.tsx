@@ -108,7 +108,8 @@ export function PlayerBar() {
   const s = usePlayer();
   const cur = s.current();
   const { queueOpen, setQueueOpen, setNowPlayingOpen, npPanel, setPref, quality } = useUi();
-  const VolIcon = s.muted || s.volume === 0 ? VolumeX : s.volume < 0.5 ? Volume1 : Volume2;
+  const vol = s.deviceVolume ?? { volume: s.volume, muted: s.muted };     // another device's, while it plays
+  const VolIcon = vol.muted || vol.volume === 0 ? VolumeX : vol.volume < 0.5 ? Volume1 : Volume2;
   const spoken = cur?.kind === "book" || cur?.kind === "episode";
 
   return (
@@ -186,9 +187,11 @@ export function PlayerBar() {
                 onClick={() => setQueueOpen(!queueOpen)}>
           <ListMusic size={18} />
         </button>
-        <button className="ctl" aria-label={s.muted ? "Unmute" : "Mute"} aria-pressed={s.muted} data-tip-key="M" onClick={() => s.set({ muted: !s.muted })}><VolIcon size={18} /></button>
-        <input className="range vol" type="range" min={0} max={1} step={0.01} value={s.muted ? 0 : s.volume}
-               aria-label="Volume" data-tip={s.muted ? "Volume: muted" : `Volume: ${Math.round(s.volume * 100)}%`} onChange={(e) => s.set({ volume: Number(e.target.value), muted: false })} />
+        <button className="ctl" aria-label={vol.muted ? "Unmute" : "Mute"} aria-pressed={vol.muted} data-tip-key="M"
+                onClick={() => engine.setVolume(vol.volume, !vol.muted)}><VolIcon size={18} /></button>
+        <input className="range vol" type="range" min={0} max={1} step={0.01} value={vol.muted ? 0 : vol.volume}
+               aria-label="Volume" data-tip={vol.muted ? "Volume: muted" : `Volume: ${Math.round(vol.volume * 100)}%`}
+               onChange={(e) => engine.setVolume(Number(e.target.value), false)} />
         <button className="ctl" aria-label="Full-screen player" onClick={() => setNowPlayingOpen(true)}><Maximize2 size={16} /></button>
       </div>
     </div>

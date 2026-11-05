@@ -130,7 +130,13 @@ class Engine {
         if (usePlayer.getState().current()) this.load(false, pos);
       },
     };
-    caster.attach(hooks);
+    caster.attach({
+      ...hooks,
+      onStart: () => {
+        connect.claim();        // a speaker chosen while another device played: the music moves to it
+        hooks.onStart();
+      },
+    });
     appPlayer.attach({
       ...hooks,
       onStart: () => {
@@ -304,6 +310,12 @@ class Engine {
         this.clear();
         break;
     }
+  }
+
+  /** The volume of what plays: here (or on its speaker or app), or on the device this one follows. */
+  setVolume(volume: number, muted: boolean) {
+    if (this.remote === connect) return connect.setVolume(volume, muted);
+    usePlayer.getState().set({ volume, muted });
   }
 
   // ------------------------------------------------------------ queue control
@@ -1047,6 +1059,7 @@ class Engine {
 
   private applyVolume() {
     const s = usePlayer.getState();
+    if (this.remote === connect) return;       // its own volume, which this device's doesn't change
     if (this.remote) return this.remote.setVolume(s.muted ? 0 : s.volume, s.muted);
     for (const el of [this.el, this.spare]) el.volume = s.muted ? 0 : s.volume ** 1.6;   // perceptual curve
     spotify.setVolume(s.muted ? 0 : s.volume);

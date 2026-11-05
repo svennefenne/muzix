@@ -53,7 +53,7 @@ function Shortcuts() {
       else if (e.key === "/") search();
       else if (e.key === "ArrowRight") engine.seek(s.position + skip);
       else if (e.key === "ArrowLeft") engine.seek(s.position - skip);
-      else if (e.key.toLowerCase() === "m") s.set({ muted: !s.muted });
+      else if (e.key.toLowerCase() === "m") engine.setVolume(s.deviceVolume?.volume ?? s.volume, !(s.deviceVolume?.muted ?? s.muted));
       else if (e.key.toLowerCase() === "n") engine.next();
       else if (e.key.toLowerCase() === "p") { if (!spoken) engine.prev(); else if (s.index > 0) engine.prev(true); }
     };

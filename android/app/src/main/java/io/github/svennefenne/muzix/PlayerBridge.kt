@@ -1,7 +1,11 @@
 package io.github.svennefenne.muzix
 
+import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -16,6 +20,7 @@ import androidx.media3.session.SessionToken
 import androidx.webkit.JavaScriptReplyProxy
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlin.math.roundToInt
 
 /**
  * The web interface's way to the player. The page (frontend/src/player/app.ts) sends JSON
@@ -41,6 +46,14 @@ class PlayerBridge(
     private val main = Handler(Looper.getMainLooper())
     private var inView = true
     private var failures = 0                 // songs in a row that wouldn't play
+    private val audio = context.getSystemService(AudioManager::class.java)
+    /** The phone's media volume changed (its buttons, or another device): the page hears of it, and
+     * so do the account's other devices (their volume slider shows the phone's). */
+    private val volumeSeen = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) {
+            if (i.getIntExtra("android.media.EXTRA_VOLUME_STREAM_TYPE", -1) == AudioManager.STREAM_MUSIC) sendVolume()
+        }
+    }
     private val tick = object : Runnable {
         override fun run() {
             sendState()
@@ -59,10 +72,13 @@ class PlayerBridge(
             while (waiting.isNotEmpty()) handleSafely(waiting.removeFirst())
             ticking(c.isPlaying)
         }, ContextCompat.getMainExecutor(context))
+        ContextCompat.registerReceiver(context, volumeSeen, IntentFilter("android.media.VOLUME_CHANGED_ACTION"),
+            ContextCompat.RECEIVER_NOT_EXPORTED)
     }
 
     fun release() {
         Progress.onSaved = null
+        runCatching { context.unregisterReceiver(volumeSeen) }
         main.removeCallbacks(tick)
         player?.removeListener(this)
         player = null
@@ -103,7 +119,7 @@ class PlayerBridge(
         val c = player ?: return
         when (val t = m.optString("t")) {
             "hello" -> send(JSONObject().put("t", "hello").put("version", PlaybackService.USER_AGENT).put("saves", true)
-                .put("device", deviceName())
+                .put("device", deviceName()).put("volume", mediaVolume())
                 .put("queue", JSONArray((0 until c.mediaItemCount).map { c.getMediaItemAt(it).carried() }))
                 .put("index", c.currentMediaItemIndex).put("state", state(c))).also { onHello() }
             "load" -> {
@@ -138,7 +154,15 @@ class PlayerBridge(
                 "one" -> Player.REPEAT_MODE_ONE
                 else -> Player.REPEAT_MODE_OFF
             }
-            "volume" -> c.volume = m.optDouble("value", 1.0).toFloat().coerceIn(0f, 1f)
+            // the phone's media volume, as the page (another device, through it) sets it; muted, the player is silent
+            "volume" -> {
+                val muted = m.optBoolean("muted")
+                c.volume = if (muted) 0f else 1f
+                if (!muted && m.has("level")) {
+                    val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                    audio.setStreamVolume(AudioManager.STREAM_MUSIC, (m.optDouble("level").coerceIn(0.0, 1.0) * max).roundToInt(), 0)
+                }
+            }
             "speed" -> c.setPlaybackSpeed(m.optDouble("value", 1.0).toFloat().coerceIn(0.25f, 4f))
             "meta" -> {
                 // a radio station's current song, for the lock screen
@@ -153,6 +177,12 @@ class PlayerBridge(
             else -> onCommand(t, m)
         }
     }
+
+    /** The phone's media volume, 0 to 1. */
+    private fun mediaVolume(): Double =
+        audio.getStreamVolume(AudioManager.STREAM_MUSIC).toDouble() / audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+
+    private fun sendVolume() = send(JSONObject().put("t", "volume").put("value", mediaVolume()).put("muted", player?.volume == 0f))
 
     /** The phone's name as its owner set it (Settings → About phone), for the other devices. */
     private fun deviceName(): String =
