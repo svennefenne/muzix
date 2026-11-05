@@ -8,6 +8,7 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.DeviceInfo
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.datasource.DataSourceBitmapLoader
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -39,6 +40,7 @@ class PlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
+        Crashes.install(this)
         val http = DefaultHttpDataSource.Factory()
             .setUserAgent(USER_AGENT)
             .setConnectTimeoutMs(15_000)
@@ -69,6 +71,7 @@ class PlaybackService : MediaSessionService() {
         val player = CastPlayer.Builder(this).setLocalPlayer(local).setRemotePlayer(speaker).build()
         precache = Precache(this, local, cache, writing).also { it.start() }
         progress = Progress(player).also { it.start() }
+        Companion.player = player
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         session = MediaSession.Builder(this, player)
@@ -96,6 +99,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        player = null
         precache?.stop()
         precache = null
         progress?.stop()
@@ -110,5 +114,8 @@ class PlaybackService : MediaSessionService() {
 
     companion object {
         const val USER_AGENT = "MuzixApp/${BuildConfig.VERSION_NAME} (Android)"
+
+        /** The session's player, while the service runs: PlayerBridge, in this same process, works it directly. */
+        @Volatile var player: Player? = null
     }
 }

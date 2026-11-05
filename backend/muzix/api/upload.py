@@ -108,15 +108,24 @@ async def upload_part(batch: str, data: UploadFile, path: str = Form(...), offse
 
 
 def batch_json(d, db: Session):
+    """A batch as the upload area lists it, or None when it's gone: an import moves its files into
+    the library and takes the emptied folder away, maybe while they're being listed."""
+    try:
+        created = datetime.fromtimestamp(d.stat().st_ctime, timezone.utc).isoformat()
+    except FileNotFoundError:
+        return None
     files = []
     for r, _, fs in os.walk(d):
         for f in fs:
             p = os.path.join(r, f)
-            files.append({"path": os.path.relpath(p, d), "size": os.path.getsize(p),
-                          "kind": formats.family(f) or "other"})
+            try:
+                size = os.path.getsize(p)
+            except FileNotFoundError:
+                continue
+            files.append({"path": os.path.relpath(p, d), "size": size, "kind": formats.family(f) or "other"})
     job = db.scalar(select(Job).where(Job.type == "import_upload",
                                       Job.params["batch"].as_string() == d.name).order_by(Job.id.desc()).limit(1))
-    return {"batch": d.name, "files": files, "created": datetime.fromtimestamp(d.stat().st_ctime, timezone.utc).isoformat(),
+    return {"batch": d.name, "files": files, "created": created,
             "job": {"id": job.id, "status": job.status, "progress": job.progress, "message": job.message} if job else None}
 
 
@@ -125,7 +134,7 @@ def batches(db: Session = Depends(get_db)):
     if not env.UPLOAD_DIR.is_dir():
         return []
     dirs = sorted((d for d in env.UPLOAD_DIR.iterdir() if d.is_dir() and BATCH_RE.match(d.name)), reverse=True)
-    return [batch_json(d, db) for d in dirs]
+    return [b for b in (batch_json(d, db) for d in dirs) if b]
 
 
 @router.post("/batch/{batch}/import")

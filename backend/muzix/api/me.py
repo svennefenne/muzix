@@ -26,11 +26,14 @@ class ClientError(BaseModel):
 
 @router.post("/client-errors")
 def client_error(body: ClientError, request: Request, user: User | None = Depends(optional_user)):
-    """Errors from the web interface, written to the log so they can be looked into."""
+    """Errors from the web interface, and the Android app's crashes (android/.../Crashes.kt), written
+    to the log so they can be looked into."""
     if user is not None:
-        client_log.warning("%s in the browser (%s, %s, %s): %s\n%s", body.kind, user.username, body.url,
-                           request.headers.get("user-agent", "")[:200], body.message, body.stack)
-    return {"ok": True}
+        agent = request.headers.get("user-agent", "")
+        where = "the app" if agent.startswith("MuzixApp/") else "the browser"
+        client_log.warning("%s in %s (%s, %s, %s): %s\n%s", body.kind, where, user.username, body.url,
+                           agent[:200], body.message, body.stack)
+    return {"ok": True, "logged": user is not None}     # the app tells its crashes again until they're in
 LIKE_TYPES = {"track": Track, "album": Album, "artist": Artist}
 
 

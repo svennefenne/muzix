@@ -64,6 +64,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Crashes.install(this)
         // a debug build's page can be inspected from a computer (chrome://inspect)
         if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) WebView.setWebContentsDebuggingEnabled(true)
         root = FrameLayout(this).apply { setBackgroundColor(BG) }
@@ -304,10 +305,12 @@ class MainActivity : ComponentActivity() {
 
             override fun onPageFinished(view: WebView, url: String) {
                 Server.cookie = CookieManager.getInstance().getCookie(server) ?: ""
+                Crashes.report(this@MainActivity)
             }
 
-            /** Android ended the page to free memory: load it again; the player kept playing. */
+            /** The page's process crashed, or Android ended it to free memory: load it again; the player kept playing. */
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                Crashes.pageGone(detail.didCrash(), detail.rendererPriorityAtExit())
                 if (view == web) showWeb(server)
                 return true
             }

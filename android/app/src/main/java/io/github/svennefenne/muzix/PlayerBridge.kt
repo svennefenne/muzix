@@ -21,13 +21,19 @@ import org.json.JSONObject
  * and where it is: on every change, and twice a second while the app is in view (every five
  * seconds behind the lock screen, for when the page is awake there; episodes' and audiobooks'
  * places don't wait for it, the app saves them itself: Progress.kt).
+ *
+ * The bridge works the service's player itself, as it's in this process. A MediaController
+ * guesses what a change does until the player has made it, and Media3 crashes the app when a
+ * late update from the player meets such a guess (a new queue started just as the old one moved
+ * on: androidx/media#3239). The controller is kept to bind the service, which keeps it running.
  */
 class PlayerBridge(
     private val context: Context,
     private val onCommand: (String, JSONObject) -> Unit,
     private val onHello: () -> Unit,
 ) : Player.Listener {
-    private var controller: MediaController? = null
+    private var controller: MediaController? = null   // keeps the service bound
+    private var player: Player? = null
     private var reply: JavaScriptReplyProxy? = null
     private val waiting = ArrayDeque<JSONObject>()
     private val main = Handler(Looper.getMainLooper())
@@ -45,10 +51,10 @@ class PlayerBridge(
         val future = MediaController.Builder(context, token).buildAsync()
         future.addListener({
             val c = future.get()
-            c.addListener(this)
             controller = c
+            player = (PlaybackService.player ?: c).also { it.addListener(this) }
             Progress.onSaved = { key -> send(JSONObject().put("t", "saved").put("key", key)) }
-            while (waiting.isNotEmpty()) handle(waiting.removeFirst())
+            while (waiting.isNotEmpty()) handleSafely(waiting.removeFirst())
             ticking(c.isPlaying)
         }, ContextCompat.getMainExecutor(context))
     }
@@ -56,13 +62,15 @@ class PlayerBridge(
     fun release() {
         Progress.onSaved = null
         main.removeCallbacks(tick)
+        player?.removeListener(this)
+        player = null
         controller?.release()
         controller = null
     }
 
     /** Another server: its queue's links don't work any more. */
     fun clear() {
-        controller?.run {
+        player?.run {
             stop()
             clearMediaItems()
         }
@@ -77,11 +85,20 @@ class PlayerBridge(
     fun onMessage(data: String, proxy: JavaScriptReplyProxy) {
         reply = proxy
         val msg = runCatching { JSONObject(data) }.getOrNull() ?: return
-        if (controller == null) waiting.addLast(msg) else handle(msg)
+        if (player == null) waiting.addLast(msg) else handleSafely(msg)
+    }
+
+    /** A message that fails goes to the server's log: thrown back into the web view, it would end the app. */
+    private fun handleSafely(m: JSONObject) {
+        try {
+            handle(m)
+        } catch (e: Exception) {
+            Crashes.caught("bridge", "The page's \"${m.optString("t")}\" failed", e)
+        }
     }
 
     private fun handle(m: JSONObject) {
-        val c = controller ?: return
+        val c = player ?: return
         when (val t = m.optString("t")) {
             "hello" -> send(JSONObject().put("t", "hello").put("version", PlaybackService.USER_AGENT).put("saves", true)
                 .put("queue", JSONArray((0 until c.mediaItemCount).map { c.getMediaItemAt(it).carried() }))
@@ -138,7 +155,7 @@ class PlayerBridge(
 
     private fun offset(it: MediaItem?) = it?.mediaMetadata?.extras?.getDouble("offset") ?: 0.0
 
-    private fun state(c: MediaController): JSONObject {
+    private fun state(c: Player): JSONObject {
         val cur = c.currentMediaItem
         val known = if (c.duration != C.TIME_UNSET) c.duration / 1000.0 else 0.0
         return JSONObject()
@@ -154,7 +171,7 @@ class PlayerBridge(
     }
 
     private fun sendState() {
-        controller?.let { send(state(it)) }
+        player?.let { send(state(it)) }
     }
 
     /** A message for the page. */
@@ -187,7 +204,7 @@ class PlayerBridge(
     /** A song that won't play is skipped here, so the queue goes on with the screen off; after
      * three in a row (the server is down, say) it stops trying. */
     override fun onPlayerError(error: PlaybackException) {
-        val c = controller ?: return
+        val c = player ?: return
         val cur = c.currentMediaItem
         send(JSONObject().put("t", "error").put("key", cur?.mediaId ?: "")
             .put("title", cur?.mediaMetadata?.title?.toString() ?: "").put("message", "${error.errorCodeName}: ${error.message}"))

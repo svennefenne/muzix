@@ -56,13 +56,20 @@ def _waiting() -> dict[tuple[str, int], str]:
     if not env.UPLOAD_DIR.is_dir():
         return out
     for d in env.UPLOAD_DIR.iterdir():
+        # an import going on moves files out and takes emptied batches away: what's gone isn't waiting
+        try:
+            when = datetime.fromtimestamp(d.stat().st_ctime, timezone.utc).isoformat()
+        except FileNotFoundError:
+            continue
         if not d.is_dir():
             continue
-        when = datetime.fromtimestamp(d.stat().st_ctime, timezone.utc).isoformat()
         for r, _, fs in os.walk(d):
             for f in fs:
                 if not f.endswith(".part"):
-                    out[(f.lower(), os.path.getsize(os.path.join(r, f)))] = when
+                    try:
+                        out[(f.lower(), os.path.getsize(os.path.join(r, f)))] = when
+                    except FileNotFoundError:
+                        pass
     return out
 
 

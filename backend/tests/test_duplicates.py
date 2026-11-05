@@ -1,5 +1,6 @@
 """Before an upload: the same file again, and songs the library has already by their names."""
 import os
+import shutil
 
 from muzix import db, env
 from muzix.api import upload as api
@@ -82,3 +83,37 @@ def test_duplicates_before_an_upload():
     with db.session() as s:
         assert api.check(api.CheckBody(files=[{"path": "Old/old.flac", "size": 1000}]), db=s)["off"]
     settings.set_many({"upload_check_duplicates": True})
+
+
+def test_the_upload_area_lists_while_an_import_takes_batches_away(monkeypatch):
+    """An import moves its files into the library and takes its emptied folder away, maybe while the
+    upload area is being listed (it is, every few seconds): what went is left out, with no error."""
+    done, going, staying = (env.UPLOAD_DIR / b for b in ("20261105-001908-4ba8", "20261105-002000-aaaa", "20261105-003000-bbbb"))
+    for d in (done, going, staying):
+        os.makedirs(d / "Album", exist_ok=True)
+        (d / "Album" / "01.flac").write_bytes(b"x" * 5)
+        (d / "Album" / "02.flac").write_bytes(b"x" * 6)
+    real_json, real_size = api.batch_json, os.path.getsize
+
+    def batch_json(d, s):
+        if d == done:
+            shutil.rmtree(d)                     # imported between the listing and a look at it
+        return real_json(d, s)
+
+    def getsize(p):
+        if str(p).startswith(str(going)) and str(p).endswith("01.flac") and os.path.exists(p):
+            os.remove(p)                         # moved into the library just as it was reached
+        return real_size(p)
+
+    monkeypatch.setattr(api, "batch_json", batch_json)
+    monkeypatch.setattr(os.path, "getsize", getsize)
+    with db.session() as s:
+        got = {b["batch"]: sorted(f["path"] for f in b["files"]) for b in api.batches(db=s)}
+    assert done.name not in got
+    assert got[going.name] == ["Album/02.flac"]
+    assert got[staying.name] == ["Album/01.flac", "Album/02.flac"]
+
+    (going / "Album" / "01.flac").write_bytes(b"x" * 5)
+    assert ("02.flac", 6) in duplicates._waiting()          # the duplicate check's look goes on too
+    for d in (going, staying):
+        shutil.rmtree(d)

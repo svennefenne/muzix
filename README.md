@@ -216,6 +216,8 @@ song that plays and the next two into its cache (1 GB at most), so the music
 plays on through tunnels; a dropped connection is waited out, never skipped.
 The app saves where episodes and audiobooks got to by itself (every 15 seconds,
 on pause, and when its card is closed), as the page sleeps with the screen off.
+When it crashes, it tells the server the next time it starts: the crash shows
+in the server's log next to the web interface's own errors.
 
 Install it from <https://github.com/svennefenne/muzix/releases/latest/download/muzix-android.apk>
 (the phone asks once to allow installs from the browser); later versions install
