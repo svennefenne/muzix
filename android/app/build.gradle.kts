@@ -29,7 +29,7 @@ android {
         minSdk = 29
         targetSdk = 35
         versionCode = commits.get()
-        versionName = "0.7.1"
+        versionName = "0.7.2"
     }
 
     buildFeatures {
@@ -75,4 +75,6 @@ dependencies {
     implementation("androidx.mediarouter:mediarouter:1.8.1")
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("androidx.fragment:fragment-ktx:1.8.9")
+    // the app's own connection to the account's other devices, while its page is frozen (ConnectLink.kt)
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }

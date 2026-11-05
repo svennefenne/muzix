@@ -87,6 +87,16 @@ class MainActivity : ComponentActivity() {
         if (saved == null) showConnect("", null) else showWeb(saved)
     }
 
+    override fun onStart() {
+        super.onStart()
+        bridge.visible(true)
+    }
+
+    override fun onStop() {
+        bridge.visible(false)
+        super.onStop()
+    }
+
     override fun onResume() {
         super.onResume()
         bridge.inView(true)

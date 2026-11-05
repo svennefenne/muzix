@@ -81,11 +81,13 @@ class Connect {
   following = false;
   private applying = false;        // a state from the device that plays being put in place
   private sentQueue: PlayItem[] | null = null;
-  private sendTimer = 0;
   private lastSent = { position: 0, at: 0 };
   private heard = { position: 0, at: 0 };   // the position it told last, and when
   private turned = 0;              // when the volume was changed here: what comes back meanwhile is older
   private claimed = 0;             // when this device took the music over by itself (a speaker chosen here)
+  private publishing = false;
+  private parked = false;          // in the app, out of view: the app has the device's connection
+  private silence = 0;             // back in view, a sync asked for: no answer, and the connection was dead
 
   get active() {
     return this.following;
@@ -101,8 +103,11 @@ class Connect {
         if (s.shuffle !== prev.shuffle) this.command({ cmd: "shuffle", on: s.shuffle });
         return;
       }
-      const moved = Math.abs(s.position - (this.lastSent.position + (s.playing ? (Date.now() - this.lastSent.at) / 1000 : 0))) > 3;
-      if (s.queue !== prev.queue || SAME.some((k) => s[k] !== prev[k]) || moved) this.publishSoon();
+      const since = (Date.now() - this.lastSent.at) / 1000;
+      const moved = Math.abs(s.position - (this.lastSent.position + (s.playing ? since : 0))) > 3;
+      // every few seconds while it plays too, on the player's own news: timers wait long in a page out of view
+      const due = s.playing && s.position !== prev.position && since > 10;
+      if (s.queue !== prev.queue || SAME.some((k) => s[k] !== prev[k]) || moved || due) this.publishSoon();
     });
     // the position carried on while it plays there (it tells every few seconds)
     window.setInterval(() => {
@@ -126,7 +131,8 @@ class Connect {
     this.id = deviceId();
     this.open();
     window.addEventListener("online", () => this.reconnectNow());
-    document.addEventListener("visibilitychange", () => !document.hidden && this.reconnectNow());
+    document.addEventListener("visibilitychange", () => (document.hidden ? this.park() : this.backInView()));
+    window.addEventListener("focus", () => this.backInView());
   }
 
   stop() {
@@ -138,13 +144,47 @@ class Connect {
     useDevices.setState({ devices: [], active: "", online: false });
   }
 
-  /** Who this device is, told again (the app's name for the phone comes after the page loads). */
+  /** Who this device is, told again (the app's name for the phone comes after the page loads). The app
+   * hears it too: it keeps the device's connection while the page is out of view. */
   hello() {
-    if (this.wanted) this.send({ t: "hello", id: this.id, name: deviceName(), kind: appPlayer.available ? "app" : "browser" });
+    if (!this.wanted) return;
+    const hello = { t: "hello", id: this.id, name: deviceName(), kind: appPlayer.available ? "app" : "browser" };
+    this.send(hello);
+    if (appPlayer.available) appPlayer.tellDevice(hello);
+  }
+
+  /** In the app, out of view: the page is frozen after a while, so the app keeps the device's
+   * connection meanwhile (ConnectLink.kt); this page's own goes until it's back in view. */
+  private park() {
+    if (!appPlayer.available || !this.ws) return;
+    this.parked = true;
+    window.clearTimeout(this.retryTimer);
+    const ws = this.ws;
+    this.ws = null;
+    ws.close();
+  }
+
+  /** Back in view (a phone's app opened again, a tab chosen): what plays elsewhere, asked for again. A
+   * connection that went quiet while the page slept doesn't answer: it's made again. */
+  private backInView() {
+    if (!this.wanted) return;
+    this.parked = false;
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return this.reconnectNow();
+    this.send({ t: "sync" });
+    window.clearTimeout(this.silence);
+    const ws = this.ws;
+    this.silence = window.setTimeout(() => {
+      if (this.ws !== ws) return;
+      this.retry = 0;
+      ws.close();
+      this.ws = null;
+      useDevices.setState({ online: false });
+      this.open();
+    }, 4000);
   }
 
   private reconnectNow() {
-    if (!this.wanted || (this.ws && this.ws.readyState <= WebSocket.OPEN)) return;
+    if (!this.wanted || this.parked || (this.ws && this.ws.readyState <= WebSocket.OPEN)) return;
     window.clearTimeout(this.retryTimer);
     this.open();
   }
@@ -160,6 +200,7 @@ class Connect {
       if (!this.following && usePlayer.getState().playing) this.publish();
     };
     ws.onmessage = (e) => {
+      window.clearTimeout(this.silence);
       try {
         this.onMessage(JSON.parse(e.data));
       } catch {
@@ -170,7 +211,7 @@ class Connect {
       if (this.ws !== ws) return;
       this.ws = null;
       useDevices.setState({ online: false });
-      if (!this.wanted) return;
+      if (!this.wanted || this.parked) return;
       const wait = [1, 2, 5, 10, 30][Math.min(this.retry++, 4)];
       this.retryTimer = window.setTimeout(() => this.open(), wait * 1000);
     };
@@ -182,9 +223,15 @@ class Connect {
 
   // ------------------------------------------------------------ the device that plays (this one)
 
+  /** Once the changes made together are in: right after, not on a timer (in a page out of view, as the
+   * app's is with the screen off, a timer can wait a minute). */
   private publishSoon() {
-    window.clearTimeout(this.sendTimer);
-    this.sendTimer = window.setTimeout(() => this.publish(), 150);
+    if (this.publishing) return;
+    this.publishing = true;
+    queueMicrotask(() => {
+      this.publishing = false;
+      this.publish();
+    });
   }
 
   /** What plays here, for the others; the queue only when it changed. A device that only has a

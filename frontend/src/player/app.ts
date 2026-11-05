@@ -65,6 +65,9 @@ class AppPlayer {
     if (!app) return;
     app.addEventListener("message", (e) => this.onMessage(e.data));
     this.send({ t: "hello" });
+    useUi.subscribe((u, prev) => {
+      if (this.connected && (u.quality !== prev.quality || u.radioBuffer !== prev.radioBuffer)) this.prefs();
+    });
     usePlayer.subscribe((s, prev) => {
       if (!this.connected) return;
       if (s.repeat !== prev.repeat) this.send({ t: "repeat", mode: s.repeat });
@@ -81,6 +84,17 @@ class AppPlayer {
       new MutationObserver(bars).observe(meta, { attributes: true, attributeFilter: ["content"] });
       bars();
     }
+  }
+
+  /** This page as one of the account's devices (player/connect.ts), and its sound settings: the app keeps
+   * the device's connection itself while the page is out of view and frozen (ConnectLink.kt, since 0.7.2). */
+  tellDevice(hello: object) {
+    this.send({ t: "device", hello });
+  }
+
+  private prefs() {
+    const ui = useUi.getState();
+    this.send({ t: "prefs", quality: ui.quality, radioBuffer: ui.radioBuffer });
   }
 
   /** Back to the app's screen for the server's address. */
@@ -261,6 +275,7 @@ class AppPlayer {
     else if (m.t === "state") this.onState(m as unknown as AppState);
     else if (m.t === "saved") this.hooks?.onSaved(m.key as string);
     else if (m.t === "volume") usePlayer.getState().set({ volume: m.value as number, muted: !!m.muted });
+    else if (m.t === "queue") this.onQueue(m.queue as string[], m.index as number);
     else if (m.t === "cast") usePlayer.getState().set({ castState: m.state as CastState, castDevice: (m.device as string) || "" });
     else if (m.t === "error") {
       const msg = `Couldn't play ${(m.title as string) || "this"}`;
@@ -277,6 +292,7 @@ class AppPlayer {
     this.connected = true;
     this.saves = !!m.saves;
     this.deviceName = m.device || "";
+    this.prefs();
     this.hooks?.onStart();
     const s = usePlayer.getState();
     this.send({ t: "repeat", mode: s.repeat });
@@ -294,6 +310,20 @@ class AppPlayer {
       if (cur) this.hooks?.onItem(cur.key);
     }
     this.onState(m.state);
+  }
+
+  /** Back in view: another device gave the app a new queue while the page was frozen; it's ours now. */
+  private onQueue(carried: string[], index: number) {
+    const queue = carried.map((j) => {
+      try {
+        return JSON.parse(j) as PlayItem;
+      } catch {
+        return null;
+      }
+    }).filter(Boolean) as PlayItem[];
+    if (!queue.length) return;
+    this.handed = new Set(queue.map((it) => it.key));
+    usePlayer.getState().set({ queue, index: Math.max(0, Math.min(index, queue.length - 1)) });
   }
 
   private onItem(key: string, offset: number, carried: string) {

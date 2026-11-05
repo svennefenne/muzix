@@ -12,6 +12,7 @@ Messages, as JSON with a "t":
                   command {cmd, ...}           for the device that plays (play, pause, next, seek, ...)
                   transfer {to, play, state?}  play on `to` from now on (`state`: what to play, when
                                                nothing played anywhere yet)
+                  sync                         back in view: the devices and what plays, again
   to a device     devices {devices, active, you, grace}   the active device missing from devices
                                                is away: for `grace` seconds it may come back
                   state {state}                what the device that plays plays
@@ -84,10 +85,10 @@ def current(acc: Account) -> dict | None:
     return st
 
 
-async def tell_devices(acc: Account):
+async def tell_devices(acc: Account, only: Device | None = None):
     settle(acc)
     listed = [{"id": d.id, "name": d.name, "kind": d.kind} for d in acc.devices.values()]
-    for d in list(acc.devices.values()):
+    for d in [only] if only else list(acc.devices.values()):
         await send(d, {"t": "devices", "devices": listed, "active": acc.active, "you": d.id, "grace": GRACE})
 
 
@@ -166,6 +167,10 @@ async def connect(ws: WebSocket):
                     await send(dev, {"t": "state", "state": current(acc)})
             elif dev is None:
                 continue
+            elif t == "sync":
+                await tell_devices(acc, dev)
+                if acc.state and acc.active != dev.id:
+                    await send(dev, {"t": "state", "state": current(acc)})
             elif t == "state" and isinstance(m.get("state"), dict):
                 await on_state(acc, dev, m["state"])
             elif t == "command" and acc.active != dev.id:

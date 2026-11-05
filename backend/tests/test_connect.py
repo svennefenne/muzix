@@ -58,6 +58,11 @@ def test_devices_follow_control_and_hand_over(client):
     st = until(phone, "state")["state"]
     assert st["index"] == 1 and st["queue"] == QUEUE        # the queue kept when it didn't change
 
+    # back in view, the phone asks again: the devices and what plays now
+    phone.send_json({"t": "sync"})
+    assert until(phone, "devices")["active"] == "desk"
+    assert until(phone, "state")["state"]["index"] == 1
+
     # the phone's controls reach the desk
     phone.send_json({"t": "command", "cmd": "pause"})
     assert until(desk, "command") == {"t": "command", "cmd": "pause", "from": "phone"}

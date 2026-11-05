@@ -47,6 +47,9 @@ class PlayerBridge(
     private var inView = true
     private var failures = 0                 // songs in a row that wouldn't play
     private val audio = context.getSystemService(AudioManager::class.java)
+    /** The account's other devices, out of view (the page frozen): the app keeps the connection itself. */
+    private val link = ConnectLink(audio, { player }, ::send)
+
     /** The phone's media volume changed (its buttons, or another device): the page hears of it, and
      * so do the account's other devices (their volume slider shows the phone's). */
     private val volumeSeen = object : BroadcastReceiver() {
@@ -77,6 +80,7 @@ class PlayerBridge(
     }
 
     fun release() {
+        link.stop()
         Progress.onSaved = null
         runCatching { context.unregisterReceiver(volumeSeen) }
         main.removeCallbacks(tick)
@@ -92,6 +96,11 @@ class PlayerBridge(
             stop()
             clearMediaItems()
         }
+    }
+
+    /** The page out of view (it freezes after a while) or back: the device's connection is the app's meanwhile. */
+    fun visible(on: Boolean) {
+        if (on) link.stop() else link.start()
     }
 
     fun inView(visible: Boolean) {
@@ -127,6 +136,11 @@ class PlayerBridge(
                 c.setMediaItems(items, m.optInt("index"), (m.optDouble("position", 0.0) * 1000).toLong())
                 c.prepare()
                 c.playWhenReady = m.optBoolean("play", true)
+            }
+            "device" -> link.device = m.optJSONObject("hello")
+            "prefs" -> {
+                link.quality = m.optString("quality", "original")
+                link.radioBuffer = m.optInt("radioBuffer")
             }
             "upcoming" -> {
                 // everything after the current song, replaced
