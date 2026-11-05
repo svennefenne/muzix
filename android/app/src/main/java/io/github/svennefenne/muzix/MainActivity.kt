@@ -268,6 +268,9 @@ class MainActivity : ComponentActivity() {
         dropWeb()
         val w = WebView(this)
         w.setBackgroundColor(BG)
+        // the page stays awake with the screen off, as long as the app is (it plays): it's one of
+        // the account's devices, which the others see and control (Muzix Connect)
+        w.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
         w.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true

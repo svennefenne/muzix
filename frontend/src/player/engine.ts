@@ -10,10 +10,12 @@ import { useUi } from "../store/ui";
 import type { Episode, Track, User } from "../types";
 import { appPlayer } from "./app";
 import { caster, type CastHooks } from "./cast";
+import { type Command, connect } from "./connect";
 import { spotify } from "./spotify";
 import { onMobileData, onNetworkChange, stash } from "./stash";
 
-/** What plays the queue instead of the page's own audio element: a Cast speaker, or the Android app's player. */
+/** What plays the queue instead of the page's own audio element: a Cast speaker, the Android app's
+ * player, or another of the account's devices (Muzix Connect). */
 interface Remote {
   loadQueue(start: number, at?: number, autoplay?: boolean): unknown;
   syncUpcoming(): unknown;
@@ -131,6 +133,10 @@ class Engine {
     caster.attach(hooks);
     appPlayer.attach({
       ...hooks,
+      onStart: () => {
+        hooks.onStart();
+        connect.hello();        // the app said what the phone is called
+      },
       onSaved: (key) => {
         const item = usePlayer.getState().queue.find((i) => i.key === key);
         if (item) this.onSaved?.(item);
@@ -146,6 +152,7 @@ class Engine {
     });
     caster.load();
     appPlayer.connect();
+    this.joinDevices();
     usePlayer.subscribe((s, prev) => {
       if (s.position !== prev.position && s.current()?.key === this.loadedKey) this.loadedAt = s.position;
       if (prev.playing && !s.playing) this.saveProgress();    // paused: an episode's place, saved now
@@ -166,7 +173,7 @@ class Engine {
   }
 
   private get remote(): Remote | null {
-    return caster.active ? caster : appPlayer.active ? appPlayer : null;
+    return connect.following ? connect : caster.active ? caster : appPlayer.active ? appPlayer : null;
   }
 
   /** One of the two elements. What happens counts only from the one that plays. */
@@ -195,6 +202,108 @@ class Engine {
       if (cur && !cur.duration && isFinite(el.duration)) usePlayer.getState().set({ duration: el.duration });
     });
     return el;
+  }
+
+  // ------------------------------------------------------------ the account's other devices
+
+  /** Signed in, this page is one of the account's devices: it follows the one that plays, or plays
+   * and takes its commands (player/connect.ts). */
+  private joinDevices() {
+    connect.attach({
+      onFollow: () => {
+        // what played here stops (its place saved first): the other device plays now
+        this.saveProgress();
+        if (caster.active) caster.stopMedia();
+        if (appPlayer.active) appPlayer.stopMedia();
+        appPlayer.standby = true;
+        this.stop();
+        usePlayer.getState().set({ playing: false, buffering: false });
+      },
+      onItem: (key) => {
+        const item = usePlayer.getState().queue.find((i) => i.key === key);
+        usePlayer.getState().set({ liveTitle: "", error: "" });
+        if (item) this.updateMediaSession(item);
+      },
+      onUnfollow: (pos) => {
+        appPlayer.standby = false;
+        usePlayer.getState().set({ playing: false, buffering: false });
+        if (usePlayer.getState().current()) this.begin(false, pos);
+      },
+      onTakeover: (pos, play) => {
+        appPlayer.standby = false;
+        const cur = usePlayer.getState().current();
+        if (!cur) return;
+        this.reloaded = cur.key;      // a browser that wants a click first asks for one
+        this.begin(play, cur.kind === "radio" ? undefined : pos);
+      },
+      onCommand: (c) => this.obey(c),
+    });
+    const join = (signedIn: boolean) => (signedIn ? connect.start() : connect.stop());
+    join(!!useUi.getState().user);
+    useUi.subscribe((u, prev) => {
+      if (!!u.user !== !!prev.user) join(!!u.user);
+    });
+  }
+
+  /** The item that's current, started here or on whatever plays for this page (a speaker, the app). */
+  private begin(play: boolean, at?: number) {
+    const s = usePlayer.getState();
+    if (this.remote) return this.remote.loadQueue(s.index, at ?? 0, play);
+    this.load(play, at);
+  }
+
+  /** A command from another device, for this one, which plays. */
+  private obey(c: Command) {
+    const s = usePlayer.getState();
+    switch (c.cmd) {
+      case "play":
+      case "pause":
+        if ((c.cmd === "play") !== (s.playing || s.buffering)) this.toggle();
+        break;
+      case "next":
+        this.next();
+        break;
+      case "prev":
+        this.prev(!!c.always);
+        break;
+      case "seek":
+        this.seek(Number(c.position) || 0);
+        break;
+      case "jump": {
+        const i = s.queue.findIndex((it) => it.key === c.key);
+        if (i >= 0) this.jump(i);
+        break;
+      }
+      case "load": {
+        const queue = c.queue as PlayItem[];
+        const index = Number(c.index) || 0;
+        if (!queue?.length) return;
+        s.set({ queue, index });
+        this.begin(c.play !== false, Number(c.position) || queue[index]?.resume || 0);
+        break;
+      }
+      case "queue": {
+        // the queue changed there (added, moved, removed): what plays here plays on
+        const queue = c.queue as PlayItem[];
+        const key = s.current()?.key;
+        const at = queue.findIndex((it) => it.key === key);
+        s.set({ queue, index: at >= 0 ? at : Math.min(Number(c.index) || 0, queue.length - 1) });
+        if (this.remote) this.remote.syncUpcoming();
+        break;
+      }
+      case "volume":
+        s.set({ volume: Number(c.volume) || 0, muted: !!c.muted });
+        break;
+      case "repeat":
+        s.set({ repeat: c.mode as typeof s.repeat });
+        break;
+      case "shuffle":
+        s.set({ shuffle: !!c.on });
+        break;
+      case "stop":
+        this.clear();
+        break;
+    }
   }
 
   // ------------------------------------------------------------ queue control
@@ -328,7 +437,7 @@ class Engine {
    * queue repeats, nor after audiobooks, podcasts or radio. Shuffling here never runs out. */
   private autoplayDue() {
     const s = usePlayer.getState();
-    return useUi.getState().autoplay && s.repeat === "off" && !(s.shuffle && !this.remote)
+    return this.remote !== connect && useUi.getState().autoplay && s.repeat === "off" && !(s.shuffle && !this.remote)
       && s.current()?.kind === "track" && s.index >= s.queue.length - 2;
   }
 
@@ -375,7 +484,7 @@ class Engine {
   private episodeDue() {
     const s = usePlayer.getState();
     const cur = s.current();
-    return cur?.kind === "episode" && !!cur.feedId && s.repeat === "off" && s.index >= s.queue.length - 1 && this.askedNext !== cur.key;
+    return this.remote !== connect && cur?.kind === "episode" && !!cur.feedId && s.repeat === "off" && s.index >= s.queue.length - 1 && this.askedNext !== cur.key;
   }
 
   private fillEpisode(): Promise<boolean> {
@@ -709,6 +818,7 @@ class Engine {
    * the queue too, so going back to it carries on there; one left at its very end has been heard
    * (the app or a speaker goes on by itself, and tells where it is only every few seconds). */
   saveProgress(finished = false) {
+    if (this.remote === connect) return;      // the device that plays keeps the places
     const s = usePlayer.getState();
     const item = s.queue.find((i) => i.key === this.loadedKey);
     if (!item) return;

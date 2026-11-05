@@ -188,6 +188,18 @@ the site). The browser also needs DRM: in Firefox, *Settings → General → Pla
 DRM-controlled content*. The browser console (F12) shows blocked Spotify
 requests as "CORS request did not succeed".
 
+### Your devices
+
+As with Spotify, every place you're signed in (a browser tab, the Android app)
+is one of your devices, and they see each other. While one plays, the others
+show what it plays ("Playing on Chrome on Linux") and their controls work it:
+pause, skip and seek, and an album chosen there plays where the music is. The
+device button in the player (the Cast button, when no other device is online)
+lists your devices and Google Cast speakers; choosing one moves the music there,
+where it was. The app plays on with its screen off and can be controlled from
+your other devices meanwhile. A device that goes away is waited for 45 seconds
+(a reload); after that nothing plays, and any of them can carry on from there.
+
 ### Casting to speakers
 
 The Cast button appears in the player when a Google Cast speaker is on your

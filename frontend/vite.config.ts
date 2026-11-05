@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    proxy: { "/api": { target: "http://127.0.0.1:18080", changeOrigin: false } },
+    proxy: { "/api": { target: "http://127.0.0.1:18080", changeOrigin: false, ws: true } },
   },
   // source maps let crash reports from browsers (POST /api/client-errors) be read back to the source
   build: { outDir: "dist", sourcemap: true, chunkSizeWarningLimit: 1500 },

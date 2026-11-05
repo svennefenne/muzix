@@ -615,6 +615,9 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
 .menu button:hover, .menu a:hover { background: var(--surface-3); }
 .menu hr { border: none; border-top: 1px solid var(--border); margin: 5px 4px; }
 .menu .label { padding: 6px 10px 4px; font: 600 10px/1 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--text-faint); }
+/* the device picker: the device that plays has its icon in the accent */
+.menu .dev-on { display: flex; color: var(--primary); }
+.menu .dev-icon { display: flex; color: var(--text-dim); }
 
 .tooltip {
   position: fixed; z-index: 90; pointer-events: none; max-width: min(320px, calc(100vw - 16px)); width: max-content;

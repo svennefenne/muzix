@@ -47,6 +47,10 @@ class AppPlayer {
   /** The app saves where episodes and audiobooks got to, and carries on in one heard partly, itself
    * (since 0.5.0): the page sleeps with the screen off, the app's player doesn't. */
   saves = false;
+  /** The phone's own name (Settings → About phone), for the other devices' device pickers (since 0.7.0). */
+  deviceName = "";
+  /** Another device plays (player/connect.ts): the app's player is stopped, and what it says about itself doesn't count. */
+  standby = false;
 
   get active() {
     return this.connected;
@@ -250,6 +254,7 @@ class AppPlayer {
       return;
     }
     if (m.t === "hello") this.onHello(m as unknown as Parameters<AppPlayer["onHello"]>[0]);
+    else if (this.standby && (m.t === "item" || m.t === "state" || m.t === "error")) return;
     else if (m.t === "item") this.onItem(m.key as string, (m.offset as number) || 0, m.muzix as string);
     else if (m.t === "state") this.onState(m as unknown as AppState);
     else if (m.t === "saved") this.hooks?.onSaved(m.key as string);
@@ -263,9 +268,10 @@ class AppPlayer {
 
   /** The app answered: it plays from now on. If it already plays something (the page was
    * reloaded), its queue becomes ours. */
-  private onHello(m: { queue: string[]; index: number; state: AppState; saves?: boolean }) {
+  private onHello(m: { queue: string[]; index: number; state: AppState; saves?: boolean; device?: string }) {
     this.connected = true;
     this.saves = !!m.saves;
+    this.deviceName = m.device || "";
     this.hooks?.onStart();
     const s = usePlayer.getState();
     this.send({ t: "repeat", mode: s.repeat });

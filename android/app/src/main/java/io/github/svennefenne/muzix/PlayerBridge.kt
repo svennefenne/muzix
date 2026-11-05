@@ -2,8 +2,10 @@ package io.github.svennefenne.muzix
 
 import android.content.ComponentName
 import android.content.Context
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import androidx.core.content.ContextCompat
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -101,6 +103,7 @@ class PlayerBridge(
         val c = player ?: return
         when (val t = m.optString("t")) {
             "hello" -> send(JSONObject().put("t", "hello").put("version", PlaybackService.USER_AGENT).put("saves", true)
+                .put("device", deviceName())
                 .put("queue", JSONArray((0 until c.mediaItemCount).map { c.getMediaItemAt(it).carried() }))
                 .put("index", c.currentMediaItemIndex).put("state", state(c))).also { onHello() }
             "load" -> {
@@ -150,6 +153,11 @@ class PlayerBridge(
             else -> onCommand(t, m)
         }
     }
+
+    /** The phone's name as its owner set it (Settings → About phone), for the other devices. */
+    private fun deviceName(): String =
+        Settings.Global.getString(context.contentResolver, "device_name")?.takeIf { it.isNotBlank() }
+            ?: "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}"
 
     private fun MediaItem.carried(): String = mediaMetadata.extras?.getString("muzix") ?: ""
 

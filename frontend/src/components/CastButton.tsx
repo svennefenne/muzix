@@ -1,23 +1,72 @@
-/** Opens the speaker picker for Google Cast speakers (the browser's, or the Android app's own);
- * shown wherever casting works, dimmed until a speaker turns up on the network. */
+/** Where the music plays: the account's other devices (Muzix Connect, player/connect.ts) and Google
+ * Cast speakers (the browser's, or the Android app's own), in one button, as with Spotify. With no
+ * other device online it's the speaker picker as it was, dimmed until a speaker turns up. */
 
-import { Cast } from "lucide-react";
+import { Cast, Monitor, MonitorSpeaker, Smartphone } from "lucide-react";
+import type { MouseEvent, ReactNode } from "react";
 import { appPlayer } from "../player/app";
 import { caster } from "../player/cast";
+import { connect, type Device, useDevices } from "../player/connect";
 import { usePlayer } from "../store/player";
+import { useMenu } from "./ui";
+
+const phone = (d: Device) => d.kind === "app" || /Android|iOS/.test(d.name);
+
+/** The other device that plays, while one does. */
+function usePlayingElsewhere() {
+  return useDevices((s) => (s.active && s.active !== s.you ? s.devices.find((d) => d.id === s.active)?.name || "another device" : ""));
+}
 
 export function CastButton({ size = 18, className = "ctl", label = false }: { size?: number; className?: string; label?: boolean }) {
   const state = usePlayer((s) => s.castState);
   const device = usePlayer((s) => s.castDevice);
   const ready = usePlayer((s) => s.castSupport === "ready");
-  if (!ready) return null;
-  const on = state === "connected";
-  const what = on ? `Playing on ${device}` : state === "connecting" ? "Connecting to the speaker…"
-    : state === "unavailable" ? "No speakers found on this network yet" : "Play on a speaker";
+  const devices = useDevices((s) => s.devices);
+  const you = useDevices((s) => s.you);
+  const elsewhere = usePlayingElsewhere();
+  const showMenu = useMenu((s) => s.show);
+  const others = devices.filter((d) => d.id !== you);
+  const chooseSpeaker = () => (appPlayer.available ? appPlayer.chooseSpeaker() : caster.choose());
+  const casting = state === "connected";
+  if (!others.length && !elsewhere) {
+    if (!ready) return null;
+    const what = casting ? `Playing on ${device}` : state === "connecting" ? "Connecting to the speaker…"
+      : state === "unavailable" ? "No speakers found on this network yet" : "Play on a speaker";
+    return (
+      <button className={`${className} cast-btn ${casting ? "on" : ""} ${state === "connecting" ? "connecting" : ""} ${state === "unavailable" ? "dim" : ""}`}
+              aria-label={what} data-tip={what} onClick={chooseSpeaker}>
+        <Cast size={size} />{label && <span>{casting ? device : "Cast"}</span>}
+      </button>
+    );
+  }
+  const here = devices.find((d) => d.id === you);
+  const mark = (on: boolean, icon: ReactNode) => <span className={on ? "dev-on" : "dev-icon"}>{icon}</span>;
+  const pick = (e: MouseEvent) => {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    showMenu({ clientX: r.left, clientY: r.bottom + 6 }, [
+      { heading: "Play on" },
+      {
+        label: `${here?.name || "This device"} (this one)${!elsewhere && !casting ? " · playing" : ""}`,
+        icon: mark(!elsewhere && !casting, here && phone(here) ? <Smartphone size={16} /> : <Monitor size={16} />),
+        onClick: () => elsewhere && connect.transfer(you),
+      },
+      ...others.map((d) => ({
+        label: d.name + (d.name === elsewhere ? " · playing" : ""),
+        icon: mark(d.name === elsewhere, phone(d) ? <Smartphone size={16} /> : <Monitor size={16} />),
+        onClick: () => d.name !== elsewhere && connect.transfer(d.id),
+      })),
+      ...(ready ? [{ sep: true }, {
+        label: casting ? `${device} · playing` : state === "unavailable" ? "Google Cast: no speakers found yet" : "Google Cast speaker…",
+        icon: mark(casting, <Cast size={16} />),
+        onClick: chooseSpeaker,
+      }] : []),
+    ]);
+  };
+  const on = !!elsewhere || casting;
+  const what = elsewhere ? `Playing on ${elsewhere}` : casting ? `Playing on ${device}` : "Play on another device";
   return (
-    <button className={`${className} cast-btn ${on ? "on" : ""} ${state === "connecting" ? "connecting" : ""} ${state === "unavailable" ? "dim" : ""}`}
-            aria-label={what} data-tip={what} onClick={() => (appPlayer.available ? appPlayer.chooseSpeaker() : caster.choose())}>
-      <Cast size={size} />{label && <span>{on ? device : "Cast"}</span>}
+    <button className={`${className} cast-btn ${on ? "on" : ""}`} aria-label={what} data-tip={what} aria-haspopup="menu" onClick={pick}>
+      <MonitorSpeaker size={size} />{label && <span>{elsewhere || (casting ? device : "Devices")}</span>}
     </button>
   );
 }
@@ -31,10 +80,18 @@ export function castStatus(s: { castSupport: string; castWhy: string; castState:
   return "Ready: speakers found. Use the Cast button in the player.";
 }
 
-/** "Playing on <speaker>" while casting. */
+/** "Playing on <device>" while another device plays, or a speaker. */
 export function CastNote({ className = "cast-note" }: { className?: string }) {
   const on = usePlayer((s) => s.castState === "connected");
   const device = usePlayer((s) => s.castDevice);
+  const elsewhere = usePlayingElsewhere();
+  if (elsewhere) return <div className={`${className} ellipsis`}><MonitorSpeaker size={12} /> Playing on {elsewhere}</div>;
   if (!on) return null;
   return <div className={`${className} ellipsis`}><Cast size={12} /> Playing on {device}</div>;
+}
+
+/** Whether the music plays somewhere else: another device, or a speaker. */
+export function usePlaysElsewhere() {
+  const casting = usePlayer((s) => s.castState === "connected");
+  return !!usePlayingElsewhere() || casting;
 }

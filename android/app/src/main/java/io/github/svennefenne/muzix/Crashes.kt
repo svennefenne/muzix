@@ -18,7 +18,9 @@ import kotlin.concurrent.thread
  * The app's crashes, in the server's log (/api/client-errors, where the page's own errors go). An
  * exception nothing caught is written down as the app goes; the next time the page has loaded (so
  * its login is known) that goes to the server, with why Android ended the app since, as Android
- * keeps it: a crash, a native crash, not responding, low memory. The page's own process ending
+ * keeps it: a crash, a native crash, not responding, and low memory or a kill while it was on
+ * screen or its player in the foreground, playing or paused a short while (otherwise that's
+ * Android tidying up the background). The page's own process ending
  * is told at once (MainActivity loads the page again, and the player plays on).
  */
 object Crashes {
@@ -34,6 +36,8 @@ object Crashes {
         ApplicationExitInfo.REASON_INITIALIZATION_FAILURE to "start failed",
         ApplicationExitInfo.REASON_SIGNALED to "killed",
     )
+    private val FAULTS = setOf(ApplicationExitInfo.REASON_CRASH, ApplicationExitInfo.REASON_CRASH_NATIVE,
+        ApplicationExitInfo.REASON_ANR, ApplicationExitInfo.REASON_INITIALIZATION_FAILURE)
     private var installed = false
     @Volatile private var reported = false
 
@@ -61,7 +65,8 @@ object Crashes {
             val seen = prefs.getLong(SEEN, 0L)
             val exits = runCatching {
                 app.getSystemService(ActivityManager::class.java).getHistoricalProcessExitReasons(app.packageName, 0, 16)
-            }.getOrDefault(emptyList()).filter { it.timestamp > seen && it.reason in TOLD }.sortedBy { it.timestamp }
+            }.getOrDefault(emptyList()).filter { it.timestamp > seen && it.reason in TOLD && (it.reason in FAULTS || noticed(it.importance)) }
+                .sortedBy { it.timestamp }
             for (x in exits) {
                 val trace = when (x.reason) {
                     ApplicationExitInfo.REASON_CRASH -> stack.also { stack = null }
@@ -118,9 +123,12 @@ object Crashes {
         }
     }.getOrDefault(false)
 
+    /** On screen, or the player's service in the foreground: playing, or paused a short while. */
+    private fun noticed(importance: Int) = importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE
+
     private fun importance(i: Int) = when (i) {
         ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND -> "on screen"
-        ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE -> "playing in the background"
+        ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE -> "the player in the foreground: playing, or paused a short while"
         else -> "importance $i"
     }
 

@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { toggleQueuedLike } from "../actions";
 import { api } from "../api";
-import { CastButton, CastNote } from "../components/CastButton";
+import { CastButton, CastNote, usePlaysElsewhere } from "../components/CastButton";
 import { Art } from "../components/ui";
 import { engine } from "../player/engine";
 import { usePlayer } from "../store/player";
@@ -30,7 +30,7 @@ export function MiniPlayer() {
   const live = usePlayer((s) => s.liveTitle);
   const error = usePlayer((s) => s.error);
   const frac = usePlayer((s) => (s.duration ? Math.min(1, s.position / s.duration) : 0));
-  const castOn = usePlayer((s) => s.castState === "connected");
+  const castOn = usePlaysElsewhere();
   const hasNext = usePlayer(canNext);
   const open = useUi((s) => s.setNowPlayingOpen);
   const box = useRef<HTMLDivElement>(null);

@@ -54,7 +54,11 @@ def end_session(db: Session, request: Request, response: Response):
 
 
 def optional_user(request: Request, db: Session = Depends(get_db)) -> User | None:
-    token = request.cookies.get(COOKIE)
+    return session_user(db, request.cookies.get(COOKIE))
+
+
+def session_user(db: Session, token: str | None) -> User | None:
+    """Whose session `token` is, while it lasts (a WebSocket has no Request to depend on)."""
     if not token:
         return None
     sess = db.get(AuthSession, token)
