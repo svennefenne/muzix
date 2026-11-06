@@ -233,7 +233,11 @@ in the server's log next to the web interface's own errors.
 
 Install it from <https://github.com/svennefenne/muzix/releases/latest/download/muzix-android.apk>
 (the phone asks once to allow installs from the browser); later versions install
-over it. GitHub Actions builds and signs it whenever `android/` changes
+over it. From 0.8.0 the app updates itself: when a newer release is out (the
+server asks GitHub once an hour; another repository's with `MUZIX_APP_REPO`), the
+account menu offers "Update the app", and the app downloads it and opens
+Android's installer (the first time, Android asks to allow installs from Muzix).
+The server's address is changed under Settings → The app. GitHub Actions builds and signs it whenever `android/` changes
 (`.github/workflows/android.yml`), with the key in the repository's secrets
 `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS`;
 Android only updates an app signed with the same key, so keep a copy of it. To

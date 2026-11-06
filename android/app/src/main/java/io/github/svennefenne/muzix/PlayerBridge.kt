@@ -127,7 +127,7 @@ class PlayerBridge(
     private fun handle(m: JSONObject) {
         val c = player ?: return
         when (val t = m.optString("t")) {
-            "hello" -> send(JSONObject().put("t", "hello").put("version", PlaybackService.USER_AGENT).put("saves", true)
+            "hello" -> send(JSONObject().put("t", "hello").put("version", PlaybackService.USER_AGENT).put("saves", true).put("updates", true)
                 .put("device", deviceName()).put("volume", mediaVolume())
                 .put("queue", JSONArray((0 until c.mediaItemCount).map { c.getMediaItemAt(it).carried() }))
                 .put("index", c.currentMediaItemIndex).put("state", state(c))).also { onHello() }

@@ -6,6 +6,7 @@ import android.content.pm.ApplicationInfo
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.text.InputType
 import android.view.Gravity
 import android.view.ContextThemeWrapper
@@ -26,12 +27,14 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.addCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -42,6 +45,7 @@ import androidx.webkit.WebViewFeature
 import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.cast.framework.CastState
 import org.json.JSONObject
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.concurrent.thread
@@ -49,7 +53,8 @@ import kotlin.concurrent.thread
 /**
  * The Muzix app: the server's own web interface in a web view, as it looks in a browser, with
  * the app's player behind it (PlaybackService, through PlayerBridge). The first time, and
- * whenever the server can't be reached, it asks for the server's address.
+ * whenever the server can't be reached, it asks for the server's address. It installs a newer
+ * version of itself when the page's user menu offers one.
  */
 class MainActivity : ComponentActivity() {
     private lateinit var root: FrameLayout
@@ -61,6 +66,9 @@ class MainActivity : ComponentActivity() {
         picked?.onReceiveValue(uris.toTypedArray())
         picked = null
     }
+    // an update downloaded while Android still had to allow installing from this app
+    private var waiting: File? = null
+    private var downloading = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -100,6 +108,8 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         bridge.inView(true)
+        // back from allowing installs from this app: the update it downloaded
+        waiting?.let { if (packageManager.canRequestPackageInstalls()) install(it) }
     }
 
     override fun onPause() {
@@ -120,6 +130,7 @@ class MainActivity : ComponentActivity() {
             "server" -> showConnect(server, null)
             "cast" -> chooseSpeaker()
             "bars" -> runCatching { Color.parseColor(m.optString("color")) }.getOrNull()?.let(::bars)
+            "update" -> update(m.optString("url"))
         }
     }
 
@@ -161,6 +172,59 @@ class MainActivity : ComponentActivity() {
             MediaRouteControllerDialog(themed).show()
         } else {
             MediaRouteChooserDialog(themed).apply { ctx.mergedSelector?.let { routeSelector = it } }.show()
+        }
+    }
+
+    // ------------------------------------------------------------ updating itself
+
+    /** A newer version of the app (Update in the page's user menu): downloaded, then Android's installer. */
+    private fun update(url: String) {
+        val uri = Uri.parse(url)
+        if (!released(uri) || downloading) return
+        downloading = true
+        Toast.makeText(this, R.string.downloading, Toast.LENGTH_SHORT).show()
+        thread {
+            val file = File(cacheDir, "updates/update.apk")
+            val failed = try {
+                file.parentFile?.mkdirs()
+                val conn = URL(uri.toString()).openConnection() as HttpURLConnection
+                conn.connectTimeout = 15_000
+                conn.readTimeout = 60_000
+                conn.setRequestProperty("User-Agent", PlaybackService.USER_AGENT)
+                try {
+                    if (conn.responseCode != 200) "HTTP ${conn.responseCode}" else {
+                        conn.inputStream.use { input -> file.outputStream().use { input.copyTo(it) } }
+                        null
+                    }
+                } finally {
+                    conn.disconnect()
+                }
+            } catch (e: Exception) {
+                e.message ?: e.javaClass.simpleName
+            }
+            runOnUiThread {
+                downloading = false
+                if (failed == null) install(file) else Toast.makeText(this, getString(R.string.download_failed, failed), Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    /** One of the app's releases on GitHub (the server says which is the newest: backend/muzix/api/android.py). */
+    private fun released(uri: Uri) = uri.scheme == "https" && uri.host == "github.com" &&
+        uri.path?.matches(Regex("/[\\w.-]+/[\\w.-]+/releases/download/[\\w.-]+/[\\w.-]+\\.apk")) == true
+
+    private fun install(file: File) {
+        // the first time, Android asks to allow installing from this app (then onResume goes on)
+        if (!packageManager.canRequestPackageInstalls()) {
+            waiting = file
+            runCatching { startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName"))) }
+            return
+        }
+        waiting = null
+        val apk = FileProvider.getUriForFile(this, "$packageName.files", file)
+        runCatching {
+            startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(apk, "application/vnd.android.package-archive")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK))
         }
     }
 

@@ -1,12 +1,13 @@
 import {
-  Activity, BookOpen, Disc3, Gamepad2, House, LogOut, Monitor, Moon, Music2, Podcast, Radio, Server, Settings, Shield, Sun,
+  Activity, BookOpen, Disc3, Download, Gamepad2, House, LogOut, Monitor, Moon, Music2, Podcast, Radio, Settings, Shield, Sun,
   SunMoon, Wrench,
 } from "lucide-react";
 import { useEffect } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
+import { useAppUpdate } from "../appUpdate";
 import { Logo } from "../components/Logo";
-import { useMenu } from "../components/ui";
+import { NewDot, useMenu } from "../components/ui";
 import { appPlayer } from "../player/app";
 import { usePlayer } from "../store/player";
 import { useUi } from "../store/ui";
@@ -64,6 +65,7 @@ export function TopBar() {
   const loc = useLocation();
   const atHome = loc.pathname === "/";
   const showMenu = useMenu((s) => s.show);
+  const update = useAppUpdate();
   const tabs = user?.is_admin ? [...TABS, { to: "/admin", label: "Admin" }] : TABS;
 
   // Q / E step through the sections, like a console's shoulder buttons
@@ -86,7 +88,7 @@ export function TopBar() {
     { heading: user?.username || "" },
     { label: "Settings", icon: <Settings size={16} />, onClick: () => nav("/settings") },
     ...(user?.is_admin ? [{ label: "Admin", icon: <Shield size={16} />, onClick: () => nav("/admin") }] : []),
-    ...(appPlayer.available ? [{ label: "Change server", icon: <Server size={16} />, onClick: () => appPlayer.changeServer() }] : []),
+    ...(update ? [{ label: `Update the app to ${update.version}`, icon: <Download size={16} />, onClick: () => appPlayer.update(update.url) }] : []),
     { sep: true },
     { label: "Sign out", icon: <LogOut size={16} />, onClick: () => api.post("/api/auth/logout").then(() => location.assign("/")) },
   ]);
@@ -114,6 +116,7 @@ export function TopBar() {
         <button className="pill userpill" onClick={userMenu} aria-label={`Account: ${user?.username}`} data-tip="Settings, admin and signing out">
           <span className="avatar">{(user?.username || "?")[0].toUpperCase()}</span>
           <span className="uname">{user?.username}</span>
+          {update && <NewDot label={`Version ${update.version} of the app is out`} />}
         </button>
       </div>
     </header>

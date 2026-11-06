@@ -51,6 +51,8 @@ class AppPlayer {
   deviceName = "";
   /** Another device plays (player/connect.ts): the app's player is stopped, and what it says about itself doesn't count. */
   standby = false;
+  /** The app downloads and installs a newer version of itself (since 0.8.0). */
+  updates = false;
 
   get active() {
     return this.connected;
@@ -100,6 +102,13 @@ class AppPlayer {
   /** Back to the app's screen for the server's address. */
   changeServer() {
     this.send({ t: "server" });
+  }
+
+  /** A newer version of the app (appUpdate.ts): the app downloads it and opens Android's installer;
+   * an older app, which can't, opens it in the browser, which downloads it. */
+  update(url: string) {
+    if (this.updates) this.send({ t: "update", url });
+    else location.assign(url);
   }
 
   private send(msg: object) {
@@ -286,11 +295,12 @@ class AppPlayer {
 
   /** The app answered: it plays from now on. If it already plays something (the page was
    * reloaded), its queue becomes ours. */
-  private onHello(m: { queue: string[]; index: number; state: AppState; saves?: boolean; device?: string; volume?: number }) {
+  private onHello(m: { queue: string[]; index: number; state: AppState; saves?: boolean; device?: string; volume?: number; updates?: boolean }) {
     // the phone's media volume is the volume here, before anything is sent to the app
     if (typeof m.volume === "number") usePlayer.getState().set({ volume: m.volume });
     this.connected = true;
     this.saves = !!m.saves;
+    this.updates = !!m.updates;
     this.deviceName = m.device || "";
     this.prefs();
     this.hooks?.onStart();

@@ -1,8 +1,11 @@
+import { Server } from "lucide-react";
 import { useMemo, useState } from "react";
 import { api } from "../api";
+import { appVersion } from "../appUpdate";
 import { castStatus } from "../components/CastButton";
 import { SEARCH_ENGINES } from "../components/StationHistory";
 import { Display, Kicker, Switch } from "../components/ui";
+import { appPlayer } from "../player/app";
 import { usePlayer } from "../store/player";
 import { useUi } from "../store/ui";
 import { PALETTES, type Palette } from "../theme/palettes";
@@ -157,6 +160,23 @@ export default function Settings() {
           </div>
         </div>
       </section>
+
+      {appPlayer.available && (
+        <section className="panel">
+          <div className="panel-head"><div><div className="kicker">Android</div><div className="h2">The app</div></div></div>
+          <div className="field">
+            <label>Server</label>
+            <div className="row-actions">
+              <span className="dim">{location.host}</span>
+              <button className="btn" onClick={() => appPlayer.changeServer()}><Server size={16} /> Change server</button>
+            </div>
+          </div>
+          <div className="field">
+            <label>Version</label>
+            <span className="dim">Muzix for Android {appVersion()}. When a newer one is out, your menu offers it.</span>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

@@ -15,6 +15,8 @@ STATIC_DIR = Path(os.environ.get("MUZIX_STATIC", Path(__file__).parent / "static
 DEFAULT_ROOTS = os.environ.get("MUZIX_DEFAULT_ROOTS", "/music:music,/vgm:vgm,/audiobooks:audiobooks")
 SOUNDFONT = os.environ.get("MUZIX_SOUNDFONT", "/usr/share/sounds/sf2/FluidR3_GM.sf2")
 DEV = os.environ.get("MUZIX_DEV") == "1"
+# The GitHub repository whose android-v* releases the Android app updates itself from
+APP_REPO = os.environ.get("MUZIX_APP_REPO", "svennefenne/muzix")
 
 DB_PATH = DATA_DIR / "muzix.db"
 CACHE_DIR = DATA_DIR / "cache"          # rendered/transcoded audio

@@ -872,6 +872,11 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
 .lib-row:focus-visible { outline-offset: -2px; }
 .lib-art { position: relative; width: 48px; }
 .lib-art .new-dot { position: absolute; top: -3px; right: -3px; width: 11px; height: 11px; margin: 0; box-shadow: 0 0 0 2px var(--bg); }
+/* a newer version of the Android app (in the app): on the account button, and on the phone's More */
+.userpill, .tb-item { position: relative; }
+.userpill > .new-dot, .tb-item > .new-dot { position: absolute; width: 10px; height: 10px; margin: 0; box-shadow: 0 0 0 2px var(--bg); }
+.userpill > .new-dot { top: -4px; right: -4px; }
+.tb-item > .new-dot { top: 2px; left: calc(50% + 8px); }
 .lib-art .art { border-radius: 6px; box-shadow: none; }
 .lib-art .art.round { border-radius: 10px; }
 .lib-art .art-fallback { font-size: 14px; padding: 2px; }

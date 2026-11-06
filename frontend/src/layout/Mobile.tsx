@@ -2,14 +2,17 @@
  * mini-player and a bottom tab bar whose "More" sheet holds the other sections. */
 
 import {
-  BookOpen, Gamepad2, Heart, House, Library, LogOut, MoreHorizontal, Music2, Pause, Play, Podcast, Radio, Search, Settings, Shield, SkipForward, X,
+  BookOpen, Download, Gamepad2, Heart, House, Library, LogOut, MoreHorizontal, Music2, Pause, Play, Podcast, Radio, Search, Settings, Shield,
+  SkipForward, X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { toggleQueuedLike } from "../actions";
 import { api } from "../api";
+import { appVersion, useAppUpdate } from "../appUpdate";
 import { CastButton, CastNote, usePlaysElsewhere } from "../components/CastButton";
-import { Art } from "../components/ui";
+import { Art, NewDot } from "../components/ui";
+import { appPlayer } from "../player/app";
 import { engine } from "../player/engine";
 import { usePlayer } from "../store/player";
 import { useUi } from "../store/ui";
@@ -79,6 +82,7 @@ export function MiniPlayer() {
 
 export function TabBar() {
   const [more, setMore] = useState(false);
+  const update = useAppUpdate();
   const { pathname } = useLocation();
   const inMore = ["/vgm", "/audiobooks", "/podcasts", "/radio", "/spotify", "/settings", "/admin"].some((p) => pathname.startsWith(p));
   useEffect(() => {
@@ -93,6 +97,7 @@ export function TabBar() {
         <NavLink to="/library" className={tab}><Library size={22} /><span>Library</span></NavLink>
         <button className={`tb-item ${inMore || more ? "on" : ""}`} aria-expanded={more} onClick={() => setMore(!more)}>
           <MoreHorizontal size={22} /><span>More</span>
+          {update && <NewDot label={`Version ${update.version} of the app is out`} />}
         </button>
       </nav>
       {more && <MoreSheet onClose={() => setMore(false)} />}
@@ -103,6 +108,7 @@ export function TabBar() {
 function MoreSheet({ onClose }: { onClose: () => void }) {
   const nav = useNavigate();
   const user = useUi((s) => s.user);
+  const update = useAppUpdate();
   useEffect(() => {
     const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", key);
@@ -128,6 +134,12 @@ function MoreSheet({ onClose }: { onClose: () => void }) {
             <span><b>{label}</b><small>{sub}</small></span>
           </button>
         ))}
+        {update && (
+          <button className="sheet-item" onClick={() => { appPlayer.update(update.url); onClose(); }}>
+            <Download size={22} />
+            <span><b>Update the app to {update.version}</b><small>You have {appVersion()}</small></span>
+          </button>
+        )}
         <button className="sheet-item" onClick={() => api.post("/api/auth/logout").then(() => location.assign("/"))}>
           <LogOut size={22} /><span><b>Sign out</b></span>
         </button>

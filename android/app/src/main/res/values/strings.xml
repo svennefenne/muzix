@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Muzix</string>
+    <string name="downloading">Downloading the update…</string>
+    <string name="download_failed">Couldn\'t download the update (%1$s).</string>
 </resources>
