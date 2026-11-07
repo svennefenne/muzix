@@ -49,14 +49,24 @@ jobs:
         run: pyinstaller --noconfirm muzix-desktop.spec
 
       - name: Check the build
+        if: runner.os != 'Windows'
+        timeout-minutes: 5
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          case "$RUNNER_OS" in
-            Linux) dist/muzix-desktop/muzix-desktop --check ;;
-            macOS) "dist/Muzix Desktop.app/Contents/MacOS/Muzix Desktop" --check ;;
-            Windows) powershell -Command '$p = Start-Process -FilePath "dist/Muzix Desktop/Muzix Desktop.exe" -ArgumentList "--check" -Wait -PassThru; exit $p.ExitCode' ;;
-          esac
+          if [ "$RUNNER_OS" = Linux ]; then dist/muzix-desktop/muzix-desktop --check
+          else "dist/Muzix Desktop.app/Contents/MacOS/Muzix Desktop" --check; fi
+
+      # a windowed app: it reports into a file, and doesn't get to wait on a dialog nobody closes
+      - name: Check the build (Windows)
+        if: runner.os == 'Windows'
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "dist/Muzix Desktop/Muzix Desktop.exe" -ArgumentList "--check", "--report", "check.txt" -PassThru
+          if (-not $p.WaitForExit(180000)) { $p.Kill(); Write-Output "The check didn't finish"; exit 1 }
+          if (Test-Path check.txt) { Get-Content check.txt }
+          exit $p.ExitCode
 
       - name: Pack
         run: |

@@ -5,6 +5,7 @@ change in Settings and every few minutes; the servers fetch the catalog again wh
 import logging
 import os
 import sys
+import traceback
 
 from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtGui import QAction
@@ -224,25 +225,45 @@ def _already_running() -> bool:
 
 
 def check() -> int:
-    """`--check`: whether everything the app needs is there (the builds run it before they ship)."""
-    from . import fixer, sharing  # noqa: F401
-    from .shared import formats, manage, tags, tagwrite  # noqa: F401
-    assert manage.broad_genre("Doom Metal") == "Metal", "the genre rules aren't there"
-    assert formats.is_audio("song.flac") and not formats.is_audio("notes.txt")
-    qt = QApplication(sys.argv[:1])
-    theme.load_fonts()
-    from PySide6.QtGui import QFontDatabase
-    assert "Saira" in QFontDatabase.families(), "the fonts aren't there"
-    assert not theme.icon().isNull(), "the icon isn't there"
-    qt.quit()
-    print("Muzix Desktop: OK")
-    return 0
+    """`--check [--report FILE]`: whether everything the app needs is there (the builds run it
+    before they ship). What it found goes to FILE too: a windowed app has no console to print to."""
+    report = sys.argv[sys.argv.index("--report") + 1] if "--report" in sys.argv[:-1] else None
+    try:
+        from . import fixer, sharing  # noqa: F401
+        from .shared import formats, manage, tags, tagwrite  # noqa: F401
+        assert manage.broad_genre("Doom Metal") == "Metal", "the genre rules aren't there"
+        assert formats.is_audio("song.flac") and not formats.is_audio("notes.txt")
+        qt = QApplication(sys.argv[:1])
+        theme.load_fonts()
+        from PySide6.QtGui import QFontDatabase
+        assert "Saira" in QFontDatabase.families(), "the fonts aren't there"
+        assert not theme.icon().isNull(), "the icon isn't there"
+        qt.quit()
+        text, code = "Muzix Desktop: OK", 0
+    except BaseException:
+        text, code = traceback.format_exc(), 1
+    if sys.stdout:
+        print(text)
+    if report:
+        with open(report, "w", encoding="utf-8") as f:
+            f.write(text + "\n")
+    return code
+
+
+def _logging():
+    """To a file in the data folder (a windowed app has no console), and to the console when there is one."""
+    os.makedirs(config.DATA_DIR, exist_ok=True)
+    handlers = [logging.FileHandler(os.path.join(config.DATA_DIR, "muzix-desktop.log"), encoding="utf-8")]
+    if sys.stderr:
+        handlers.append(logging.StreamHandler())
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s", handlers=handlers)
+    sys.excepthook = lambda *exc: logging.getLogger("muzix_desktop").error("crashed", exc_info=exc)
 
 
 def main():
     if "--check" in sys.argv:
         return check()
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s")
+    _logging()
     QApplication.setApplicationName("Muzix Desktop")
     QApplication.setOrganizationName("Muzix")
     qt = QApplication(sys.argv)
