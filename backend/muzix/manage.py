@@ -552,20 +552,35 @@ def filing(id_: int, genre: str) -> dict:
     return {"now": os.path.relpath(folder, root.path).split(os.sep)[0], "then": then, "no_fit": no_fit}
 
 
-def _plan(root: str, folder: str, album: dict, tracks: list[dict], top: str | None = None) -> tuple[str, dict[str, str]]:
+def album_name(album: dict, artist: str) -> str:
+    """An album's folder: "<Artist> - <Year> - <Album>"."""
+    year = album["year"]
+    return clean(f"{artist} - {year} - {album['title']}" if year else f"{artist} - {album['title']}")
+
+
+def free(target: str, folder: str) -> str:
+    """`target`, or "<target> [2]" and so on when another folder has that name (not `folder` itself)."""
+    base, n = target, 1
+    while os.path.normpath(target) != os.path.normpath(folder) and os.path.lexists(target):
+        n += 1
+        target = f"{base} [{n}]"
+    return target
+
+
+def plan(root: str, folder: str, album: dict, tracks: list[dict], top: str | None = None) -> tuple[str, dict[str, str]]:
     """(the album's new folder, {old path: new path}) under root/<Genre>/<Album artist>/<Artist - Year - Album>:
     the genre folder `top`, or the one it's in."""
     parts = os.path.relpath(folder, root).split(os.sep)
     top = top or parts[0]
     artist = album["artist"] or parts[1]
+    target = free(os.path.join(root, top, clean(artist), album_name(album, artist)), folder)
+    return target, song_names(target, folder, album, tracks, artist)
+
+
+def song_names(target: str, folder: str, album: dict, tracks: list[dict], artist: str) -> dict[str, str]:
+    """{old path: new path} of an album's songs moved from `folder` to `target`, each named
+    "<n>. <Artist> - <Album> - <Title> (<Year>)" ("<disc>-<n>" when numbers repeat across discs)."""
     year = album["year"]
-    name = clean(f"{artist} - {year} - {album['title']}" if year else f"{artist} - {album['title']}")
-    target = os.path.join(root, top, clean(artist), name)
-    n = 1
-    while os.path.normpath(target) != os.path.normpath(folder) and os.path.lexists(target):
-        n += 1
-        target = os.path.join(root, top, clean(artist), f"{name} [{n}]")
-    # track names: "<n>. <Artist> - <Album> - <Title> (<Year>)"; "<disc>-<n>" when numbers repeat across discs
     nums = [t["track_no"] for t in tracks if t["track_no"]]
     multi = len(nums) != len(set(nums))
     moves, taken = {}, set()
@@ -583,10 +598,10 @@ def _plan(root: str, folder: str, album: dict, tracks: list[dict], top: str | No
             name = f"{stem} ({k}){ext}"
         taken.add(name.casefold())
         moves[t["path"]] = os.path.normpath(os.path.join(target, sub, name))
-    return target, moves
+    return moves
 
 
-def _refile(folder: str, target: str, moves: dict[str, str]) -> dict[str, str]:
+def refile(folder: str, target: str, moves: dict[str, str]) -> dict[str, str]:
     """Moves the album folder, then renames its files; undoes what it did if a step fails."""
     done_folder = False
     renamed = []
@@ -748,7 +763,7 @@ def _put_files_back(before: list[dict], refiled: tuple | None):
     try:
         if refiled:
             folder, target, moves = refiled
-            _refile(target, folder, {new: old for old, new in moves.items()})
+            refile(target, folder, {new: old for old, new in moves.items()})
         for e in before:
             if "tags" in e and os.path.exists(e["was"]):
                 tagwrite.put_back(e["was"], e["tags"])
@@ -854,9 +869,9 @@ def edit_album(id_: int, fields: dict, tracks: list[dict], remember: bool = True
                                 "year": album_level.get("year", t.year)} for t in rows]
                 top = _filed_under(root.path, folder, album_level.get("genre", alb.genre),
                                    "genre" in album_level)[0] if by_genre else None
-                target, moves = _plan(root.path, folder, new, plan_tracks, top)
+                target, moves = plan(root.path, folder, new, plan_tracks, top)
                 if os.path.normpath(target) != os.path.normpath(folder) or any(a != b for a, b in moves.items()):
-                    _refile(folder, target, moves)
+                    refile(folder, target, moves)
                     refiled = (folder, target, moves)
                     moved_to = target
                     _set_paths(s, [(t, moves[t.path]) for t in rows])
@@ -923,7 +938,7 @@ def edit_track(id_: int, fields: dict, remember: bool = True) -> dict:
             # numbering looks at the whole album (disc prefixes), but only this file moves
             others = [{"path": x.path, "title": x.title, "artist": x.artist, "track_no": x.track_no,
                        "disc_no": x.disc_no, "year": x.year} for x in siblings if x.id != t.id]
-            _, moves = _plan(root.path, folder, album, others + [want])
+            _, moves = plan(root.path, folder, album, others + [want])
             new_path = os.path.join(os.path.dirname(t.path), os.path.basename(moves[t.path]))
             if new_path != t.path:
                 if os.path.lexists(new_path):
@@ -1161,12 +1176,12 @@ def _undo_files(s, u: dict):
                 o.fields = e["override"]
     moves = {e["path"]: e["was"] for e in u["files"] if e["path"] != e["was"]}
     if u.get("folder") and os.path.isdir(u["folder"][1]):
-        _refile(u["folder"][1], u["folder"][0], moves)
+        refile(u["folder"][1], u["folder"][0], moves)
     else:
         moves = {a: b for a, b in moves.items() if os.path.lexists(a)}
         if moves:
             folder = os.path.commonpath([os.path.dirname(p) for p in moves])
-            _refile(folder, folder, moves)
+            refile(folder, folder, moves)
     rows = [s.get(Track, e["id"]) for e in u["files"]]
     _set_paths(s, [(t, e["was"]) for e, t in zip(u["files"], rows)])
     alb = s.get(Album, u["album_id"]) if u.get("album_id") else None

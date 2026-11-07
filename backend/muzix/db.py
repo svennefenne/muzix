@@ -2,7 +2,7 @@
 
 from contextlib import contextmanager
 
-from sqlalchemy import and_, create_engine, event, text
+from sqlalchemy import and_, create_engine, event, or_, select, text
 from sqlalchemy.orm import DeclarativeBase, ORMExecuteState, Session, sessionmaker, with_loader_criteria
 from starlette.requests import HTTPConnection
 
@@ -15,6 +15,7 @@ class Base(DeclarativeBase):
 
 engine = None
 SessionLocal: sessionmaker | None = None
+computers_away = False      # whether a computer of the Library Network is off (tunnel.py says)
 
 
 def init(url: str | None = None):
@@ -96,6 +97,16 @@ def _nothing(cls):
     return cls.id.is_(None)
 
 
+def _present(cls):
+    """Not on a computer of the Library Network that's off."""
+    from .models import Peer
+    return or_(cls.peer_id.is_(None), cls.peer_id.not_in(select(Peer.id).where(Peer.away.is_(True))))
+
+
+def _present_artist(cls):
+    return cls.away.is_(False)
+
+
 @event.listens_for(Session, "do_orm_execute")
 def _without_hidden(state: ORMExecuteState):
     """In sessions that serve the web pages, whatever an admin hid isn't there; nor is another
@@ -104,7 +115,8 @@ def _without_hidden(state: ORMExecuteState):
     someone who left the network's music out (their "network" preference: security.py says
     so as the request comes in), only this server's own library is there, every copy of it; so
     it is for everyone while the Library Network is off. What a module that's off holds isn't
-    there either (modules.py)."""
+    there either (modules.py), nor what's only on a computer of the Library Network that's off
+    (tunnel.py)."""
     if not state.is_select or not state.session.info.get("hide") or state.execution_options.get("include_hidden"):
         return
     from . import modules
@@ -128,6 +140,9 @@ def _without_hidden(state: ORMExecuteState):
         else:
             crit = _visible_music if music else _visible
         state.statement = state.statement.options(with_loader_criteria(model, crit, include_aliases=True))
+        if computers_away and model not in gone and (model is Artist or hasattr(model, "peer_id")):
+            away = _present_artist if model is Artist else _present
+            state.statement = state.statement.options(with_loader_criteria(model, away, include_aliases=True))
 
 
 def get_db(conn: HTTPConnection):

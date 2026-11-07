@@ -69,6 +69,7 @@ class Artist(Base):
     image: Mapped[str] = mapped_column(String(1024), default="")
     hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # admin: hidden from everyone
     peer_only: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # only in other servers' libraries
+    away: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # only on computers that are off
     __table_args__ = (UniqueConstraint("name", name="uq_artist_name"),)
 
 
@@ -438,8 +439,9 @@ class UploadedFile(Base):
 # ---------------------------------------------------------------- library network
 
 class Peer(Base):
-    """Another Muzix server in the Library Network (network.py). Linked once each side's admin has
-    entered the other's sharing code; until then it's one side's request."""
+    """Another Muzix server in the Library Network (network.py), or a computer sharing its folders
+    through the desktop client (tunnel.py). Linked once each side has entered the other's sharing
+    code; until then it's one side's request."""
     __tablename__ = "peers"
     id: Mapped[int] = mapped_column(primary_key=True)
     server_id: Mapped[str] = mapped_column(String(64), unique=True)   # its own, from its hello
@@ -455,6 +457,10 @@ class Peer(Base):
     error: Mapped[str] = mapped_column(Text, default="")              # why the last call to it failed
     synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     counts: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")   # what it shares: albums, tracks...
+    # "computer": the desktop client on someone's computer (tunnel.py), which calls in and can't be called
+    kind: Mapped[str] = mapped_column(String(16), default="server", server_default="server")
+    check: Mapped[str] = mapped_column(String(64), default="", server_default="")   # a computer's: sha256 of our id and its code
+    away: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # a computer that isn't connected
 
 
 # what an admin can hide: hidden rows stay out of every page and list (db.py)

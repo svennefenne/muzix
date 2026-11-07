@@ -18,6 +18,15 @@ Monoton, Orbitron, Audiowide, Press Start 2P, VT323, Poiret One, Limelight,
 Cinzel, Cormorant Garamond, Rye, Righteous, Shrikhand, Permanent Marker, Bungee,
 Special Elite, Fredoka, Bangers, Lilita One, Bebas Neue.
 
+## Muzix Desktop
+
+The desktop client (`desktop/`) bundles, besides the server's own Python packages
+above: Qt for Python (PySide6, LGPL-3.0; Qt's libraries are separate files in the
+build), websockets (BSD), platformdirs (MIT) and certifi (MPL-2.0). It's built with
+PyInstaller (GPL with its bootloader exception). Saira and JetBrains Mono (SIL
+Open Font License) are bundled as TTF files in `desktop/muzix_desktop/assets/fonts`,
+with their licenses.
+
 ## Players and libraries in the Docker image
 
 | Component | License | Use |

@@ -3,12 +3,12 @@ syncing and unlinking) and what other Muzix servers call."""
 
 import os
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, WebSocket
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import __version__, art, db, lyrics, mirror, network, settings
+from .. import __version__, art, db, lyrics, mirror, network, settings, tunnel
 from ..db import get_db_with_copies
 from ..models import Album, Artist, Book, BookPart, Peer, Track
 from ..security import admin_user, current_user
@@ -84,6 +84,19 @@ def link(body: LinkTo):
         raise HTTPException(400, str(e))
 
 
+class Accept(BaseModel):
+    code: str = Field(max_length=64)
+
+
+@router.post("/peers/{peer_id}/accept", dependencies=[Depends(admin_user)])
+def accept(peer_id: int, body: Accept):
+    """Yes to a computer's request: its code, as its Muzix client shows it."""
+    try:
+        return network.accept(peer_id, body.code)
+    except network.NetworkError as e:
+        raise HTTPException(400, str(e))
+
+
 @router.post("/peers/{peer_id}/sync", dependencies=[Depends(admin_user)])
 def sync(peer_id: int):
     with db.session() as s:
@@ -119,6 +132,8 @@ class LinkRequest(BaseModel):
     name: str = Field("", max_length=255)
     address: str = Field("", max_length=1024)
     key: str = Field(min_length=32, max_length=128)
+    kind: str = Field("server", pattern="^(server|computer)$")
+    check: str = Field("", max_length=64)       # a computer's: network.computer_check of its code
 
 
 @router.post("/link")
@@ -127,6 +142,12 @@ def link_request(body: LinkRequest, request: Request):
         return network.receive(body.model_dump(), request.client.host if request.client else "")
     except network.Refused as e:
         raise HTTPException(e.status, str(e))
+
+
+@router.websocket("/tunnel")
+async def computer_tunnel(ws: WebSocket):
+    """Where a computer in the network (the desktop client) keeps its connection open."""
+    await tunnel.serve(ws)
 
 
 @router.post("/unlink")

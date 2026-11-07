@@ -7,7 +7,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, db, env, jobs, modules, network, settings
+from . import __version__, db, env, jobs, modules, network, settings, tunnel
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -37,6 +37,7 @@ class NoProxyBuffering:
 def create_app() -> FastAPI:
     db.init()
     jobs.recover()
+    tunnel.startup()
 
     # job implementations register themselves on import
     from . import books, enrich, maintenance, mirror, podcasts, scanner  # noqa: F401

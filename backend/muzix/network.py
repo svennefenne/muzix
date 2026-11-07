@@ -8,6 +8,10 @@ from then on the servers call each other with those (Authorization: Bearer), nev
 
 The code only opens the door to new links: a new one leaves the links there are, and without
 one (the network turned off) nobody can ask for a link.
+
+A computer (the desktop client, tunnel.py) links the same way, except that it can't be called: it
+hands over our code with a check made from its own code, and our admin says yes by entering its
+code here, which the check confirms.
 """
 
 import hashlib
@@ -148,9 +152,15 @@ def state(p: Peer) -> str:
     return "linked" if p.sent and p.received else "waiting" if p.sent else "asked"
 
 
+def computer_check(code: str) -> str:
+    """What a computer sends along to prove its code: tied to this server, so it says nothing elsewhere."""
+    return _hash(f"{server_id()}:{clean_code(code)}")
+
+
 def peer_json(p: Peer) -> dict:
     return {
-        "id": p.id, "name": p.name, "address": p.address, "state": state(p),
+        "id": p.id, "name": p.name, "address": p.address, "state": state(p), "kind": p.kind,
+        "online": p.kind == "computer" and not p.away,
         "linked_at": iso(p.linked_at), "last_seen": iso(p.last_seen), "created_at": iso(p.created_at),
         "synced_at": iso(p.synced_at), "counts": p.counts or {}, "error": p.error,
     }
@@ -270,15 +280,41 @@ def drop(sid: str, who: str):
     jobs.submit("network_drop", title=f"Library Network: {who} left", server_id=sid)
 
 
+def accept(peer_id: int, typed: str) -> dict:
+    """Our admin says yes to a computer's request by entering the code its client shows."""
+    with db.session() as s:
+        p = s.get(Peer, peer_id)
+        if p is None or p.kind != "computer":
+            raise NetworkError("There's no such computer in the network")
+        if len(clean_code(typed)) != GROUPS * GROUP:
+            raise NetworkError("A sharing code is 20 letters and digits: XXXXX-XXXXX-XXXXX-XXXXX")
+        if not p.check or not hmac.compare_digest(computer_check(typed), p.check):
+            raise NetworkError(f"That isn't {p.name}'s code: it's under Settings in its Muzix client")
+        p.sent = True
+        if p.linked_at is None:
+            p.linked_at = datetime.now(timezone.utc)
+        s.flush()
+        out = peer_json(p)
+    from . import tunnel
+    tunnel.tell(peer_id, "linked")
+    if out["online"]:
+        fetch(out["id"], out["name"])
+    return out
+
+
 def unlink(peer_id: int):
     """Our admin ended a link (or turned down a request): gone here, and the other server is told."""
     with db.session() as s:
         p = s.get(Peer, peer_id)
         if p is None:
             raise NetworkError("There's no such server in the network")
-        address, key, who, sid = p.address, p.key, p.name, p.server_id
+        address, key, who, sid, computer = p.address, p.key, p.name, p.server_id, p.kind == "computer"
         s.delete(p)
     drop(sid, who)
+    if computer:
+        from . import tunnel
+        tunnel.tell(peer_id, "removed")
+        return
     if not (address and key):
         return
     try:
@@ -309,7 +345,8 @@ def _wrong(ip: str):
 
 def receive(body: dict, ip: str) -> dict:
     """Another server hands over our code: its admin wants to link. A link if ours had entered its
-    code already; a request otherwise. Its key is kept, and one made for it is the answer."""
+    code already; a request otherwise. Its key is kept, and one made for it is the answer. A
+    computer's request has a check of its own code instead of an address (accept())."""
     if body.get("protocol") != PROTOCOL:
         raise Refused(400, f"This server links with protocol {PROTOCOL}: update both servers to the same Muzix")
     if _too_many(ip):
@@ -320,14 +357,21 @@ def receive(body: dict, ip: str) -> dict:
     sid = str(body["server_id"])
     if sid == server_id():
         raise Refused(400, "That's this server")
+    computer = body.get("kind") == "computer"
+    if computer and len(body.get("check") or "") != 64:
+        raise Refused(400, "A computer asks with a check of its own code: update its Muzix client")
     key = secrets.token_urlsafe(32)
     with db.session() as s:
         p = s.scalar(select(Peer).where(Peer.server_id == sid))
         if p is None:
-            p = Peer(server_id=sid)
+            p = Peer(server_id=sid, kind="computer" if computer else "server", away=computer)
             s.add(p)
-        p.name = str(body.get("name") or "")[:255] or p.name or "Muzix"
-        if not p.address:           # what it says; our admin's own entry wins
+        elif (p.kind == "computer") != computer:
+            raise Refused(400, "That id belongs to another kind of member of this network")
+        p.name = str(body.get("name") or "")[:255] or p.name or ("A computer" if computer else "Muzix")
+        if computer:
+            p.check = body["check"]
+        elif not p.address:           # what it says; our admin's own entry wins
             try:
                 p.address = clean_address(body.get("address") or "")
             except NetworkError:
@@ -340,7 +384,7 @@ def receive(body: dict, ip: str) -> dict:
             p.linked_at = p.last_seen
         linked, peer_id, who = p.sent, p.id, p.name
     log.info("%s %s", who, "linked" if linked else "asks to link")
-    if linked:
+    if linked and not computer:     # a computer's catalog comes once it's connected (tunnel.py)
         fetch(peer_id, who)
     return {"server_id": server_id(), "name": name(), "key": key, "linked": linked}
 
@@ -370,4 +414,7 @@ def forget(authorization: str) -> bool:
             s.delete(row)
     log.info("%s ended the link", p.name)
     drop(p.server_id, p.name)
+    if p.kind == "computer":
+        from . import tunnel
+        tunnel.tell(p.id, "removed")
     return True

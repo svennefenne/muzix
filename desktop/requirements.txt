@@ -1,0 +1,7 @@
+# Muzix Desktop: what it runs on. The server's package (../backend) brings the shared code:
+# reading songs, the metadata sources, tag writing and filing (its "organize" extra: beets).
+-e ../backend[organize]
+PySide6==6.12.0
+websockets>=14
+platformdirs>=4
+certifi

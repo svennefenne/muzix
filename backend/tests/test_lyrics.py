@@ -149,8 +149,8 @@ def test_lyrics_files_follow_their_songs():
     old = os.path.join(lib, "1. Band - Album - First (2000).mp3")
     open(old, "w").write("song")
     new = os.path.join(target, "1. Band - Album - First (2001).mp3")
-    manage._refile(folder, target, {old: new})
+    manage.refile(folder, target, {old: new})
     assert sorted(os.listdir(target)) == ["1. Band - Album - First (2001).lrc", "1. Band - Album - First (2001).mp3",
                                           "2. Band - Album - Second (2000).lrc"]
-    manage._refile(target, folder, {new: old})
+    manage.refile(target, folder, {new: old})
     assert "1. Band - Album - First (2000).lrc" in os.listdir(folder)

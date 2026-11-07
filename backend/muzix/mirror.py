@@ -13,7 +13,8 @@ there, so what's liked or in a playlist keeps its place.
 
 The audio, pictures and lyrics stay on the server they're on; this one fetches them when they're
 asked for (pictures once, kept like our own), so the app, Cast speakers and the quality settings
-work with them as with ours. A picture's reference carries its version there
+work with them as with ours. A computer (the desktop client) is asked the same through the
+connection it keeps open (tunnel.py), and its songs are played from here. A picture's reference carries its version there
 (peer:<its id>/albums/<its album id>/<version>): a new cover there is a new address here.
 """
 
@@ -27,8 +28,9 @@ from datetime import datetime, timezone
 import httpx
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import delete, insert, or_, select, union, update
+from sqlalchemy.exc import IntegrityError
 
-from . import art, db, enrich, jobs, modules, network, scanner
+from . import art, db, enrich, jobs, modules, network, scanner, tunnel
 from .models import Album, Artist, Book, BookPart, FilePlaylist, FilePlaylistItem, Peer, Root, Track
 
 log = logging.getLogger(__name__)
@@ -304,7 +306,10 @@ def sync_peer(ctx: jobs.JobContext, peer_id: int, share: float = 1.0, base_progr
         p = s.get(Peer, peer_id)
         if p is None or network.state(p) != "linked":
             return False
-        address, key, sid, name = p.address, p.key, p.server_id, p.name
+        address, key, sid, name, computer = p.address, p.key, p.server_id, p.name, p.kind == "computer"
+    if computer and not tunnel.connected(peer_id):
+        ctx.log(f"{name} isn't on: its catalog comes when it connects")
+        return False
     ctx.log(f"{name}: fetching its catalog")
     headers = {"User-Agent": enrich.UA, "Authorization": f"Bearer {key}"}
     try:
@@ -312,8 +317,8 @@ def sync_peer(ctx: jobs.JobContext, peer_id: int, share: float = 1.0, base_progr
             cat = {}
             for i, part in enumerate(PARTS):
                 ctx.update(base_progress + share * 0.8 * i / len(PARTS), f"{name}: {part}")
-                cat[part] = _fetch(c, address, part, ctx)
-    except (httpx.HTTPError, Unreachable, ValueError, KeyError, TypeError) as e:
+                cat[part] = tunnel.catalog(peer_id, part, ctx) if computer else _fetch(c, address, part, ctx)
+    except (httpx.HTTPError, Unreachable, tunnel.Gone, ValueError, KeyError, TypeError) as e:
         why = str(e) or e.__class__.__name__
         ctx.log(f"{name}: couldn't fetch its catalog ({why})")
         with db.session() as s:
@@ -321,7 +326,14 @@ def sync_peer(ctx: jobs.JobContext, peer_id: int, share: float = 1.0, base_progr
                 p.error = f"Couldn't fetch its library: {why}"
         return False
     ctx.update(base_progress + share * 0.8, f"{name}: storing")
-    counts = store(peer_id, sid, name, cat)
+    try:
+        counts = store(peer_id, sid, name, cat)
+    except IntegrityError:
+        with db.session() as s:
+            if s.get(Peer, peer_id) is not None:
+                raise
+        ctx.log(f"{name} left the network meanwhile")     # network_drop takes what's here
+        return False
     ctx.log(f"{name}: {counts['albums']} albums, {counts['tracks']} songs, {counts['books']} audiobooks, "
             f"{counts['playlists']} playlist files")
     with db.session() as s:
@@ -357,6 +369,7 @@ def drop_job(ctx: jobs.JobContext, server_id: str):
         pictured = s.scalars(select(Artist.id).where(Artist.image.startswith(f"{ROOT}{server_id}/"))).all()
         s.execute(update(Artist).where(Artist.id.in_(pictured)).values(image=""))
     art.changed("artist", *pictured)
+    tunnel.forget_files(server_id)
     scanner.finish_scan(ctx)
 
 
@@ -417,11 +430,13 @@ def dedupe() -> dict:
     """Albums and audiobooks that more than one library has: the copy of the one first in line
     (order()) shows, the others are shadowed, songs with their album (db.py leaves them out of
     what's listed). An album is the same by its album artist and title (and year, for a
-    compilation of various artists) or by its MusicBrainz id; a book by its author and title."""
+    compilation of various artists) or by its MusicBrainz id; a book by its author and title.
+    A computer that's off has none: its copies wait, and others show meanwhile."""
     rank = order()
     with db.session() as s:
-        albums = s.execute(select(Album.id, Album.peer_id, Album.kind, Album.artist_name, Album.title, Album.year,
-                                  Album.mbid)).all()
+        away = set(s.scalars(select(Peer.id).where(Peer.away.is_(True))))
+        albums = [r for r in s.execute(select(Album.id, Album.peer_id, Album.kind, Album.artist_name, Album.title,
+                                                Album.year, Album.mbid)) if r[1] not in away]
 
         def album_keys(r):
             artist = _name(r[3])
@@ -429,7 +444,7 @@ def dedupe() -> dict:
             if r[6]:
                 yield ("mbid", r[6])
 
-        books = s.execute(select(Book.id, Book.peer_id, Book.author, Book.title)).all()
+        books = [r for r in s.execute(select(Book.id, Book.peer_id, Book.author, Book.title)) if r[1] not in away]
         shadowed = {
             Album: _shadows(albums, album_keys, rank),
             Book: _shadows(books, lambda r: [("book", _name(r[2]), _name(r[3]))], rank),
@@ -448,6 +463,14 @@ def dedupe() -> dict:
                      select(Album.artist_id).where(Album.peer_id.is_(None), Album.artist_id.is_not(None)))
         s.execute(update(Artist).where(Artist.peer_only.is_(False), Artist.id.not_in(mine)).values(peer_only=True))
         s.execute(update(Artist).where(Artist.peer_only.is_(True), Artist.id.in_(mine)).values(peer_only=False))
+        # artists only computers that are off have (left out until one is on)
+        off = select(Peer.id).where(Peer.away.is_(True))
+        here = union(select(Track.artist_id).where(or_(Track.peer_id.is_(None), Track.peer_id.not_in(off)),
+                                                   Track.artist_id.is_not(None)),
+                     select(Album.artist_id).where(or_(Album.peer_id.is_(None), Album.peer_id.not_in(off)),
+                                                   Album.artist_id.is_not(None)))
+        s.execute(update(Artist).where(Artist.away.is_(False), Artist.id.not_in(here)).values(away=True))
+        s.execute(update(Artist).where(Artist.away.is_(True), Artist.id.in_(here)).values(away=False))
         # a song is its album's copy
         copies = select(Album.id).where(Album.shadowed.is_(True))
         s.execute(update(Track).where(Track.shadowed.is_(False), Track.album_id.in_(copies)).values(shadowed=True))
@@ -482,12 +505,20 @@ def where(ref: str) -> tuple[str, str, int, str]:
     return sid, kinds.rstrip("s"), int(rid), "/".join(rest)
 
 
+def computer(sid: str) -> int | None:
+    """The peer id of a computer in the network (None: a server, or no member)."""
+    with db.session() as s:
+        return s.scalar(select(Peer.id).where(Peer.server_id == sid, Peer.kind == "computer"))
+
+
 def _get(sid: str, path: str, params: dict | None = None, headers: dict | None = None,
          stream: bool = False) -> httpx.Response:
     with db.session() as s:
         p = s.scalar(select(Peer).where(Peer.server_id == sid))
         if p is None or network.state(p) != "linked":
             raise Away(404, "That server is no longer in the Library Network")
+        if p.kind == "computer":
+            raise Away(404, "Computers share songs only")
         address, key, who = p.address, p.key, p.name
     with _away_lock:
         if _away.get(sid, 0) > time.time():
@@ -535,6 +566,12 @@ def picture(ref: str, size: int) -> str | None:
     if found := art.cached(ref, size):
         return found
     sid, kind, rid, _ = where(ref)
+    if (pc := computer(sid)) is not None:
+        try:
+            data = tunnel.picture(pc, kind, rid)
+        except (tunnel.Gone, tunnel.Refused):
+            return None
+        return art.resized(data, ref, size) if data else None
     try:
         r = _get(sid, f"/api/network/art/{kind}/{rid}", {"s": art.pick_size(size)})
     except Away:
@@ -556,6 +593,8 @@ def lyrics(path: str) -> dict | None:
     """A song's lyrics as the server it's on has them (its .lrc files and tags); None when it
     can't be asked."""
     sid, _, rid, _ = where(path)
+    if (pc := computer(sid)) is not None:
+        return tunnel.lyrics(pc, rid)
     try:
         return _get(sid, f"/api/network/lyrics/{rid}").json()
     except (Away, ValueError):

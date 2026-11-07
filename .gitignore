@@ -7,3 +7,5 @@ backend/muzix/static/
 .env
 # impeccable live mode: local helper state, never committed
 **/.impeccable/live/
+desktop/build/
+desktop/dist/

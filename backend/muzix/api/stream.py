@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .. import formats, mirror, render, settings
+from .. import formats, mirror, render, settings, tunnel
 from ..lengths import play_plan
 from ..db import get_db_with_copies
 from ..models import PlayEvent, Track, User
@@ -113,7 +113,11 @@ def stream(track_id: int, request: Request, q: str = "original", t: float = 0.0,
         raise HTTPException(404, "No such track")
     if tr.peer_id is not None:          # on another server in the Library Network
         path = tr.path
+        song = (tr.format, tr.codec, tr.sample_rate, tr.bit_depth, tr.subsong, tr.duration, tr.extra, tr.size)
         db.close()                      # a stream can take a while: not on a database connection
+        sid, _, rid, _ = mirror.where(path)
+        if (pc := mirror.computer(sid)) is not None:
+            return from_computer(pc, sid, rid, *song, q, t, prefetch)
         return theirs(path, q, t, prefetch, request)
 
     def learned(changes: dict):
@@ -123,6 +127,27 @@ def stream(track_id: int, request: Request, q: str = "original", t: float = 0.0,
 
     return audio(tr.path, tr.format, tr.codec, tr.sample_rate, tr.bit_depth, tr.subsong, tr.duration,
                  tr.extra, q, t, prefetch, learned)
+
+
+def from_computer(peer_id: int, sid: str, track_id: int, fmt: str, codec: str, sample_rate: int, bit_depth: int,
+                  subsong: int, duration: float, extra: dict, size: int, q: str, t: float, prefetch: bool):
+    """A song on a computer of the Library Network (tunnel.py): its file comes here (once, into the
+    cache) and plays from here. While it comes, a song that needs no converting plays along."""
+    try:
+        path, loading = tunnel.file(peer_id, sid, track_id, fmt, size)
+    except tunnel.Gone as e:
+        raise HTTPException(502, str(e))
+    if prefetch:
+        return Response(status_code=204)
+    if loading is not None:
+        plain = formats.family(fmt) not in formats.RENDERED and not render.needs_transcode(fmt, codec, sample_rate, q)
+        if plain and not t and tunnel.started(path, loading):
+            return StreamingResponse(render.follow(path, loading), media_type=formats.browser_mime(fmt),
+                                     headers={"X-Muzix-Transcoded": "1", "Cache-Control": "no-store"})
+        loading.wait(600)
+    if not os.path.exists(path):
+        raise HTTPException(502, "The computer stopped sending the song")
+    return audio(path, fmt, codec, sample_rate, bit_depth, subsong, duration, extra, q, t)
 
 
 def theirs(path: str, q: str, t: float, prefetch: bool, request: Request):

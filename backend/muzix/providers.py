@@ -73,11 +73,15 @@ def _json(r: httpx.Response) -> dict:
 
 # ---------------------------------------------------------------- searching
 
-def search(kind: str, artist: str = "", title: str = "", album: str = "", user=None, db=None) -> dict:
-    """{results: [...], errors: {source: why}} for kind album | track | artist."""
+def search(kind: str, artist: str = "", title: str = "", album: str = "", user=None, db=None,
+           only: set[str] | None = None) -> dict:
+    """{results: [...], errors: {source: why}} for kind album | track | artist, from every source
+    (or those named in `only`: the desktop client's choice)."""
     jobs = {"musicbrainz": _musicbrainz, "discogs": _discogs, "deezer": _deezer, "itunes": _itunes, "bandcamp": _bandcamp}
     if user is not None and db is not None:
         jobs["spotify"] = _spotify
+    if only is not None:
+        jobs = {k: v for k, v in jobs.items() if k in only}
     results, errors = [], {}
     with ThreadPoolExecutor(len(jobs)) as pool:
         futs = {pool.submit(fn, kind, artist, title, album, user, db): name for name, fn in jobs.items()}
@@ -489,7 +493,8 @@ def details(source: str, kind: str, id_: str, user=None, db=None) -> dict:
 
 # ---------------------------------------------------------------- cover art
 
-def covers(kind: str, artist: str = "", title: str = "", web: str = "", user=None, db=None, mbid: str = "") -> dict:
+def covers(kind: str, artist: str = "", title: str = "", web: str = "", user=None, db=None, mbid: str = "",
+           only: set[str] | None = None) -> dict:
     """{results: [{source, thumb, url, title, width, height}], errors} for kind album | artist | book | podcast.
     Pictures from the music sources (albums and artists), and web images when `web` is a query.
     `mbid` is the item's own MusicBrainz id (an album's release, an artist), when its tags have one."""
@@ -608,6 +613,8 @@ def covers(kind: str, artist: str = "", title: str = "", web: str = "", user=Non
             jobs["spotify"] = sp
     if web:
         jobs["web"] = brave
+    if only is not None:
+        jobs = {k: v for k, v in jobs.items() if k in only}
     with ThreadPoolExecutor(max(1, len(jobs))) as pool:
         futs = {pool.submit(fn): name for name, fn in jobs.items()}
         done, late = wait(futs, timeout=TIMEOUT + 15)

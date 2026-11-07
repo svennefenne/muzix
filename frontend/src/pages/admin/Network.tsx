@@ -1,8 +1,10 @@
 /** Admin → Library Network: this server's sharing code, and the Muzix servers it shares its library
- * with (backend/muzix/network.py). A link takes both admins: each enters the other's code. */
+ * with (backend/muzix/network.py). A link takes both admins: each enters the other's code. Computers
+ * share folders through the desktop client (backend/muzix/tunnel.py): their owner enters this
+ * server's code in the client, and the admin says yes with the code the client shows. */
 
 import { useQuery } from "@tanstack/react-query";
-import { Check, Copy, Link2, RefreshCw, Trash2, X } from "lucide-react";
+import { Check, Copy, Laptop, Link2, RefreshCw, Server, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { ago, api, fmtNumber } from "../../api";
 import { Empty, Loading } from "../../components/ui";
@@ -10,6 +12,7 @@ import { useUi } from "../../store/ui";
 
 interface Peer {
   id: number; name: string; address: string; state: "linked" | "waiting" | "asked";
+  kind: "server" | "computer"; online: boolean;     // a computer's music shows only while it's on
   linked_at: string | null; last_seen: string | null; created_at: string | null; synced_at: string | null;
   counts: Partial<Record<"albums" | "tracks" | "books" | "playlists", number>>; error: string;
 }
@@ -88,6 +91,10 @@ function ThisServer({ net, reload }: { net: Overview; reload: () => void }) {
               Other servers are told {ownAddress()}. If they reach this one at another address, set the Public URL in Settings.
             </p>
           )}
+          <p className="faint" style={{ fontSize: 12.5, marginBottom: 0 }}>
+            Someone without a server of their own can share folders on their computer with the Muzix desktop client: they enter
+            this server's HTTPS address and this code in it, and you enter the code their client shows.
+          </p>
         </>
       ) : (
         <>
@@ -130,30 +137,57 @@ function LinkForm({ reload }: { reload: () => void }) {
   );
 }
 
+/** Yes to a computer's request: the code its desktop client shows. */
+function useAccept(p: Peer, reload: () => void) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const accept = async (code: string) => {
+    setBusy(true);
+    setErr("");
+    try {
+      await api.post(`/api/network/peers/${p.id}/accept`, { code });
+      reload();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return { busy, err, accept };
+}
+
 function PeerRow({ p, reload }: { p: Peer; reload: () => void }) {
   const [code, setCode] = useState("");
-  const { busy, err, link } = useLink(reload);
+  const linking = useLink(reload);
+  const accepting = useAccept(p, reload);
+  const computer = p.kind === "computer";
+  const { busy, err } = computer ? accepting : linking;
   const remove = async (ask: string) => {
     if (!confirm(ask)) return;
     await api.del(`/api/network/peers/${p.id}`);
     reload();
   };
   const notify = useUi((s) => s.notify);
-  const what = p.state === "linked" ? (p.synced_at ? `${shares(p.counts)} · synced ${ago(p.synced_at)}` : "linked · fetching its library…")
+  const away = computer && p.state === "linked" && !p.online;
+  const what = away ? `off${p.last_seen ? ` since ${ago(p.last_seen)}` : ""} · its music is hidden until it's on`
+    : p.state === "linked" ? (p.synced_at ? `${shares(p.counts)} · synced ${ago(p.synced_at)}` : "linked · fetching its library…")
     : p.state === "waiting" ? "waiting for its admin to enter this server's code" : `asked to link ${p.created_at ? ago(p.created_at) : ""}`;
+  const Icon = computer ? Laptop : Server;
   return (
     <div className="list-row" style={{ display: "block" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <span className={`status-dot ${p.state === "linked" ? (p.error ? "bad" : "ok") : "queued"}`} />
+        <span className={`status-dot ${p.state === "linked" && !away ? (p.error ? "bad" : "ok") : "queued"}`} />
         <div className="grow" style={{ minWidth: 200 }}>
-          <div style={{ fontWeight: 700 }}>{p.name}</div>
-          <div className="faint" style={{ fontSize: 12, wordBreak: "break-all" }}>{p.address || "no address"}</div>
+          <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><Icon size={14} aria-hidden /> {p.name}</div>
+          <div className="faint" style={{ fontSize: 12, wordBreak: "break-all" }}>
+            {computer ? `A computer, through the desktop client · ${p.online ? "on" : "off"}` : p.address || "no address"}
+          </div>
           <div className="dim" style={{ fontSize: 12.5 }}>{what}</div>
           {p.error && <div className="error-text" style={{ fontSize: 12.5 }}>{p.error}</div>}
         </div>
         {p.state === "linked" && (
           <>
-            <button className="btn small" onClick={async () => {
+            <button className="btn small" disabled={away} onClick={async () => {
               await api.post(`/api/network/peers/${p.id}/sync`);
               notify(`Fetching ${p.name}'s library`);
             }}><RefreshCw size={14} /> Sync now</button>
@@ -167,12 +201,14 @@ function PeerRow({ p, reload }: { p: Peer; reload: () => void }) {
       {p.state === "asked" && (
         <>
           <p className="dim" style={{ fontSize: 13, margin: "10px 0" }}>
-            {p.name} has entered this server's code. To link, enter its code (its admin finds it under Admin → Library Network).
+            {computer ? `${p.name} wants to share music from its folders with this server. To say yes, enter the code its Muzix desktop client shows under Settings → Servers.`
+              : `${p.name} has entered this server's code. To link, enter its code (its admin finds it under Admin → Library Network).`}
           </p>
           <div className="row-actions">
             <input className="input mono" style={{ flex: 1, minWidth: 250 }} placeholder="Its code: XXXXX-XXXXX-XXXXX-XXXXX" spellCheck={false}
                    value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} />
-            <button className="btn accent" disabled={busy || !code.trim() || !p.address} onClick={() => link(p.address, code)}><Link2 size={15} /> Link</button>
+            {computer ? <button className="btn accent" disabled={busy || !code.trim()} onClick={() => accepting.accept(code)}><Check size={15} /> Accept</button>
+              : <button className="btn accent" disabled={busy || !code.trim() || !p.address} onClick={() => linking.link(p.address, code)}><Link2 size={15} /> Link</button>}
             <button className="btn ghost" onClick={() => remove(`Turn down ${p.name}'s request?`)}><X size={15} /> Turn down</button>
           </div>
           {err && <p className="error-text">{err}</p>}
@@ -234,9 +270,9 @@ export function LibraryNetwork() {
       <ThisServer net={net.data} reload={reload} />
       {net.data.code && <LinkForm reload={reload} />}
       <section className="panel">
-        <div className="panel-head"><div className="h3">Servers in the network</div></div>
+        <div className="panel-head"><div className="h3">Servers and computers in the network</div></div>
         {peers.length ? <div className="list">{peers.map((p) => <PeerRow key={p.id} p={p} reload={reload} />)}</div>
-          : <Empty title="No other servers yet" />}
+          : <Empty title="No other servers or computers yet" />}
       </section>
       <MainLibrary net={net.data} reload={reload} />
     </>

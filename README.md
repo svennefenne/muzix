@@ -268,6 +268,35 @@ own library turns *Settings → Other libraries → Music from linked servers*
 off; for them every copy of the server's own albums is listed again, whatever
 the main library.
 
+### Muzix Desktop: sharing from a computer
+
+Someone without a server of their own can share folders on their computer with
+the servers they listen on: Muzix Desktop (`desktop/`) runs in the background on
+Windows, macOS and Linux, from an icon in the system tray. In its *Settings* they
+add the folders to share and a server's HTTPS address and sharing code; the
+server's admin then accepts the computer under *Admin → Library Network* by
+entering the code the client shows. While the computer is on, its music is in
+the server's library like a linked server's (covers, search, Cast, quality
+settings); while it's off, its albums are hidden, with nothing deleted, and
+they're back when it's on. A computer can't be called, so the client keeps a
+connection open to each server (a websocket), and the server asks through it for
+the catalog, a song's file (kept in the server's cache once played) or a cover.
+Only the computers a server's admin accepted are in its library, and their music
+isn't passed on to that server's own links.
+
+The tray menu also has *Fix Metadata & Artwork*: a small window, always on top,
+that albums are dropped on. Each gets the suggestions of the sources chosen in
+*Settings* (MusicBrainz, Deezer, iTunes, Bandcamp, Discogs, fanart.tv, web
+images: the same as the server's Edit metadata), and the one picked is written
+into the songs' tags with its cover. Depending on *Settings → Files* the songs are
+then left as they are, renamed where they are, or filed into a library folder the
+way the server files uploads (`Genre/Artist/Artist - Year - Album`). Every fix
+can be undone from its card.
+
+Builds for each system are on the
+[releases page](https://github.com/svennefenne/muzix/releases) as
+`desktop-v…`; `desktop/README.md` has the details.
+
 ### Android app (prototype)
 
 `android/` holds a small Android app: Muzix's own web interface from your
