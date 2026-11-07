@@ -1,0 +1,19 @@
+# Muzix in Docker. Start it in this folder with:  docker compose up -d
+# then open http://localhost:8080 in your browser.
+services:
+  muzix:
+    image: ghcr.io/svennefenne/muzix:latest
+    platform: linux/amd64          # lets Macs with Apple silicon run it too
+    container_name: muzix
+    restart: unless-stopped        # starts again whenever Docker starts
+    ports:
+      - "8080:8080"                # if 8080 is taken, change the first one: "8484:8080"
+    environment:
+      PUID: "1000"                 # Linux: your user's id (id -u) and group (id -g)
+      PGID: "1000"
+    volumes:
+      - muzix-config:/config       # Muzix's own data: accounts, playlists, settings
+      - ~/Music:/music             # YOUR MUSIC: change ~/Music to the folder it's in
+      # - ~/Audiobooks:/audiobooks:ro    # audiobooks: remove the # to use it
+volumes:
+  muzix-config:
