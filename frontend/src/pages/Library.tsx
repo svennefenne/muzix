@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { ChevronRight, Disc3, Heart, ListPlus, Mic2, Play, Plus, Shuffle, Tags, Trash2, UserRound } from "lucide-react";
-import { Fragment, useCallback, useEffect, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Link, Navigate, NavLink, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, fmtLong, fmtNumber, sized } from "../api";
 import { playAlbum, playRandom, playTracks, queryClient, toggleLike, usePlaylistPicker } from "../actions";
@@ -31,30 +31,173 @@ function LibraryNav() {
   );
 }
 
-function usePaged<T>(key: unknown[], path: string, params: Record<string, string | number | boolean | undefined>, size = 60) {
+interface PageAt { offset: number; limit: number }
+
+/** A list a page at a time, from `start` on (a letter jumped to): the pages after it load as the end
+ * comes into view, the ones before it as the top does. */
+function usePaged<T>(key: unknown[], path: string, params: Record<string, string | number | boolean | undefined>, size = 60,
+                     start = 0) {
   return useInfiniteQuery({
-    queryKey: [...key, params],
-    queryFn: ({ pageParam }) => api.get<Paged<T>>(path, { ...params, limit: size, offset: pageParam }),
-    initialPageParam: 0,
-    getNextPageParam: (last, all) => {
-      const n = all.reduce((s, p) => s + p.items.length, 0);
-      return n < last.total ? n : undefined;
+    queryKey: [...key, params, start],
+    queryFn: ({ pageParam }) => api.get<Paged<T>>(path, { ...params, limit: pageParam.limit, offset: pageParam.offset }),
+    initialPageParam: { offset: start, limit: size } as PageAt,
+    getNextPageParam: (last, _all, at): PageAt | undefined => {
+      const n = at.offset + last.items.length;
+      return last.items.length && n < last.total ? { offset: n, limit: size } : undefined;
+    },
+    getPreviousPageParam: (_first, _all, at): PageAt | undefined => {
+      const from = Math.max(0, at.offset - size);
+      return at.offset > 0 ? { offset: from, limit: at.offset - from } : undefined;
     },
   });
 }
 
-/** Loads more pages as the end of the list scrolls into view. */
-function Infinite<T>({ q, children, empty }: { q: ReturnType<typeof usePaged<T>>; children: (items: T[]) => ReactNode; empty?: ReactNode }) {
+/** The page's scroller (the frame), the bars that stick to its top, and where their bottom is. */
+function scrollerOf(el: HTMLElement | null) {
+  const scroller = el?.closest<HTMLElement>(".frame-scroll") || null;
+  const bars = scroller?.querySelector<HTMLElement>(".browse-sticky") || null;
+  const line = (bars || scroller)?.getBoundingClientRect()[bars ? "bottom" : "top"] ?? 0;
+  return { scroller, bars, line };
+}
+
+const STUCK_PADDING = 18;      // .browse-sticky.stuck's padding (base.css)
+
+/** Loads more pages as the end of the list scrolls into view (and earlier ones at its top, after a
+ * jump). `onTop` hears the place in the whole list of the first item under the bars; a new `jump`
+ * brings the list's start up to the bars. */
+function Infinite<T>({ q, children, empty, onTop, jump }: {
+  q: ReturnType<typeof usePaged<T>>; children: (items: T[]) => ReactNode; empty?: ReactNode;
+  onTop?: (index: number) => void; jump?: number;
+}) {
   const more = useCallback(() => { if (q.hasNextPage && !q.isFetchingNextPage) q.fetchNextPage(); }, [q]);
+  const before = useCallback(() => { if (q.hasPreviousPage && !q.isFetchingPreviousPage) q.fetchPreviousPage(); }, [q]);
   const sentinel = useInView(more, !!q.hasNextPage);
+  const top = useInView(before, !!q.hasPreviousPage);
+  const list = useRef<HTMLDivElement>(null);
   const items = q.data?.pages.flatMap((p) => p.items) || [];
+  const first = (q.data?.pageParams[0] as PageAt | undefined)?.offset ?? 0;
+
+  // pages put in above: what was on screen stays where it was
+  const was = useRef({ first, height: 0 });
+  useLayoutEffect(() => {
+    const { scroller } = scrollerOf(list.current);
+    if (!scroller) return;
+    if (first < was.current.first && was.current.height)
+      scroller.scrollBy({ top: scroller.scrollHeight - was.current.height, behavior: "instant" });
+    was.current = { first, height: scroller.scrollHeight };
+  });
+
+  // a letter picked: the list from it, just under the bars
+  const jumped = useRef<number | undefined>(undefined);
+  useLayoutEffect(() => {
+    if (jump === undefined || jump === jumped.current || !items.length || !list.current) return;
+    jumped.current = jump;
+    const { scroller, bars } = scrollerOf(list.current);
+    if (!scroller) return;
+    // the bars as they are once stuck (they're taller then), and the list right under them
+    const barsHeight = bars ? bars.offsetHeight + (bars.classList.contains("stuck") ? 0 : STUCK_PADDING) : 0;
+    const top = list.current.getBoundingClientRect().top - scroller.getBoundingClientRect().top - barsHeight - 6;
+    scroller.scrollBy({ top, behavior: "instant" });
+  });
+
+  useEffect(() => {
+    if (!onTop || !list.current) return;
+    const { scroller } = scrollerOf(list.current);
+    if (!scroller) return;
+    let frame = 0;
+    const look = () => {
+      frame = 0;
+      const nodes = list.current?.querySelectorAll<HTMLElement>(":scope > .grid > *, .lrow");
+      if (!nodes?.length) return;
+      const { line } = scrollerOf(list.current);
+      let lo = 0, hi = nodes.length - 1;
+      while (lo < hi) {             // the first one mostly out from under the bars
+        const mid = (lo + hi) >> 1;
+        const r = nodes[mid].getBoundingClientRect();
+        if (r.bottom > line + r.height * 0.35) hi = mid;
+        else lo = mid + 1;
+      }
+      onTop(first + lo);
+    };
+    const later = () => { if (!frame) frame = requestAnimationFrame(look); };
+    later();
+    scroller.addEventListener("scroll", later, { passive: true });
+    return () => { scroller.removeEventListener("scroll", later); if (frame) cancelAnimationFrame(frame); };
+  }, [onTop, first, items.length]);
+
   if (q.isLoading) return <Loading />;
   if (!items.length) return <>{empty || <Empty title="Nothing here yet">Add music folders on the admin page and scan them.</Empty>}</>;
   return (
-    <>
+    <div className="paged" ref={list}>
+      {q.hasPreviousPage && <div ref={top} className="paged-before">{q.isFetchingPreviousPage && <Loading />}</div>}
       {children(items)}
       <div ref={sentinel} style={{ height: 1 }} />
-    </>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- jumping to a letter
+
+interface Letter { letter: string; offset: number }
+const AZ = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+
+/** A list's first letters to jump to (sorted by name; another sort turns to it on a jump), and
+ * the letter being looked at. The jump is kept in the address (?at=), so Back comes to it again. */
+function useLetters(of: "albums" | "artists", params: Record<string, string | number | undefined>,
+                    browse: ReturnType<typeof useBrowse>, alpha: string[]) {
+  const [search, setSearch] = useSearchParams();
+  const sorted = alpha.includes(browse.sort);
+  const by = sorted ? browse.sort : alpha[0];
+  const at = sorted ? Number(search.get("at")) || 0 : 0;
+  const [jump, setJump] = useState<number>();
+  const [top, setTop] = useState(at);
+  const q = useQuery({ queryKey: ["letters", of, params, by], staleTime: 60_000,
+                       queryFn: () => api.get<Letter[]>("/api/letters", { of, ...params, sort: by }) });
+  const go = (offset: number) => {
+    if (!sorted) browse.setSort(by);
+    setSearch((p) => { const n = new URLSearchParams(p); if (offset) n.set("at", String(offset)); else n.delete("at"); return n; },
+              { replace: true });
+    setTop(offset);
+    setJump((j) => (j ?? 0) + 1);
+  };
+  const letters = q.data || [];
+  const active = sorted ? [...letters].reverse().find((l) => l.offset <= top)?.letter : undefined;
+  const bar = <LetterBar letters={letters} active={active} onJump={(l) => go(l.offset)}
+                         hint={sorted ? undefined : `Sorts by ${by === "artist" ? "artist" : "name"}`} />;
+  return {
+    at, jump, bar, onTop: sorted ? setTop : undefined,
+    // another sort starts the list from its top again
+    browse: { ...browse, setSort: (v: string) => {
+      browse.setSort(v);
+      setSearch((p) => { const n = new URLSearchParams(p); n.delete("at"); return n; }, { replace: true });
+    } },
+  };
+}
+
+function LetterBar({ letters, active, onJump, hint }: { letters: Letter[]; active?: string; onJump: (l: Letter) => void; hint?: string }) {
+  const bar = useRef<HTMLElement>(null);
+  // on a narrow screen the row scrolls sideways: the letter being looked at stays in it
+  useEffect(() => {
+    const row = bar.current;
+    const on = row?.querySelector<HTMLElement>("button.on");
+    if (!row || !on || row.scrollWidth <= row.clientWidth) return;
+    const left = on.offsetLeft - row.clientWidth / 2 + on.offsetWidth / 2;
+    row.scrollTo({ left, behavior: "smooth" });
+  }, [active]);
+  const at = new Map(letters.map((l) => [l.letter, l]));
+  const shown = [...(at.has("#") ? ["#"] : []), ...AZ, ...letters.map((l) => l.letter).filter((l) => l !== "#" && !AZ.includes(l))];
+  return (
+    <nav className="letters" aria-label="Jump to a letter" ref={bar}>
+      {shown.map((letter) => {
+        const l = at.get(letter);
+        return (
+          <button key={letter} className={letter === active ? "on" : ""} disabled={!l} aria-current={letter === active || undefined}
+                  data-tip={l ? hint : undefined} onClick={() => l && onJump(l)}>
+            {letter}
+          </button>
+        );
+      })}
+    </nav>
   );
 }
 
@@ -86,26 +229,48 @@ function Crumbs({ items }: { items: [string, string?][] }) {
   );
 }
 
-function BrowseShell({ view, title, kicker, crumbs, browse, sorts, actions, children }: {
+/** Whether the bars right after `edge` are stuck to the top of the frame (the edge scrolled past it). */
+function useStuck() {
+  const edge = useRef<HTMLDivElement>(null);
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    const el = edge.current;
+    const root = el?.closest(".frame-scroll");
+    if (!el || !root) return;
+    const io = new IntersectionObserver(([e]) => setOn(!e.isIntersecting && e.boundingClientRect.top < (e.rootBounds?.top ?? 0)),
+                                        { root, threshold: 0 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  return { edge, on };
+}
+
+function BrowseShell({ view, title, kicker, crumbs, browse, sorts, actions, letters, children }: {
   view: LibraryView; title: string; kicker: (string | number | null | undefined | false)[]; crumbs?: [string, string?][];
-  browse: ReturnType<typeof useBrowse>; sorts: [string, string][]; actions?: ReactNode; children: ReactNode;
+  browse: ReturnType<typeof useBrowse>; sorts: [string, string][]; actions?: ReactNode; letters?: ReactNode; children: ReactNode;
 }) {
   const nav = useNavigate();
   const setPref = useUi((s) => s.setPref);
+  const stuck = useStuck();
   return (
     <div className="page wide">
       <Kicker parts={kicker} />
       <Display l1={title} small />
       <LibraryNav />
-      <div className="toolbar browsebar">
-        <div className="tool">
-          <span className="seg-label">View</span>
-          <Segmented label="View" value={view} options={VIEWS} onChange={(v) => { setPref("library_view", v); nav(`/library/${v}`); }} />
+      {/* the view and its letters stay at the top of the frame as the list scrolls under them */}
+      <div ref={stuck.edge} aria-hidden />
+      <div className={`browse-sticky ${stuck.on ? "stuck" : ""}`}>
+        <div className="toolbar browsebar">
+          <div className="tool">
+            <span className="seg-label">View</span>
+            <Segmented label="View" value={view} options={VIEWS} onChange={(v) => { setPref("library_view", v); nav(`/library/${v}`); }} />
+          </div>
+          <SortMenu value={browse.sort} options={sorts} onChange={browse.setSort} />
+          <div className="grow" />
+          {actions}
+          <DisplaySwitch value={browse.display} onChange={browse.setDisplay} />
         </div>
-        <SortMenu value={browse.sort} options={sorts} onChange={browse.setSort} />
-        <div className="grow" />
-        {actions}
-        <DisplaySwitch value={browse.display} onChange={browse.setDisplay} />
+        {letters}
       </div>
       {crumbs && <Crumbs items={crumbs} />}
       {children}
@@ -128,25 +293,32 @@ export function LibraryGenres() {
 export function LibraryGenreArtists() {
   const { genre = "" } = useParams();
   const b = useBrowse("library.genre-artists", ARTIST_SORTS, "albums", "artists");
-  const q = usePaged<Artist>(["artists", "genre", genre], "/api/artists", { genre, sort: b.sort }, 100);
+  const l = useLetters("artists", { genre }, b, ["name"]);
+  const q = usePaged<Artist>(["artists", "genre", genre], "/api/artists", { genre, sort: b.sort }, 100, l.at);
   const total = q.data?.pages[0]?.total;
   return (
     <BrowseShell view="genres" title={genre} kicker={["Genre", total !== undefined && `${fmtNumber(total)} artists`]}
-                 crumbs={[["Genres", "/library/genres"], [genre]]} browse={b} sorts={ARTIST_SORTS}
+                 crumbs={[["Genres", "/library/genres"], [genre]]} browse={l.browse} sorts={ARTIST_SORTS} letters={l.bar}
                  actions={<button className="btn" onClick={() => playRandom({ genre })}><Shuffle size={15} /> Shuffle {genre}</button>}>
-      <Infinite q={q}>{(items) => <ArtistItems items={items} display={b.display} linkTo={(a) => `/library/genres/${enc(genre)}/${a.id}`} />}</Infinite>
+      <Infinite q={q} onTop={l.onTop} jump={l.jump}>
+        {(items) => <ArtistItems items={items} display={b.display} linkTo={(a) => `/library/genres/${enc(genre)}/${a.id}`} />}
+      </Infinite>
     </BrowseShell>
   );
 }
 
 export function LibraryArtists() {
   const b = useBrowse("library.artists", ARTIST_SORTS, "name", "artists");
-  const q = usePaged<Artist>(["artists", "all"], "/api/artists", { sort: b.sort }, 100);
+  const l = useLetters("artists", {}, b, ["name"]);
+  const q = usePaged<Artist>(["artists", "all"], "/api/artists", { sort: b.sort }, 100, l.at);
   const total = q.data?.pages[0]?.total;
   return (
-    <BrowseShell view="artists" title="Library" kicker={["Library", total !== undefined && `${fmtNumber(total)} artists`]} browse={b} sorts={ARTIST_SORTS}
+    <BrowseShell view="artists" title="Library" kicker={["Library", total !== undefined && `${fmtNumber(total)} artists`]} browse={l.browse}
+                 sorts={ARTIST_SORTS} letters={l.bar}
                  actions={<button className="btn" onClick={() => playRandom({ kind: "music" })}><Shuffle size={15} /> Shuffle all</button>}>
-      <Infinite q={q}>{(items) => <ArtistItems items={items} display={b.display} linkTo={(a) => `/library/artists/${a.id}`} />}</Infinite>
+      <Infinite q={q} onTop={l.onTop} jump={l.jump}>
+        {(items) => <ArtistItems items={items} display={b.display} linkTo={(a) => `/library/artists/${a.id}`} />}
+      </Infinite>
     </BrowseShell>
   );
 }
@@ -176,12 +348,14 @@ export function LibraryArtistAlbums() {
 
 export function LibraryAlbums() {
   const b = useBrowse("library.albums", ALBUM_SORTS, "added", "albums");
-  const q = usePaged<Album>(["albums", "all"], "/api/albums", { kind: "music", sort: b.sort });
+  const l = useLetters("albums", { kind: "music" }, b, ["name", "artist"]);
+  const q = usePaged<Album>(["albums", "all"], "/api/albums", { kind: "music", sort: b.sort }, 60, l.at);
   const total = q.data?.pages[0]?.total;
   return (
-    <BrowseShell view="albums" title="Library" kicker={["Library", total !== undefined && `${fmtNumber(total)} albums`]} browse={b} sorts={ALBUM_SORTS}
+    <BrowseShell view="albums" title="Library" kicker={["Library", total !== undefined && `${fmtNumber(total)} albums`]} browse={l.browse}
+                 sorts={ALBUM_SORTS} letters={l.bar}
                  actions={<button className="btn" onClick={() => playRandom({ kind: "music" })}><Shuffle size={15} /> Shuffle all</button>}>
-      <Infinite q={q}>{(items) => <AlbumItems items={items} display={b.display} />}</Infinite>
+      <Infinite q={q} onTop={l.onTop} jump={l.jump}>{(items) => <AlbumItems items={items} display={b.display} />}</Infinite>
     </BrowseShell>
   );
 }

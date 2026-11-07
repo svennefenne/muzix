@@ -434,6 +434,11 @@ class UploadedFile(Base):
     path: Mapped[str] = mapped_column(String(1024))       # as uploaded, folders included
     batch: Mapped[str] = mapped_column(String(32), index=True)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    # what its tags say, for the upload area to show it by album
+    artist: Mapped[str] = mapped_column(String(512), default="", server_default="")
+    album: Mapped[str] = mapped_column(String(512), default="", server_default="")
+    title: Mapped[str] = mapped_column(String(512), default="", server_default="")
+    year: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
 # ---------------------------------------------------------------- library network

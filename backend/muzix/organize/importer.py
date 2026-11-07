@@ -85,6 +85,21 @@ class Beet:
             raise RuntimeError(f"beet {args[0]} failed ({r.returncode})")
         return out
 
+    def albums(self, query: str) -> list[dict]:
+        """The albums of the songs a query finds, as filed: {artist, album, year, genre, folder, songs}."""
+        out: dict[str, dict] = {}
+        for line in self("ls", "-f", "$albumartist\t$album\t$year\t$genre\t$path", query, quiet=True).splitlines():
+            r = line.split("\t", 4)
+            if len(r) != 5:
+                continue
+            folder = os.path.dirname(r[4])
+            if os.path.basename(folder).lower().startswith(("cd", "disc", "disk")) and len(os.path.basename(folder)) < 8:
+                folder = os.path.dirname(folder)        # one album over its discs
+            a = out.setdefault(folder, {"artist": r[0], "album": r[1], "year": int(r[2]) if r[2].isdigit() else 0,
+                                        "genre": r[3], "folder": folder, "songs": 0})
+            a["songs"] += 1
+        return list(out.values())
+
     def songs(self, query: str) -> dict[str, tuple[str, str]]:
         """id -> (path, title) of the songs a query finds."""
         rows = (line.split("\t", 2) for line in self("ls", "-f", "$id\t$path\t$title", query, quiet=True).splitlines())
@@ -128,6 +143,7 @@ def import_upload(ctx: jobs.JobContext, batch: str):
                 os.chmod(dest, 0o644)
             os.remove(path)
         ctx.log(f"copied {len(chips)} files to {dest_root}/Uploads")
+        result["vgm_folder"] = os.path.join(dest_root, "Uploads")
 
     if music:
         music_root = upload_root("music")
@@ -161,6 +177,8 @@ def import_upload(ctx: jobs.JobContext, batch: str):
                 if f.startswith("cover") and os.stat(os.path.join(r, f)).st_mode & 0o777 == 0o600:
                     os.chmod(os.path.join(r, f), 0o644)
         result["report"] = beet("mreport", tag, check=False)[-2000:]
+        result["albums"] = beet.albums(tag)
+        result["music_root"] = music_root
 
     left = [os.path.relpath(os.path.join(r, f), batch_dir) for r, _, fs in os.walk(batch_dir) for f in fs]
     if not left:

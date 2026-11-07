@@ -11,6 +11,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from .. import env, formats
+from ..meta import tags
 from ..models import Track, UploadedFile
 from ..serial import iso
 
@@ -39,8 +40,21 @@ def titles(stem: str) -> set[str]:
     return {t for t in (last, _NUMBER.sub("", last), _NUMBER.sub("", stem)) if t.strip()}
 
 
+def _tags(batch: str, rel: str) -> dict:
+    """Album artist, album, title and year of an uploaded song, for the upload area."""
+    if formats.family(rel) not in MUSIC:
+        return {}
+    try:
+        t = tags.read(str(env.UPLOAD_DIR / batch / rel))
+    except Exception:       # whatever it is, it's still uploaded; it's shown by its folder
+        return {}
+    return {"artist": (t.albumartist or t.artist or "")[:512], "album": (t.album or "")[:512],
+            "title": (t.title or "")[:512], "year": t.year or 0}
+
+
 def remember(db: Session, batch: str, saved: list[dict]):
-    db.add_all(UploadedFile(name=os.path.basename(f["path"]).lower(), size=f["size"], path=f["path"], batch=batch)
+    db.add_all(UploadedFile(name=os.path.basename(f["path"]).lower(), size=f["size"], path=f["path"], batch=batch,
+                            **_tags(batch, f["path"]))
                for f in saved)
     db.commit()
 

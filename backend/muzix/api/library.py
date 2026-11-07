@@ -1,6 +1,7 @@
 import os
 import random
 import re
+import unicodedata
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -115,12 +116,9 @@ def genres(db: Session = Depends(get_db), user: User = Depends(current_user), li
     return out
 
 
-@router.get("/albums")
-def albums(db: Session = Depends(get_db), user: User = Depends(current_user),
-           kind: str = "music", genre: str | None = None, artist_id: int | None = None,
-           system: str | None = None, liked_only: bool = False, sort: str = "added",
-           limit: int = Query(60, le=500), offset: int = 0):
-    q = select(Album)
+def _albums_query(user: User, kind: str, genre: str | None, artist_id: int | None, system: str | None,
+                  liked_only: bool, what=Album):
+    q = select(what)
     if kind != "all":
         q = q.where(Album.kind == kind)
     if genre:
@@ -131,6 +129,15 @@ def albums(db: Session = Depends(get_db), user: User = Depends(current_user),
         q = q.where(Album.id.in_(select(Track.album_id).where(on_system(system))))
     if liked_only:
         q = q.where(Album.id.in_(select(Like.item_id).where(Like.user_id == user.id, Like.item_type == "album")))
+    return q
+
+
+@router.get("/albums")
+def albums(db: Session = Depends(get_db), user: User = Depends(current_user),
+           kind: str = "music", genre: str | None = None, artist_id: int | None = None,
+           system: str | None = None, liked_only: bool = False, sort: str = "added",
+           limit: int = Query(60, le=500), offset: int = 0):
+    q = _albums_query(user, kind, genre, artist_id, system, liked_only)
     total = db.scalar(select(func.count()).select_from(q.subquery()))
     if sort == "played":
         played = plays_by(Track.album_id, user)
@@ -163,10 +170,7 @@ def album(album_id: int, db: Session = Depends(get_db_with_copies), user: User =
             "folder": "" if a.peer_id else a.folder, "artist_tags": artist_tags(db, [a.artist_id]).get(a.artist_id, [])}
 
 
-@router.get("/artists")
-def artists(db: Session = Depends(get_db), user: User = Depends(current_user),
-            genre: str | None = None, liked_only: bool = False, sort: str = "name",
-            limit: int = Query(100, le=500), offset: int = 0):
+def _artists_query(user: User, genre: str | None, liked_only: bool):
     # through the albums, so an artist shows up in every genre they have albums in
     counts = select(Album.artist_id, func.count().label("n"), func.max(Album.added_at).label("added")) \
         .where(Album.kind == "music")
@@ -176,6 +180,14 @@ def artists(db: Session = Depends(get_db), user: User = Depends(current_user),
     q = select(Artist, counts.c.n).join(counts, counts.c.artist_id == Artist.id)
     if liked_only:
         q = q.where(Artist.id.in_(select(Like.item_id).where(Like.user_id == user.id, Like.item_type == "artist")))
+    return q, counts
+
+
+@router.get("/artists")
+def artists(db: Session = Depends(get_db), user: User = Depends(current_user),
+            genre: str | None = None, liked_only: bool = False, sort: str = "name",
+            limit: int = Query(100, le=500), offset: int = 0):
+    q, counts = _artists_query(user, genre, liked_only)
     total = db.scalar(select(func.count()).select_from(q.subquery()))
     if sort == "played":
         played = plays_by(Track.artist_id, user)
@@ -187,6 +199,39 @@ def artists(db: Session = Depends(get_db), user: User = Depends(current_user),
     rows = db.execute(q.order_by(*order, Artist.id).limit(limit).offset(offset)).all()
     lk = liked(db, user, "artist")
     return {"total": total, "items": [serial.artist(a, lk, n) for a, n in rows]}
+
+
+def initial(name: str) -> str:
+    """What a name is listed under by its first letter: A to Z, Å, Ä, Ö and the like as they are,
+    "#" for digits and signs, and "…" for other scripts."""
+    c = (name or "").strip()[:1]
+    if not c or not c.isalpha():
+        return "#"
+    if c.isascii():
+        return c.upper()
+    return c.upper() if "LATIN" in unicodedata.name(c, "") else "…"
+
+
+@router.get("/letters")
+def letters(db: Session = Depends(get_db), user: User = Depends(current_user), of: str = "albums",
+            kind: str = "music", genre: str | None = None, artist_id: int | None = None, liked_only: bool = False,
+            sort: str = "name"):
+    """Where each first letter begins in a list sorted by name (/api/albums or /api/artists with the same
+    filters): [{letter, offset}], in the list's order, for jumping to a letter."""
+    if of == "artists":
+        q, _ = _artists_query(user, genre, liked_only)
+        names = db.scalars(q.with_only_columns(Artist.name).order_by(func.lower(Artist.name), Artist.id))
+    else:
+        column = Album.artist_name if sort == "artist" else Album.title
+        q = _albums_query(user, kind, genre, artist_id, None, liked_only, column)
+        names = db.scalars(q.order_by(*ALBUM_SORTS["artist" if sort == "artist" else "name"], Album.id))
+    out, seen = [], set()
+    for i, name in enumerate(names):
+        letter = initial(name)
+        if letter not in seen:
+            seen.add(letter)
+            out.append({"letter": letter, "offset": i})
+    return out
 
 
 @router.get("/artists/{artist_id}")

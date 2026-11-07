@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Blocks, EyeOff, FolderOpen, HardDrive, History, Library, Network, Plus, RefreshCw, Save, Settings2, Trash2, Upload, Users, X } from "lucide-react";
+import { Activity, Blocks, Disc3, EyeOff, FileQuestion, FolderOpen, Gamepad2, HardDrive, History, Library, Network, Plus, RefreshCw, Save, Settings2, Trash2, Upload, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { create } from "zustand";
@@ -205,7 +205,119 @@ interface Found {
   match?: { title: string; artist: string; album: string; format: string; path: string };
 }
 interface Review { files: Pending[]; found: Found[]; skip: string[]; resolve: (send: Pending[] | null) => void }
-interface Batch { batch: string; files: { path: string; size: number; kind: string }[]; created: string; job: { id: number; status: string; progress: number; message: string } | null }
+/** An album in an upload, as its songs' tags say (by its folder, without an album tag). */
+interface UploadAlbum { artist: string; album: string; year: number; songs: number; formats: string[]; size: number; folder: string }
+interface Batch {
+  batch: string; files: { path: string; size: number; kind: string }[]; created: string; albums: UploadAlbum[];
+  job: { id: number; status: string; progress: number; message: string } | null;
+}
+/** An import, and where it filed each album (its page here, once the library has scanned it). */
+interface ImportDone {
+  id: number; batch: string; status: string; message: string; progress: number; started_at: string | null; finished_at: string | null;
+  music: number | null; vgm: number | null; vgm_folder: string; left: string[];
+  albums: { artist: string; album: string; year: number; genre: string; songs: number; where: string; album_id: number | null }[];
+}
+const MUSIC_KINDS = ["native", "decode"];
+
+/** What a batch's files are: its albums, its chiptunes and tracker modules, and anything else. */
+function BatchContents({ b }: { b: Batch }) {
+  const chips = b.files.filter((f) => !MUSIC_KINDS.includes(f.kind) && f.kind !== "other");
+  const others = b.files.filter((f) => f.kind === "other");
+  const name = (p: string) => p.split("/").pop();
+  return (
+    <ul className="upload-contents">
+      {b.albums.map((a) => (
+        <li key={`${a.artist}|${a.album}|${a.folder}`}>
+          <Disc3 size={15} aria-hidden />
+          <span className="grow ellipsis"><b>{a.album}</b> <span className="dim">{a.artist || "artist unknown"}</span></span>
+          <span className="faint">{[a.year || null, `${a.songs} ${a.songs === 1 ? "song" : "songs"}`, a.formats.join(", ").toUpperCase(),
+            fmtBytes(a.size)].filter(Boolean).join(" · ")}</span>
+        </li>
+      ))}
+      {chips.length > 0 && (
+        <li>
+          <Gamepad2 size={15} aria-hidden />
+          <span className="grow"><b>{chips.length} chiptune and tracker {chips.length === 1 ? "file" : "files"}</b>{" "}
+            <span className="dim">go to the VGM upload folder as they are</span></span>
+        </li>
+      )}
+      {others.length > 0 && (
+        <li>
+          <FileQuestion size={15} aria-hidden />
+          <span className="grow ellipsis"><b>{others.length} other {others.length === 1 ? "file" : "files"}</b>{" "}
+            <span className="dim">{others.slice(0, 4).map((f) => name(f.path)).join(", ")}{others.length > 4 ? ", …" : ""}</span></span>
+          <span className="faint">not imported</span>
+        </li>
+      )}
+    </ul>
+  );
+}
+
+/** Where a batch stands: waiting, being imported, failed, or imported with files left over. */
+function batchState(b: Batch): { text: string; tone: "" | "busy" | "bad" | "done" } {
+  const j = b.job;
+  if (!j) return { text: "Not imported yet", tone: "" };
+  if (j.status === "queued") return { text: "Import queued…", tone: "busy" };
+  if (j.status === "running") return { text: `Importing${j.message ? `: ${j.message}` : "…"}`, tone: "busy" };
+  if (j.status === "failed") return { text: `The import failed${j.message ? `: ${j.message}` : ""}. Import tries again.`, tone: "bad" };
+  return { text: "Imported. These files were left over: the import didn't take them", tone: "done" };
+}
+
+/** The latest imports: what each filed where, and what it left. */
+function RecentImports() {
+  const q = useQuery({ queryKey: ["imports"], queryFn: () => api.get<ImportDone[]>("/api/upload/imports"), refetchInterval: 5000 });
+  const done = (q.data || []).filter((i) => i.status === "done" || i.status === "failed");
+  if (!done.length) return null;
+  return (
+    <section className="panel">
+      <div className="panel-head"><div className="h3">Imported lately</div><span className="dim">where each album went</span></div>
+      <div className="list">
+        {done.map((i) => {
+          const songs = i.albums.reduce((n, a) => n + a.songs, 0);
+          const counted = i.albums.length
+            ? [`${i.albums.length} ${i.albums.length === 1 ? "album" : "albums"}`, `${songs} ${songs === 1 ? "song" : "songs"}`]
+            : i.music ? [`${i.music} music ${i.music === 1 ? "file" : "files"}`] : [];
+          if (i.vgm) counted.push(`${i.vgm} chiptune and tracker ${i.vgm === 1 ? "file" : "files"}`);
+          return (
+            <div key={i.id} className="list-row upload-batch">
+              <div className="upload-head">
+                <span className={`status-dot ${i.status === "failed" ? "bad" : "ok"}`} />
+                <div className="grow">
+                  <div className="upload-title">{i.status === "failed" ? "Import failed" : "Imported"} {i.finished_at ? ago(i.finished_at) : ""}</div>
+                  <div className={i.status === "failed" ? "error-text" : "dim"} style={{ fontSize: 12.5 }}>
+                    {i.status === "failed" ? i.message || "See its log under Jobs" : counted.join(" · ") || "Nothing to import"}
+                  </div>
+                </div>
+              </div>
+              {(i.albums.length > 0 || i.vgm || i.left.length > 0) && (
+                <ul className="upload-contents">
+                  {i.albums.map((a) => (
+                    <li key={a.where}>
+                      <Disc3 size={15} aria-hidden />
+                      <span className="grow ellipsis"><b>{a.album}</b> <span className="dim">{a.artist}</span>{" "}
+                        <span className="faint mono-path" data-tip="Where it was filed in the music upload folder">→ {a.where}</span></span>
+                      {a.album_id ? <Link className="btn small" to={`/album/${a.album_id}`}>Open</Link>
+                        : <span className="faint" data-tip="It shows up once the library has read the folder">being added…</span>}
+                    </li>
+                  ))}
+                  {i.vgm ? (
+                    <li><Gamepad2 size={15} aria-hidden /><span className="grow ellipsis"><b>{i.vgm} chiptune and tracker {i.vgm === 1 ? "file" : "files"}</b>{" "}
+                      <span className="faint mono-path">→ {i.vgm_folder || "the VGM upload folder"}</span></span></li>
+                  ) : null}
+                  {i.left.length > 0 && (
+                    <li><FileQuestion size={15} aria-hidden /><span className="grow ellipsis"><b>{i.left.length} {i.left.length === 1 ? "file" : "files"} not imported</b>{" "}
+                      <span className="dim">{i.left.slice(0, 4).map((p) => p.split("/").pop()).join(", ")}{i.left.length > 4 ? ", …" : ""}</span></span>
+                      <span className="faint">still in the upload area</span></li>
+                  )}
+                </ul>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
 
 /** The files of a drop: folders walked through their entries, anything without one taken as
  * a plain file. Both have to be picked up during the drop event itself. */
@@ -447,26 +559,29 @@ function UploadArea() {
         {batches.data?.length ? (
           <div className="list">
             {batches.data.map((b) => {
-              const music = b.files.filter((f) => f.kind === "native" || f.kind === "decode").length;
-              const chips = b.files.filter((f) => !["native", "decode", "other"].includes(f.kind)).length;
               const running = b.job && (b.job.status === "running" || b.job.status === "queued");
+              const state = batchState(b);
+              const size = b.files.reduce((n, f) => n + f.size, 0);
+              const leftOver = b.job?.status === "done";
               return (
-                <div key={b.batch} className="list-row" style={{ display: "block" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <div key={b.batch} className="list-row upload-batch">
+                  <div className="upload-head">
+                    <span className={`status-dot ${state.tone === "bad" ? "bad" : state.tone === "busy" ? "queued" : state.tone === "done" ? "ok" : ""}`} />
                     <div className="grow">
-                      <b>{b.files.length} files</b> <span className="dim">· {music} music · {chips} chiptune/tracker · uploaded {ago(b.created)}</span>
-                      {b.job && <div className="dim" style={{ fontSize: 12.5 }}>Import {b.job.status}{b.job.message ? `: ${b.job.message}` : ""}</div>}
+                      <div className="upload-title">Uploaded {ago(b.created)} · {b.files.length} {b.files.length === 1 ? "file" : "files"} · {fmtBytes(size)}</div>
+                      <div className={state.tone === "bad" ? "error-text" : "dim"} style={{ fontSize: 12.5 }}>{state.text}</div>
                     </div>
                     {running ? <div style={{ width: 160 }}><div className="progressbar"><div style={{ width: `${(b.job!.progress || 0) * 100}%` }} /></div></div>
-                      : <button className="btn accent" onClick={async () => { await api.post(`/api/upload/batch/${b.batch}/import`); batches.refetch(); }}>Import</button>}
-                    <button className="mini" aria-label="Discard" onClick={async () => {
+                      : !leftOver && <button className="btn accent" onClick={async () => { await api.post(`/api/upload/batch/${b.batch}/import`); batches.refetch(); }}>Import</button>}
+                    <button className="mini" aria-label="Discard" data-tip="Discard: these uploaded files are deleted" onClick={async () => {
                       if (!confirm("Discard these uploaded files?")) return;
                       await api.del(`/api/upload/batch/${b.batch}`);
                       batches.refetch();
                     }}><X size={15} /></button>
                   </div>
+                  <BatchContents b={b} />
                   <details style={{ marginTop: 8 }}>
-                    <summary className="dim" style={{ cursor: "pointer", fontSize: 12.5 }}>Files</summary>
+                    <summary className="dim" style={{ cursor: "pointer", fontSize: 12.5 }}>All {b.files.length} files</summary>
                     <pre className="log">{b.files.map((f) => `${f.path}  (${fmtBytes(f.size)})`).join("\n")}</pre>
                   </details>
                   {b.job && <JobRow j={{ id: b.job.id, type: "import_upload", title: "Import log", status: b.job.status as Job["status"], progress: b.job.progress, message: b.job.message, result: {}, created_at: null, started_at: null, finished_at: null }} />}
@@ -476,6 +591,7 @@ function UploadArea() {
           </div>
         ) : <Empty title="Nothing waiting">Uploaded files show up here until you import them.</Empty>}
       </section>
+      <RecentImports />
     </>
   );
 }

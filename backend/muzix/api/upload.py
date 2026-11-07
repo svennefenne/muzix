@@ -13,9 +13,10 @@ from sqlalchemy.orm import Session
 
 from .. import env, formats, jobs, settings
 from ..db import get_db
-from ..models import Job
+from ..models import Album, Job, UploadedFile
 from ..organize import duplicates
 from ..security import admin_user
+from ..serial import iso
 
 router = APIRouter(prefix="/api/upload", tags=["upload"], dependencies=[Depends(admin_user)])
 BATCH_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[a-z0-9]{4}$")
@@ -125,8 +126,53 @@ def batch_json(d, db: Session):
             files.append({"path": os.path.relpath(p, d), "size": size, "kind": formats.family(f) or "other"})
     job = db.scalar(select(Job).where(Job.type == "import_upload",
                                       Job.params["batch"].as_string() == d.name).order_by(Job.id.desc()).limit(1))
-    return {"batch": d.name, "files": files, "created": created,
+    return {"batch": d.name, "files": files, "created": created, "albums": albums_of(d.name, files, db),
             "job": {"id": job.id, "status": job.status, "progress": job.progress, "message": job.message} if job else None}
+
+
+def albums_of(batch: str, files: list[dict], db: Session) -> list[dict]:
+    """A batch's songs by album, as their tags say (by folder for songs without an album tag):
+    {artist, album, year, songs, formats, size, folder}."""
+    tagged = {u.path: u for u in db.scalars(select(UploadedFile).where(UploadedFile.batch == batch))}
+    out: dict[tuple, dict] = {}
+    for f in files:
+        if f["kind"] not in duplicates.MUSIC:
+            continue
+        u = tagged.get(f["path"])
+        folder = os.path.dirname(f["path"])
+        album = (u.album if u else "") or os.path.basename(folder)
+        artist = u.artist if u else ""
+        key = (artist.casefold(), album.casefold()) if u and u.album else ("", "\0" + folder)
+        a = out.setdefault(key, {"artist": artist, "album": album, "year": 0, "songs": 0, "formats": [], "size": 0,
+                                 "folder": folder})
+        a["songs"] += 1
+        a["size"] += f["size"]
+        a["year"] = max(a["year"], u.year if u else 0)
+        ext = formats.ext_of(f["path"])
+        if ext not in a["formats"]:
+            a["formats"].append(ext)
+    return sorted(out.values(), key=lambda a: (a["artist"].casefold(), a["album"].casefold()))
+
+
+@router.get("/imports")
+def imports(limit: int = 8, db: Session = Depends(get_db)):
+    """The latest imports, with where their albums were filed (and their pages here, once scanned)."""
+    out = []
+    for job in db.scalars(select(Job).where(Job.type == "import_upload").order_by(Job.id.desc()).limit(limit)):
+        r = job.result or {}
+        albums = []
+        for a in r.get("albums") or []:
+            folder = a.get("folder") or ""
+            album_id = db.scalar(select(Album.id).where(Album.folder.in_((folder, os.path.dirname(folder)))).limit(1)) \
+                if folder else None
+            root = r.get("music_root") or ""
+            albums.append({**a, "where": os.path.relpath(folder, root) if root and folder.startswith(root) else folder,
+                           "album_id": album_id})
+        out.append({"id": job.id, "batch": (job.params or {}).get("batch", ""), "status": job.status,
+                    "message": job.message, "progress": job.progress, "started_at": iso(job.started_at),
+                    "finished_at": iso(job.finished_at), "music": r.get("music"), "vgm": r.get("vgm"),
+                    "vgm_folder": r.get("vgm_folder") or "", "albums": albums, "left": r.get("left") or []})
+    return out
 
 
 @router.get("/batches")
