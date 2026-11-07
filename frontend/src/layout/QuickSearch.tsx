@@ -12,6 +12,7 @@ import type { RecentKind, SearchResults } from "../types";
 
 interface Hit {
   key: string; group: string; title: string; sub: string; art: string | null; round?: boolean; icon?: ReactNode; go: () => void;
+  peer?: string | null;
   ref: { kind: RecentKind; id: number };      // remembered in recent searches when picked
 }
 
@@ -66,19 +67,19 @@ export function QuickSearch() {
       ...r.tracks.slice(0, 5).map((t, i) => ({
         key: `t${t.id}`, group: "Songs", ref: { kind: "track" as const, id: t.id }, title: t.title,
         sub: [t.artist, t.kind === "vgm" ? t.system : null, t.album].filter(Boolean).join(" · "),
-        art: t.art, icon: <Play size={14} fill="currentColor" />, go: () => playTracks(r.tracks.slice(0, 5), i),
+        art: t.art, icon: <Play size={14} fill="currentColor" />, go: () => playTracks(r.tracks.slice(0, 5), i), peer: t.peer,
       })),
       ...music.map((a) => ({
         key: `al${a.id}`, group: "Albums", ref: { kind: "album" as const, id: a.id }, title: a.title, sub: [a.artist, a.year || null].filter(Boolean).join(" · "),
-        art: a.art, go: () => nav(`/album/${a.id}`),
+        art: a.art, go: () => nav(`/album/${a.id}`), peer: a.peer,
       })),
       ...games.map((a) => ({
         key: `al${a.id}`, group: "Games", ref: { kind: "album" as const, id: a.id }, title: a.title, sub: [a.artist, `${a.track_count} tunes`].filter(Boolean).join(" · "),
-        art: a.art, go: () => nav(`/album/${a.id}`),
+        art: a.art, go: () => nav(`/album/${a.id}`), peer: a.peer,
       })),
       ...r.books.slice(0, 3).map((b) => ({
         key: `b${b.id}`, group: "Audiobooks", ref: { kind: "book" as const, id: b.id }, title: b.title, sub: [b.author, b.series].filter(Boolean).join(" · ") || "Audiobook",
-        art: b.art, go: () => nav(`/audiobooks/${b.id}`),
+        art: b.art, go: () => nav(`/audiobooks/${b.id}`), peer: b.peer,
       })),
     ];
   }, [res.data, nav]);
@@ -88,7 +89,7 @@ export function QuickSearch() {
   const recentHits = useMemo<Hit[]>(() => (recent.data || []).slice(0, 8).map((e) => {
     const p = picked(e, nav);
     return { key: `r${p.kind}${p.id}`, group: "Recent searches", title: p.title, sub: p.sub, art: p.art, round: p.round,
-             go: p.go, ref: { kind: p.kind, id: p.id } };
+             go: p.go, ref: { kind: p.kind, id: p.id }, peer: p.peer };
   }), [recent.data, nav]);
   const recentMode = !text.trim();
   const list = recentMode ? recentHits : hits;
@@ -137,7 +138,7 @@ export function QuickSearch() {
               {(i === 0 || list[i - 1].group !== h.group) && <div className="qs-group">{h.group}</div>}
               <div id={`qs-${i}`} role="option" aria-selected={i === active} className={`qs-item ${i === active ? "on" : ""}`}
                    onMouseEnter={() => setActive(i)} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(i)}>
-                <Art src={h.art} name={h.title} size={96} round={h.round} />
+                <Art src={h.art} name={h.title} size={96} round={h.round} peer={h.peer} />
                 <span className="qs-text">
                   <span className="qs-title ellipsis">{h.title}</span>
                   <span className="qs-sub ellipsis">{h.sub}</span>

@@ -42,7 +42,8 @@ class Setting(Base):
 
 
 class Root(Base):
-    """A folder Muzix scans. kind: music | vgm | audiobooks."""
+    """A folder Muzix scans. kind: music | vgm | audiobooks; or peer, holding what another server
+    in the Library Network shares (network.py), at path peer:<its id>."""
     __tablename__ = "roots"
     id: Mapped[int] = mapped_column(primary_key=True)
     path: Mapped[str] = mapped_column(String(1024), unique=True)
@@ -67,6 +68,7 @@ class Artist(Base):
     tags_checked: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     image: Mapped[str] = mapped_column(String(1024), default="")
     hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # admin: hidden from everyone
+    peer_only: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # only in other servers' libraries
     __table_args__ = (UniqueConstraint("name", name="uq_artist_name"),)
 
 
@@ -89,6 +91,8 @@ class Album(Base):
     mbid: Mapped[str] = mapped_column(String(64), default="")
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
     hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # admin: hidden from everyone
+    peer_id: Mapped[int | None] = mapped_column(Integer, nullable=True)   # another server's (network.py)
+    shadowed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # another library's copy shows
     artist: Mapped[Artist | None] = relationship()
 
 
@@ -126,6 +130,8 @@ class Track(Base):
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
     seen_scan: Mapped[int] = mapped_column(Integer, default=0)   # scan generation marker
     hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # admin: hidden from everyone
+    peer_id: Mapped[int | None] = mapped_column(Integer, nullable=True)   # another server's (network.py)
+    shadowed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # another library's copy shows
     __table_args__ = (UniqueConstraint("path", "subsong", name="uq_track_path"),
                       Index("ix_tracks_album_order", "album_id", "disc_no", "track_no"))
 
@@ -197,6 +203,7 @@ class FilePlaylist(Base):
     name: Mapped[str] = mapped_column(String(255), default="")
     entries: Mapped[int] = mapped_column(Integer, default=0)   # lines in the file, found or not
     hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # admin: hidden from everyone
+    peer_id: Mapped[int | None] = mapped_column(Integer, nullable=True)   # another server's (network.py)
 
 
 class FilePlaylistItem(Base):
@@ -272,6 +279,8 @@ class Book(Base):
     seen_scan: Mapped[int] = mapped_column(Integer, default=0)
     custom: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")   # admin's edits, kept over rescans
     hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # admin: hidden from everyone
+    peer_id: Mapped[int | None] = mapped_column(Integer, nullable=True)   # another server's (network.py)
+    shadowed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # another library's copy shows
 
 
 class BookPart(Base):
@@ -426,5 +435,29 @@ class UploadedFile(Base):
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+# ---------------------------------------------------------------- library network
+
+class Peer(Base):
+    """Another Muzix server in the Library Network (network.py). Linked once each side's admin has
+    entered the other's sharing code; until then it's one side's request."""
+    __tablename__ = "peers"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    server_id: Mapped[str] = mapped_column(String(64), unique=True)   # its own, from its hello
+    name: Mapped[str] = mapped_column(String(255), default="")
+    address: Mapped[str] = mapped_column(String(1024), default="")    # where it's reached
+    sent: Mapped[bool] = mapped_column(Boolean, default=False)        # our admin entered its code, and it took it
+    received: Mapped[bool] = mapped_column(Boolean, default=False)    # its admin entered ours
+    key: Mapped[str] = mapped_column(String(128), default="")         # what we show it when we call it
+    their_key: Mapped[str] = mapped_column(String(64), default="", index=True)   # sha256 of what it shows us
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    linked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error: Mapped[str] = mapped_column(Text, default="")              # why the last call to it failed
+    synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    counts: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")   # what it shares: albums, tracks...
+
+
 # what an admin can hide: hidden rows stay out of every page and list (db.py)
 HIDEABLE = (Artist, Album, Track, Playlist, FilePlaylist, Book, Feed, Station)
+# what's in more than one library of the Library Network: only one library's copy is listed (mirror.dedupe)
+SHADOWABLE = (Album, Track, Book)

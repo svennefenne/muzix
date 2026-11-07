@@ -6,7 +6,7 @@ import { api, ago, fmtLong, fmtNumber, fmtTime } from "../api";
 import { queryClient } from "../actions";
 import { AdminCog } from "../components/AdminMode";
 import { DisplaySwitch, Rows, SortMenu, useBrowse } from "../components/Browse";
-import { Art, Display, Empty, Kicker, Loading, Section } from "../components/ui";
+import { Art, Display, Empty, FromPeer, Kicker, Loading, Section } from "../components/ui";
 import { rowTap } from "../components/TrackList";
 import { engine } from "../player/engine";
 import { fromBook, usePlayer } from "../store/player";
@@ -21,8 +21,8 @@ function BookCard({ b }: { b: Book }) {
   const pct = b.duration ? Math.min(100, (b.position / b.duration) * 100) : 0;
   return (
     <Link to={`/audiobooks/${b.id}`} className="card">
-      <Art src={b.art} name={b.title} />
-      <AdminCog kind="book" id={b.id} title={b.title} />
+      <Art src={b.art} name={b.title} peer={b.peer} />
+      <AdminCog kind="book" id={b.id} title={b.title} peer={b.peer} />
       {pct > 0 && !b.finished && <div className="progressbar" style={{ marginTop: 8 }}><div style={{ width: `${pct}%` }} /></div>}
       <div className="card-title ellipsis">{b.title}</div>
       <div className="card-sub ellipsis">{b.finished ? "Finished · " : ""}{b.author || "Unknown author"}</div>
@@ -43,7 +43,7 @@ function BookItems({ items, display }: { items: Book[]; display: DisplayMode }) 
           head={["", "Title", "Author", "Series", "Length", "Progress"].map((h, i) => <span key={i} className={i === 2 || i === 3 || i === 4 ? "l-opt" : i === 5 ? "l-num" : ""}>{h}</span>)}>
       {items.map((b) => (
         <Link key={b.id} to={`/audiobooks/${b.id}`} className="lrow">
-          <div className="l-thumb"><Art src={b.art} name={b.title} size={96} /></div>
+          <div className="l-thumb"><Art src={b.art} name={b.title} size={96} peer={b.peer} /></div>
           <div className="l-main">
             <div className="l-title ellipsis">{b.title}</div>
             <div className="l-sub ellipsis l-sm">{b.author || "Unknown author"}</div>
@@ -52,7 +52,7 @@ function BookItems({ items, display }: { items: Book[]; display: DisplayMode }) 
           <span className="l-col ellipsis l-opt">{b.series}</span>
           <span className="l-col l-opt">{b.duration ? fmtLong(b.duration) : ""}</span>
           <span className="l-num">{progressText(b)}</span>
-          <AdminCog kind="book" id={b.id} title={b.title} />
+          <AdminCog kind="book" id={b.id} title={b.title} peer={b.peer} />
         </Link>
       ))}
     </Rows>
@@ -106,7 +106,7 @@ export function BookPage() {
   return (
     <div className="page">
       <div className="detail-head">
-        <Art src={b.art} name={b.title} size={600} />
+        <Art src={b.art} name={b.title} size={600} peer={b.peer} />
         <div>
           <Kicker parts={["Audiobook", b.series, b.year || null]} />
           <Display l1={b.title} small />
@@ -115,6 +115,7 @@ export function BookPage() {
             {b.narrator && <span className="dotsep">Read by {b.narrator}</span>}
             <span className="dotsep">{fmtLong(b.duration)}</span>
             {b.updated_at && <span className="dotsep">Last listened {ago(b.updated_at)}</span>}
+            {b.peer && <FromPeer peer={b.peer} />}
           </div>
           <div className="progressbar" style={{ maxWidth: 420, margin: "4px 0 6px" }}><div style={{ width: `${b.duration ? (bookPos / b.duration) * 100 : 0}%` }} /></div>
           <div className="faint mono" style={{ fontSize: 12, marginBottom: 16 }}>{fmtTime(bookPos)} of {fmtTime(b.duration)}{b.finished ? " · finished" : ""}</div>
@@ -124,7 +125,7 @@ export function BookPage() {
             </button>
             <button className="btn" onClick={() => start(0)}><RotateCcw size={15} /> From the start</button>
             <button className="btn" onClick={() => mark(!b.finished)}><Check size={15} /> {b.finished ? "Mark unfinished" : "Mark finished"}</button>
-            <AdminCog kind="book" id={b.id} title={b.title} className="inline" />
+            <AdminCog kind="book" id={b.id} title={b.title} className="inline" peer={b.peer} />
           </div>
         </div>
       </div>

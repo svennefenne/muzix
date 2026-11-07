@@ -2,14 +2,14 @@ import os
 import subprocess
 import threading
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .. import formats, render, settings
+from .. import formats, mirror, render, settings
 from ..lengths import play_plan
-from ..db import get_db
+from ..db import get_db_with_copies
 from ..models import PlayEvent, Track, User
 from ..security import cast_token, current_user, stream_user
 
@@ -105,12 +105,16 @@ def audio(path: str, fmt: str, codec: str, sample_rate: int, bit_depth: int, sub
 
 
 @router.get("/stream/{track_id}")
-def stream(track_id: int, q: str = "original", t: float = 0.0, prefetch: bool = False,
-           db: Session = Depends(get_db), user: User = Depends(stream_user)):
+def stream(track_id: int, request: Request, q: str = "original", t: float = 0.0, prefetch: bool = False,
+           db: Session = Depends(get_db_with_copies), user: User = Depends(stream_user)):
     """Audio for a track. With t > 0 the response starts at that offset."""
     tr = db.get(Track, track_id)
     if tr is None:
         raise HTTPException(404, "No such track")
+    if tr.peer_id is not None:          # on another server in the Library Network
+        path = tr.path
+        db.close()                      # a stream can take a while: not on a database connection
+        return theirs(path, q, t, prefetch, request)
 
     def learned(changes: dict):
         if any(abs((tr.extra or {}).get(k, 0) - v) > 0.5 for k, v in changes.items()):
@@ -119,6 +123,14 @@ def stream(track_id: int, q: str = "original", t: float = 0.0, prefetch: bool = 
 
     return audio(tr.path, tr.format, tr.codec, tr.sample_rate, tr.bit_depth, tr.subsong, tr.duration,
                  tr.extra, q, t, prefetch, learned)
+
+
+def theirs(path: str, q: str, t: float, prefetch: bool, request: Request):
+    """A song or audiobook part on another server in the Library Network, through this one."""
+    try:
+        return mirror.audio(path, q, t, prefetch, request.headers.get("range"))
+    except mirror.Away as e:
+        raise HTTPException(e.status, str(e))
 
 
 def _render_quietly(*args):
@@ -140,7 +152,7 @@ def cast_link(user: User = Depends(current_user)):
 
 
 @router.post("/plays")
-def played(body: Played, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def played(body: Played, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
     if db.get(Track, body.track_id) is None:
         raise HTTPException(404, "No such track")
     db.add(PlayEvent(user_id=user.id, track_id=body.track_id))

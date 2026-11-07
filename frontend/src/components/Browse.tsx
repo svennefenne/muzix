@@ -86,10 +86,12 @@ export function Rows({ head, cols, colsSm, children }: { head: ReactNode[]; cols
   );
 }
 
-function PlayThumb({ art, name, round, onPlay }: { art: string | null; name: string; round?: boolean; onPlay?: () => void }) {
+function PlayThumb({ art, name, round, onPlay, peer }: {
+  art: string | null; name: string; round?: boolean; onPlay?: () => void; peer?: string | null;
+}) {
   return (
     <div className="l-thumb">
-      <Art src={art} name={name} size={96} round={round} />
+      <Art src={art} name={name} size={96} round={round} peer={peer} />
       {onPlay && (
         <button className={`l-play ${round ? "round" : ""}`} aria-label={`Play ${name}`}
                 onClick={(e) => { e.preventDefault(); e.stopPropagation(); onPlay(); }}>
@@ -111,7 +113,7 @@ export function AlbumItems({ items, display, vgm }: { items: Album[]; display: D
             .map((h, i) => <span key={i} className={i >= 2 && i !== 5 ? "l-opt" : i === 5 ? "l-num" : ""}>{h}</span>)}>
       {items.map((a) => (
         <Link key={a.id} to={`/album/${a.id}`} className="lrow">
-          <PlayThumb art={a.art} name={a.title} onPlay={() => playAlbum(a.id)} />
+          <PlayThumb art={a.art} name={a.title} onPlay={() => playAlbum(a.id)} peer={a.peer} />
           <div className="l-main">
             <div className="l-title ellipsis">{a.title}</div>
             <div className="l-sub ellipsis l-sm">{[a.artist, a.year || null].filter(Boolean).join(" · ")}</div>
@@ -121,7 +123,7 @@ export function AlbumItems({ items, display, vgm }: { items: Album[]; display: D
           <span className="l-col ellipsis l-opt">{vgm ? a.formats.map((f) => f.toUpperCase()).join(", ") : a.genre}</span>
           <span className="l-num">{fmtNumber(a.track_count)}</span>
           <span className="l-num l-opt">{a.duration >= 60 ? fmtLong(a.duration) : a.duration > 0 ? "< 1 min" : ""}</span>
-          <AdminCog kind="album" id={a.id} title={a.title} />
+          <AdminCog kind="album" id={a.id} title={a.title} peer={a.peer} />
         </Link>
       ))}
     </Rows>

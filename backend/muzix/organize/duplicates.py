@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from .. import env, formats
 from ..models import Track, UploadedFile
+from ..serial import iso
 
 _SEP = re.compile(r"\s+[-–—]\s+")
 _NUMBER = re.compile(r"^\s*(?:(?:cd|disc|disk)\s*\d+\s*[-._]?\s*)?\d{1,3}(?:\s*[-.]\s*\d{1,3})?(?:\s*[-._)]\s*|\s+)", re.I)
@@ -97,14 +98,15 @@ def check(files: list[tuple[str, int]], db: Session) -> dict:
             before[(row.name, row.size)] = max(row.uploaded_at, before.get((row.name, row.size), row.uploaded_at))
     same_file: dict[tuple[str, int], Track] = {}
     for sizes in _chunks({size for _, size in keys if size}):
-        for t in db.scalars(select(Track).where(Track.size.in_(sizes)).execution_options(include_hidden=True)):
+        for t in db.scalars(select(Track).where(Track.size.in_(sizes), Track.peer_id.is_(None))
+                            .execution_options(include_hidden=True)):
             same_file.setdefault((os.path.basename(t.path).lower(), t.size), t)
     for path, size in files:
         key = (os.path.basename(path).lower(), size)
         if key in waiting:
             found[path] = {"path": path, "why": "waiting", "when": waiting[key]}
         elif key in before:
-            found[path] = {"path": path, "why": "uploaded", "when": before[key].isoformat()}
+            found[path] = {"path": path, "why": "uploaded", "when": iso(before[key])}
         elif key in same_file:
             found[path] = {"path": path, "why": "library", "match": _song(same_file[key])}
 
@@ -113,7 +115,8 @@ def check(files: list[tuple[str, int]], db: Session) -> dict:
     if songs:
         index: dict[str, list] = {}
         rows = db.execute(select(Track.title, Track.artist, Track.albumartist, Track.album, Track.format, Track.path)
-                          .where(Track.kind == "music").execution_options(include_hidden=True))
+                          .where(Track.kind == "music", Track.peer_id.is_(None))
+                          .execution_options(include_hidden=True))
         for t in rows:
             if key := base(t.title):
                 index.setdefault(key, []).append(t)

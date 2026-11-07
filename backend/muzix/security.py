@@ -54,7 +54,16 @@ def end_session(db: Session, request: Request, response: Response):
 
 
 def optional_user(request: Request, db: Session = Depends(get_db)) -> User | None:
-    return session_user(db, request.cookies.get(COOKIE))
+    user = session_user(db, request.cookies.get(COOKIE))
+    if user is not None:
+        viewing(request, user)
+    return user
+
+
+def viewing(request: Request, user: User):
+    """Whose request it is, for what the pages show them (db.py): with their "network" preference
+    off, only this server's own library."""
+    request.state.network = (user.prefs or {}).get("network", True) is not False
 
 
 def session_user(db: Session, token: str | None) -> User | None:
@@ -114,6 +123,7 @@ def stream_user(request: Request, db: Session = Depends(get_db),
     owner = db.get(User, uid)
     if owner is None:
         raise HTTPException(401, "Not signed in")
+    viewing(request, owner)
     return owner
 
 

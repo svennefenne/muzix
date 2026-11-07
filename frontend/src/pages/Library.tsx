@@ -12,7 +12,7 @@ import { AdminCog } from "../components/AdminMode";
 import { AlbumCard, ArtistCard, MosaicCard, PlaylistCard } from "../components/Cards";
 import { RecentSearches, rememberSearch } from "../components/RecentSearches";
 import { TrackList } from "../components/TrackList";
-import { Art, Display, Empty, Kicker, Loading, Modal, Section, useInView } from "../components/ui";
+import { Art, Display, Empty, FromPeer, Kicker, Loading, Modal, Section, useInView } from "../components/ui";
 import { useUi } from "../store/ui";
 import type {
   Album, AlbumDetail, Artist, ArtistDetail, FilePlaylist, FilePlaylistDetail, Genre, LibraryView, Paged, Playlist, RecentKind, SearchResults,
@@ -268,7 +268,7 @@ export function AlbumPage() {
     <div style={tint ? { background: `radial-gradient(120% 480px at 30% 0, ${tint}30, transparent 75%)` } : undefined}>
     <div className="page">
       <div className="detail-head">
-        <Art src={a.art} name={a.title} size={600} />
+        <Art src={a.art} name={a.title} size={600} peer={a.peer} />
         <div style={{ minWidth: 0 }}>
           <Kicker parts={[a.kind === "vgm" ? "Game / collection" : "Album", a.genre, formats]} />
           <Display l1={a.title} small />
@@ -276,6 +276,7 @@ export function AlbumPage() {
             {a.artist_id ? <Link to={`/artist/${a.artist_id}`}><b>{a.artist}</b></Link> : <b>{a.artist}</b>}
             {a.year > 0 && <span className="dotsep">{a.year}</span>}
             <span className="dotsep">{a.track_count} songs, {fmtLong(a.duration)}</span>
+            {a.peer && <FromPeer peer={a.peer} />}
           </div>
           {a.artist_tags.length > 0 && <TagLinks tags={a.artist_tags.slice(0, 6)} />}
           <div className="row-actions">
@@ -286,7 +287,7 @@ export function AlbumPage() {
               <Heart size={15} fill={isLiked ? "currentColor" : "none"} /> {isLiked ? "Saved" : "Save"}
             </button>
             <button className="btn" onClick={() => pick(a.tracks.map((t) => t.id))}><ListPlus size={15} /> Add to playlist</button>
-            <AdminCog kind="album" id={a.id} title={a.title} className="inline" />
+            <AdminCog kind="album" id={a.id} title={a.title} className="inline" peer={a.peer} />
           </div>
         </div>
       </div>
@@ -300,7 +301,7 @@ export function AlbumPage() {
           }}>Show more</button>
         </div>
       )}
-      <div className="faint mono" style={{ fontSize: 11, marginTop: 14, letterSpacing: ".08em" }} data-tip="Where the album's files are on the server">{a.folder}</div>
+      {a.folder && <div className="faint mono" style={{ fontSize: 11, marginTop: 14, letterSpacing: ".08em" }} data-tip="Where the album's files are on the server">{a.folder}</div>}
       {a.more.length > 0 && (
         <Section kicker="More from" title={a.artist}>
           <div className="scroller">{a.more.map((m) => <AlbumCard key={m.id} a={m} />)}</div>
@@ -409,15 +410,15 @@ export function FilePlaylistPage() {
   const missing = p.entries - p.tracks.length;
   return (
     <div className="page">
-      <Kicker parts={["Playlist file", `${p.tracks.length} songs`, missing > 0 && `${missing} not in the library`]} />
+      <Kicker parts={["Playlist file", `${p.tracks.length} songs`, missing > 0 && `${missing} not in the library`, p.peer && `From ${p.peer}`]} />
       <Display l1={p.name} small />
       <div className="row-actions" style={{ marginBottom: 18 }}>
         <button className="btn accent" disabled={!p.tracks.length} onClick={() => playTracks(p.tracks, 0)}><Play size={15} fill="currentColor" /> Play</button>
         <button className="btn" disabled={!p.tracks.length} onClick={() => playTracks(p.tracks, 0, true)}><Shuffle size={15} /> Shuffle</button>
-        <AdminCog kind="fileplaylist" id={p.id} title={p.name} className="inline" />
+        <AdminCog kind="fileplaylist" id={p.id} title={p.name} className="inline" peer={p.peer} />
       </div>
       <TrackList tracks={p.tracks} showArt />
-      <div className="faint mono" style={{ fontSize: 11, marginTop: 14, letterSpacing: ".08em" }}>{p.path}</div>
+      {p.path && <div className="faint mono" style={{ fontSize: 11, marginTop: 14, letterSpacing: ".08em" }}>{p.path}</div>}
     </div>
   );
 }
@@ -533,7 +534,7 @@ export function SearchPage() {
         <Section title="Audiobooks">
           <div className="grid">{r.books.map((b) => (
             <Link key={b.id} to={`/audiobooks/${b.id}`} className="card" onClick={() => rememberSearch("book", b.id)}>
-              <Art src={b.art} name={b.title} />
+              <Art src={b.art} name={b.title} peer={b.peer} />
               <div className="card-title ellipsis">{b.title}</div>
               <div className="card-sub ellipsis">{b.author || "Unknown author"}</div>
             </Link>

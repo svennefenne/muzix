@@ -82,7 +82,7 @@ export default function Home() {
         </div>
         {featured && (
           <Link to={`/album/${featured.id}`} className="hero-art" data-tip={`${featured.artist} - ${featured.title}`}>
-            <Art src={featured.art} name={featured.title} size={600} />
+            <Art src={featured.art} name={featured.title} size={600} peer={featured.peer} />
             <div className="caption">Featured · {featured.artist} · {featured.year || ""}</div>
           </Link>
         )}
@@ -100,7 +100,7 @@ export default function Home() {
         ))}
         {quick.map((a) => (
           <Link key={a.id} to={`/album/${a.id}`} className="quick">
-            <Art src={a.art} name={a.title} size={160} />
+            <Art src={a.art} name={a.title} size={160} peer={a.peer} />
             <span>{a.title}</span>
           </Link>
         ))}

@@ -5,7 +5,6 @@ import logging
 import random
 import re
 import time
-from datetime import timezone
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -14,7 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from .. import __version__, db as dbm, settings
+from .. import __version__, db as dbm, serial, settings
 from ..db import get_db
 from ..models import RadioPlay, Station, User
 from ..security import current_user, stream_user
@@ -179,7 +178,7 @@ def history(station: str, db: Session = Depends(get_db), user: User = Depends(cu
     rows = db.execute(select(RadioPlay.title, RadioPlay.played_at)
                       .where(RadioPlay.user_id == user.id, RadioPlay.station == station)
                       .order_by(RadioPlay.played_at.desc(), RadioPlay.id.desc()).limit(HISTORY)).all()
-    return [{"title": t, "at": (at if at.tzinfo else at.replace(tzinfo=timezone.utc)).isoformat()} for t, at in rows]
+    return [{"title": t, "at": serial.iso(at)} for t, at in rows]
 
 
 @router.get("/play")

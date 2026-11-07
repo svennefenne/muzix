@@ -8,8 +8,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import __version__, env, jobs, render, settings
-from ..db import get_db
+from .. import __version__, env, jobs, render, serial, settings
+from ..db import get_db, get_db_with_copies
 from ..meta import gme, openmpt
 from ..models import Album, Artist, Book, Feed, Job, Root, Track, User
 from ..security import admin_user, hash_password
@@ -59,13 +59,15 @@ def root_json(r: Root, db: Session):
         count = db.scalar(select(func.count()).select_from(Track).where(Track.root_id == r.id))
     return {"id": r.id, "path": r.path, "kind": r.kind, "name": r.name, "enabled": r.enabled,
             "upload_target": r.upload_target, "excludes": r.excludes or [], "items": count,
-            "exists": os.path.isdir(r.path), "last_scan": r.last_scan.isoformat() if r.last_scan else None,
+            "exists": os.path.isdir(r.path), "last_scan": serial.iso(r.last_scan),
             "writable": os.access(r.path, os.W_OK)}
 
 
 @router.get("/roots")
-def roots(db: Session = Depends(get_db)):
-    return [root_json(r, db) for r in db.scalars(select(Root).order_by(Root.kind, Root.path))]
+def roots(db: Session = Depends(get_db_with_copies)):
+    # not the ones holding what other servers share (mirror.py)
+    mine = select(Root).where(Root.kind != "peer").order_by(Root.kind, Root.path)
+    return [root_json(r, db) for r in db.scalars(mine)]
 
 
 @router.post("/roots")
@@ -148,9 +150,9 @@ def start_job(type_: str):
 def job_json(j: Job, with_log=False):
     out = {"id": j.id, "type": j.type, "title": j.title, "status": j.status, "progress": j.progress,
            "message": j.message, "result": j.result,
-           "created_at": j.created_at.isoformat() if j.created_at else None,
-           "started_at": j.started_at.isoformat() if j.started_at else None,
-           "finished_at": j.finished_at.isoformat() if j.finished_at else None}
+           "created_at": serial.iso(j.created_at),
+           "started_at": serial.iso(j.started_at),
+           "finished_at": serial.iso(j.finished_at)}
     if with_log:
         out["log"] = j.log
     return out
@@ -186,7 +188,7 @@ class UserBody(BaseModel):
 @router.get("/users")
 def users(db: Session = Depends(get_db)):
     return [{"id": u.id, "username": u.username, "is_admin": u.is_admin,
-             "created_at": u.created_at.isoformat()} for u in db.scalars(select(User).order_by(User.id))]
+             "created_at": serial.iso(u.created_at)} for u in db.scalars(select(User).order_by(User.id))]
 
 
 @router.post("/users")
@@ -260,7 +262,7 @@ def _folder_sizes(force=False):
 
 
 @router.get("/status")
-def status(db: Session = Depends(get_db)):
+def status(db: Session = Depends(get_db_with_copies)):
     tools = {name: render.have(name) for name in ("ffmpeg", "ffprobe", "sidplayfp", "fluidsynth", "ymtool", "furnace", "zxtune123", "uade123", "beet")}
     tools["libgme"] = gme.available()
     tools["libgme-sgc"] = gme.available("x.sgc")
@@ -271,8 +273,11 @@ def status(db: Session = Depends(get_db)):
     return {
         "version": __version__,
         "tools": tools,
-        "counts": {"tracks": count(Track, Track.kind == "music"), "vgm": count(Track, Track.kind == "vgm"),
-                   "albums": count(Album), "artists": count(Artist), "books": count(Book),
+        # this server's own library (not what it mirrors from the Library Network)
+        "counts": {"tracks": count(Track, Track.kind == "music", Track.peer_id.is_(None)),
+                   "vgm": count(Track, Track.kind == "vgm", Track.peer_id.is_(None)),
+                   "albums": count(Album, Album.peer_id.is_(None)), "artists": count(Artist),
+                   "books": count(Book, Book.peer_id.is_(None)),
                    "feeds": count(Feed), "users": count(User)},
         "cache_bytes": cache_bytes,       # None until the first background count is done
         "art_bytes": art_bytes,

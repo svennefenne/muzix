@@ -1,8 +1,35 @@
 """JSON shapes of library objects, shared by the API routes."""
 
-from . import art, formats, render
+import time
+from datetime import datetime, timezone
+
+from sqlalchemy import select
+
+from . import art, db, formats, render
 from .lengths import display_duration
-from .models import Album, Artist, Track
+from .models import Album, Artist, Peer, Track
+
+_peers: tuple[float, dict[int, str]] = (0.0, {})
+
+
+def iso(when: datetime | None) -> str | None:
+    """A time for the page. SQLite gives times back without their zone; they're UTC."""
+    if when is None:
+        return None
+    return (when if when.tzinfo else when.replace(tzinfo=timezone.utc)).isoformat()
+
+
+def peer(peer_id: int | None) -> str | None:
+    """The name of the server in the Library Network something is from (None: this one's)."""
+    global _peers
+    if peer_id is None:
+        return None
+    at, names = _peers
+    if peer_id not in names or time.time() - at > 30:
+        with db.session() as s:
+            names = dict(s.execute(select(Peer.id, Peer.name)).all())
+        _peers = (time.time(), names)
+    return names.get(peer_id) or "another server"
 
 
 def art_url(kind: str, id_: int | None) -> str | None:
@@ -26,6 +53,7 @@ def track(t: Track, liked: set[int] | None = None, artist_tags: dict | None = No
         "stream": f"/api/stream/{t.id}",
         "liked": bool(liked and t.id in liked),
         "tags": (artist_tags or {}).get(t.artist_id, []),
+        "peer": peer(t.peer_id),
     }
 
 
@@ -35,8 +63,9 @@ def album(a: Album, liked: set[int] | None = None) -> dict:
         "year": a.year, "genre": a.genre, "kind": a.kind, "track_count": a.track_count,
         "duration": a.duration, "formats": a.formats.split(",") if a.formats else [],
         "art": art_url("album", a.id) if a.art else None,
-        "added_at": a.added_at.isoformat() if a.added_at else None,
+        "added_at": iso(a.added_at),
         "liked": bool(liked and a.id in liked),
+        "peer": peer(a.peer_id),
     }
 
 

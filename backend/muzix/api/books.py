@@ -1,18 +1,18 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import art, serial
-from ..db import get_db
+from .. import art, mirror, serial
+from ..db import get_db, get_db_with_copies
 from ..meta import tags
 from ..models import Book, BookPart, BookProgress, User
 from ..security import current_user, stream_user
-from .library import _send
-from .stream import stream_file
+from .library import _picture, _send
+from .stream import stream_file, theirs
 
 router = APIRouter(prefix="/api/books", tags=["audiobooks"])
 SORTS = {
@@ -29,7 +29,7 @@ def book_json(b: Book, prog: BookProgress | None, full=False, parts=None):
     out = {"id": b.id, "title": b.title, "author": b.author, "narrator": b.narrator, "series": b.series,
            "year": b.year, "duration": b.duration, "art": serial.art_url("book", b.id) if b.art else None,
            "position": prog.position if prog else 0, "finished": bool(prog and prog.finished),
-           "updated_at": prog.updated_at.isoformat() if prog and prog.updated_at else None}
+           "updated_at": serial.iso(prog.updated_at) if prog else None, "peer": serial.peer(b.peer_id)}
     if full:
         out["description"] = b.description
         out["chapters"] = b.chapters or []
@@ -60,7 +60,7 @@ def books(db: Session = Depends(get_db), user: User = Depends(current_user), q: 
 
 
 @router.get("/{book_id}")
-def book(book_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def book(book_id: int, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
     b = db.get(Book, book_id)
     if b is None:
         raise HTTPException(404, "No such book")
@@ -69,11 +69,15 @@ def book(book_id: int, db: Session = Depends(get_db), user: User = Depends(curre
 
 
 @router.get("/{book_id}/parts/{position}/stream")
-def part_stream(book_id: int, position: int, q: str = "original", t: float = 0.0,
-                db: Session = Depends(get_db), user: User = Depends(stream_user)):
+def part_stream(book_id: int, position: int, request: Request, q: str = "original", t: float = 0.0,
+                db: Session = Depends(get_db_with_copies), user: User = Depends(stream_user)):
     p = db.scalar(select(BookPart).where(BookPart.book_id == book_id, BookPart.position == position))
     if p is None:
         raise HTTPException(404, "No such part")
+    if p.path.startswith(mirror.ROOT):          # another server's book (the Library Network)
+        path = p.path
+        db.close()
+        return theirs(path, q, t, False, request)
     return stream_file(p.path, p.format, "", 0, 16, q, t)
 
 
@@ -83,7 +87,7 @@ class Progress(BaseModel):
 
 
 @router.put("/{book_id}/progress")
-def progress(book_id: int, body: Progress, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def progress(book_id: int, body: Progress, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
     if db.get(Book, book_id) is None:
         raise HTTPException(404, "No such book")
     row = db.get(BookProgress, (user.id, book_id)) or BookProgress(user_id=user.id, book_id=book_id)
@@ -98,10 +102,14 @@ art_router = APIRouter(prefix="/api/art", tags=["art"])
 
 
 @art_router.get("/book/{book_id}")
-def book_art(book_id: int, s: int = 300, db: Session = Depends(get_db)):
+def book_art(book_id: int, s: int = 300, db: Session = Depends(get_db_with_copies)):
     b = db.get(Book, book_id)
     if b is None or not b.art:
         return Response(status_code=404)
+    if b.art.startswith(mirror.ROOT):
+        ref = b.art
+        db.close()
+        return _picture(mirror.picture(ref, s))
     if b.art.startswith("embedded-file:"):
         path = b.art.split(":", 1)[1]
         data = tags.picture(path)

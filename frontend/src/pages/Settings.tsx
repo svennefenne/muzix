@@ -1,5 +1,7 @@
-import { Server } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Network, Server } from "lucide-react";
 import { useMemo, useState } from "react";
+import { queryClient } from "../actions";
 import { api } from "../api";
 import { appVersion } from "../appUpdate";
 import { castStatus } from "../components/CastButton";
@@ -10,8 +12,46 @@ import { usePlayer } from "../store/player";
 import { useUi } from "../store/ui";
 import { PALETTES, type Palette } from "../theme/palettes";
 import { SKINS } from "../theme/skins";
+import type { Prefs } from "../types";
 
 const GROUPS: [Palette["category"], string][] = [["muzix", "Muzix"], ["builtin", "Built-in"], ["gaming", "Gaming"], ["community", "Community"]];
+
+/** The linked servers' music (the Library Network): in everyone's library, unless they leave it out. */
+function NetworkMusic() {
+  const servers = useQuery({ queryKey: ["network-servers"], queryFn: () => api.get<string[]>("/api/network/servers") });
+  const user = useUi((s) => s.user);
+  const setUser = useUi((s) => s.setUser);
+  const [busy, setBusy] = useState(false);
+  const names = servers.data || [];
+  if (!names.length || !user) return null;
+  const on = user.prefs.network !== false;
+  const who = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0];
+  return (
+    <section className="panel">
+      <div className="panel-head"><div><div className="kicker">Library Network</div><div className="h2">Other libraries</div></div></div>
+      <div className="field">
+        <label>Music from linked servers</label>
+        <div className="row-actions">
+          <Switch checked={on} label="Music from linked servers" onChange={async (v) => {
+            if (busy) return;
+            setBusy(true);
+            try {
+              const prefs = await api.patch<Prefs>("/api/me/prefs", { network: v ? null : false });
+              setUser({ ...user, prefs });
+              queryClient.invalidateQueries();      // every list, as the library is now
+            } finally {
+              setBusy(false);
+            }
+          }} />
+          <span className="dim">
+            {on ? <>The albums, songs and audiobooks of {who} are in your library, with <Network size={13} style={{ verticalAlign: "-2px" }} /> on their covers.</>
+              : <>Only this server's own library: the music of {who} is left out.</>}
+          </span>
+        </div>
+      </div>
+    </section>
+  );
+}
 
 export function SchemePicker({ value, onChange, dark }: { value: string; onChange: (slug: string) => void; dark: boolean }) {
   const [filter, setFilter] = useState("");
@@ -140,6 +180,8 @@ export default function Settings() {
           <span className="dim">{cast}</span>
         </div>
       </section>
+
+      <NetworkMusic />
 
       <section className="panel">
         <div className="panel-head"><div><div className="kicker">Account</div><div className="h2">Password</div></div></div>

@@ -211,6 +211,48 @@ audio inside your network. Files the speaker plays as they are (MP3, AAC,
 FLAC up to 96 kHz, Ogg, WAV) are sent unchanged; everything else, chiptunes
 included, arrives as FLAC. Spotify songs are skipped on the speaker.
 
+### Library Network
+
+Muzix servers can link their libraries: a friend's music, chiptunes, audiobooks
+and playlist files join yours, and yours theirs. In *Admin → Library Network*,
+turn it on to get this server's sharing code (`XXXXX-XXXXX-XXXXX-XXXXX`). To
+link, enter the other server's address (`192.168.1.20:8484` or
+`muzix.example.com`) and its code; then its admin enters yours. It takes both
+codes, and the servers check them with each other. After that they talk with
+keys traded while linking. A new code leaves the existing links in place, and
+turning the network off stops new ones.
+
+Each server keeps a copy of the others' catalogs: it fetches them when the link
+is made, every night, and on *Sync now*. Their albums show up in your library,
+search and artist pages; an artist you both have gets one page. Only a server's
+own library is shared, never what it gets from others, and nothing its admin hid.
+What's from another server has a small network mark on its cover, and its page
+says whose it is ("From Kompisens Muzix"). Another server's items can be hidden
+here (admin mode's cog offers only that) but not edited or deleted. Unlinking,
+from either side, takes its music out of the other's library.
+
+The files stay where they are. When one of them plays, your server fetches it
+from the other one and passes it on, so the app, Cast speakers, seeking and the
+quality settings work as with your own; chiptunes are rendered by the server
+that has them. Covers and artist pictures are fetched once and kept like yours,
+and lyrics come from the other server's files. A server that doesn't answer is
+left alone for a minute at a time, so pages don't wait on it. Both servers must
+be able to reach each other, and over the internet that should be HTTPS.
+
+An album more than one library has is listed once. It's the same album when the
+album artist and title match (case, accents, punctuation and a leading "The"
+aside; for a various-artists compilation the year too) or the MusicBrainz release
+does; an audiobook by its author and title. The copy listed is the *main
+library's*, chosen under *Admin → Library Network* (this server's to begin
+with); when the main library doesn't have it, this server's, then the others in
+the order they were linked. Songs someone liked, put in a playlist or played keep
+the copy they were, so nothing moves under anyone's feet.
+
+Everyone on a server sees the network's music. Whoever wants only the server's
+own library turns *Settings → Other libraries → Music from linked servers*
+off; for them every copy of the server's own albums is listed again, whatever
+the main library.
+
 ### Android app (prototype)
 
 `android/` holds a small Android app: Muzix's own web interface from your

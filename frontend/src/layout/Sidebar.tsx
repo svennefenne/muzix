@@ -89,15 +89,17 @@ export function Sidebar() {
                   to: `/playlist/${p.id}`, onPlay: () => playPlaylist(p.id) });
     for (const f of d.file_playlists || [])
       rows.push({ key: `fp${f.id}`, chip: "playlists", title: f.name, sub: `Playlist file · ${f.tracks} songs`,
-                  art: <Art src={f.art} name={f.name} size={96} />, to: `/playlist/file/${f.id}`, onPlay: () => playFilePlaylist(f.id) });
+                  art: <Art src={f.art} name={f.name} size={96} peer={f.peer} />, to: `/playlist/file/${f.id}`, onPlay: () => playFilePlaylist(f.id) });
     for (const b of d.books)
       rows.push({ key: `b${b.id}`, chip: "books", title: b.title, sub: `Audiobook · ${Math.round(b.progress * 100)} %`,
-                  art: <Art src={b.art} name={b.title} size={96} />, to: `/audiobooks/${b.id}` });
+                  art: <Art src={b.art} name={b.title} size={96} peer={b.peer} />, to: `/audiobooks/${b.id}` });
     for (const a of d.albums)
-      rows.push({ key: `a${a.id}`, chip: "albums", title: a.title, sub: `Album · ${a.artist}`, art: <Art src={a.art} name={a.title} size={96} />,
+      rows.push({ key: `a${a.id}`, chip: "albums", title: a.title, sub: `Album · ${a.artist}`,
+                  art: <Art src={a.art} name={a.title} size={96} peer={a.peer} />,
                   to: `/album/${a.id}`, onPlay: () => playAlbum(a.id) });
     for (const a of d.games)
-      rows.push({ key: `g${a.id}`, chip: "vgm", title: a.title, sub: `Game · ${a.artist || "VGM"}`, art: <Art src={a.art} name={a.title} size={96} />,
+      rows.push({ key: `g${a.id}`, chip: "vgm", title: a.title, sub: `Game · ${a.artist || "VGM"}`,
+                  art: <Art src={a.art} name={a.title} size={96} peer={a.peer} />,
                   to: `/album/${a.id}`, onPlay: () => playAlbum(a.id) });
     for (const p of d.podcasts)
       rows.push({ key: `f${p.id}`, chip: "podcasts", title: p.title, sub: `Podcast${p.author ? ` · ${p.author}` : ""}`,

@@ -2,8 +2,9 @@
 
 from contextlib import contextmanager
 
-from sqlalchemy import create_engine, event, text
+from sqlalchemy import and_, create_engine, event, text
 from sqlalchemy.orm import DeclarativeBase, ORMExecuteState, Session, sessionmaker, with_loader_criteria
+from starlette.requests import HTTPConnection
 
 from . import env
 
@@ -61,21 +62,65 @@ def _add_new_columns():
                 conn.execute(text(ddl))
 
 
+def _visible(cls):
+    return cls.hidden.is_(False)
+
+
+def _listed(cls):
+    return and_(cls.hidden.is_(False), cls.shadowed.is_(False))
+
+
+def _ours(cls):
+    return and_(cls.hidden.is_(False), cls.peer_id.is_(None))
+
+
+def _ours_artist(cls):
+    return and_(cls.hidden.is_(False), cls.peer_only.is_(False))
+
+
 @event.listens_for(Session, "do_orm_execute")
 def _without_hidden(state: ORMExecuteState):
-    """In sessions that serve the web pages, whatever an admin hid isn't there."""
+    """In sessions that serve the web pages, whatever an admin hid isn't there; nor is another
+    library's copy of an album or audiobook that one first in line has (the Library Network:
+    mirror.dedupe), unless the session keeps copies (or the statement asks for them). For
+    someone who left the network's music out (their "network" preference: security.py says
+    so as the request comes in), only this server's own library is there, every copy of it."""
     if not state.is_select or not state.session.info.get("hide") or state.execution_options.get("include_hidden"):
         return
-    from .models import HIDEABLE
+    from .models import HIDEABLE, SHADOWABLE, Artist
+    copies = state.session.info.get("copies") or state.execution_options.get("include_copies")
+    viewer = state.session.info.get("viewer")
+    ours = viewer is not None and getattr(viewer, "network", True) is False
     for model in HIDEABLE:
-        state.statement = state.statement.options(
-            with_loader_criteria(model, lambda cls: cls.hidden.is_(False), include_aliases=True))
+        if ours and model is Artist:
+            crit = _ours_artist
+        elif ours and hasattr(model, "peer_id"):
+            crit = _ours
+        elif model in SHADOWABLE and not copies and not ours:
+            crit = _listed
+        else:
+            crit = _visible
+        state.statement = state.statement.options(with_loader_criteria(model, crit, include_aliases=True))
 
 
-def get_db():
-    """FastAPI dependency: a session that leaves out hidden items."""
+def get_db(conn: HTTPConnection):
+    """FastAPI dependency: a session that leaves out hidden items, and other libraries' copies."""
     db = SessionLocal()
     db.info["hide"] = True
+    db.info["viewer"] = conn.state
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def get_db_with_copies(conn: HTTPConnection):
+    """FastAPI dependency for what someone saved, played or put in a playlist themselves (and
+    what's asked for by its id): hidden items left out, but every library's copy kept, so a song
+    stays where it was put when another library's copy of its album comes first."""
+    db = SessionLocal()
+    db.info["hide"] = db.info["copies"] = True
+    db.info["viewer"] = conn.state
     try:
         yield db
     finally:

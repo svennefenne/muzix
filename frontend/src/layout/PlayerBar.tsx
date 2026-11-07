@@ -118,7 +118,7 @@ export function PlayerBar() {
         {cur ? (
           <>
             <button className="np-art" aria-label="Open the full-screen player" data-tip="Open the full-screen player" onClick={() => setNowPlayingOpen(true)}>
-              <Art src={cur.art} name={cur.album || cur.title} size={160} />
+              <Art src={cur.art} name={cur.album || cur.title} size={160} peer={cur.peer} />
             </button>
             <div className="np-text">
               <div className="np-title ellipsis">

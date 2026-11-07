@@ -85,7 +85,7 @@ export function QueueDrawer() {
                onDragOver={(e) => e.preventDefault()}
                onDrop={() => { if (drag !== null && drag !== i) engine.move(drag, i); setDrag(null); }}
                onClick={() => engine.jump(i)}>
-            <Art src={it.art} name={it.album || it.title} size={64} />
+            <Art src={it.art} name={it.album || it.title} size={64} peer={it.peer} />
             <div style={{ minWidth: 0 }}>
               <div className="ellipsis" style={{ fontWeight: 600, fontSize: 13.5, color: i === index ? "var(--primary)" : undefined }}>{it.title}</div>
               <div className="ellipsis dim" style={{ fontSize: 12 }}>{it.artist}</div>
@@ -228,7 +228,7 @@ function FlipCover({ cur }: { cur: PlayItem | null }) {
       <div className="np-flip-inner">
         <button className="np-face np-front" disabled={!albumId} tabIndex={flipped ? -1 : 0}
                 aria-label={albumId ? `Show the songs on ${cur?.album || "this album"}` : undefined} onClick={() => !swiped.current && setFlipped(true)}>
-          <Art src={cur?.art} name={cur?.album || cur?.title} size={1200} />
+          <Art src={cur?.art} name={cur?.album || cur?.title} size={1200} peer={cur?.peer} />
         </button>
         <div className="np-face np-back" aria-hidden={!flipped}>
           <div className="np-back-head">

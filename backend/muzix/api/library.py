@@ -9,8 +9,8 @@ from pydantic import BaseModel
 from sqlalchemy import case, delete, func, or_, select, text, true
 from sqlalchemy.orm import Session
 
-from .. import art, lyrics, serial
-from ..db import get_db
+from .. import art, lyrics, mirror, serial
+from ..db import get_db, get_db_with_copies
 from ..models import Album, Artist, Book, FilePlaylist, FilePlaylistItem, Like, PlayEvent, RecentSearch, Track, User
 from ..security import current_user
 from .podcasts import whats_new
@@ -144,7 +144,7 @@ def albums(db: Session = Depends(get_db), user: User = Depends(current_user),
 
 
 @router.get("/albums/{album_id}")
-def album(album_id: int, db: Session = Depends(get_db), user: User = Depends(current_user),
+def album(album_id: int, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user),
           limit: int = Query(1000, le=5000), offset: int = 0):
     """An album with its tracks (paged: VGM collections can hold thousands of files)."""
     a = db.get(Album, album_id)
@@ -154,15 +154,13 @@ def album(album_id: int, db: Session = Depends(get_db), user: User = Depends(cur
                         .limit(limit).offset(offset)).all()
     more = []
     if a.artist_id:
-        more = db.scalars(select(Album).where(Album.artist_id == a.artist_id, Album.id != a.id)
-                          .order_by(Album.year.desc()).limit(12)).all()
+        more = db.scalars(select(Album).where(Album.artist_id == a.artist_id, Album.id != a.id,
+                                              Album.shadowed.is_(False)).order_by(Album.year.desc()).limit(12)).all()
     lk = liked(db, user, "album")
-    colors = []
-    if a.art and not a.art.startswith("embedded:"):
-        colors = art.dominant_colors(a.art)
+    colors = mirror.colors(a.art)
     return {**serial.album(a, lk), "tracks": tracks_json(db, user, tracks), "offset": offset,
             "more": [serial.album(m, lk) for m in more], "colors": colors,
-            "folder": a.folder, "artist_tags": artist_tags(db, [a.artist_id]).get(a.artist_id, [])}
+            "folder": "" if a.peer_id else a.folder, "artist_tags": artist_tags(db, [a.artist_id]).get(a.artist_id, [])}
 
 
 @router.get("/artists")
@@ -214,7 +212,7 @@ def artist(artist_id: int, db: Session = Depends(get_db), user: User = Depends(c
 
 
 @router.get("/tracks")
-def tracks(ids: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def tracks(ids: str, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
     want = [int(x) for x in ids.split(",") if x.strip().isdigit()][:1000]
     rows = {t.id: t for t in db.scalars(select(Track).where(Track.id.in_(want)))}
     return tracks_json(db, user, [rows[i] for i in want if i in rows])
@@ -244,7 +242,7 @@ def random_tracks(db: Session = Depends(get_db), user: User = Depends(current_us
 # ---------------------------------------------------------------- lyrics
 
 @router.get("/tracks/{track_id}/lyrics")
-def track_lyrics(track_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def track_lyrics(track_id: int, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
     """The song's lyrics, synced when there are times: {source, synced, lines: [{t, text}],
     instrumental, colors} (colors: the cover's, for the lyrics' background)."""
     t = db.get(Track, track_id)
@@ -292,7 +290,7 @@ def similar(body: Seeds, db: Session = Depends(get_db), user: User = Depends(cur
     seeds' artists themselves); for game music, more from the same chips. Never anything queued,
     nor what this user played lately."""
     n = max(1, min(body.n, 50))
-    seeds = [t for t in (db.get(Track, i) for i in body.seeds[:10]) if t]
+    seeds = [t for t in (db.get(Track, i, execution_options={"include_copies": True}) for i in body.seeds[:10]) if t]
     if not seeds:
         return []
     recent = db.scalars(select(PlayEvent.track_id).where(PlayEvent.user_id == user.id)
@@ -352,23 +350,24 @@ def file_playlists(db: Session) -> list[dict]:
                             .group_by(Track.album_id).order_by(func.min(FilePlaylistItem.position)).limit(4)).all()
         count = db.scalar(select(func.count()).select_from(FilePlaylistItem).where(FilePlaylistItem.playlist_id == pl.id))
         out.append({"id": pl.id, "name": pl.name, "tracks": count, "entries": pl.entries,
-                    "art": [serial.art_url("album", a) for a in albums]})
+                    "art": [serial.art_url("album", a) for a in albums], "peer": serial.peer(pl.peer_id)})
     return out
 
 
 @router.get("/file-playlists")
-def list_file_playlists(db: Session = Depends(get_db), user: User = Depends(current_user)):
+def list_file_playlists(db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
     return file_playlists(db)
 
 
 @router.get("/file-playlists/{playlist_id}")
-def file_playlist(playlist_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def file_playlist(playlist_id: int, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
     pl = db.get(FilePlaylist, playlist_id)
     if pl is None:
         raise HTTPException(404, "No such playlist")
     tracks = db.scalars(select(Track).join(FilePlaylistItem, FilePlaylistItem.track_id == Track.id)
                         .where(FilePlaylistItem.playlist_id == pl.id).order_by(FilePlaylistItem.position)).all()
-    return {"id": pl.id, "name": pl.name, "path": pl.path, "entries": pl.entries, "tracks": tracks_json(db, user, tracks)}
+    return {"id": pl.id, "name": pl.name, "path": "" if pl.peer_id else pl.path, "peer": serial.peer(pl.peer_id),
+            "entries": pl.entries, "tracks": tracks_json(db, user, tracks)}
 
 
 # ---------------------------------------------------------------- tags
@@ -451,7 +450,7 @@ def search(q: str, db: Session = Depends(get_db), user: User = Depends(current_u
 
 def _book_hit(b: Book) -> dict:
     return {"id": b.id, "title": b.title, "author": b.author, "series": b.series,
-            "art": serial.art_url("book", b.id) if b.art else None}
+            "art": serial.art_url("book", b.id) if b.art else None, "peer": serial.peer(b.peer_id)}
 
 
 # ---------------------------------------------------------------- recent searches (Spotify's search history)
@@ -466,7 +465,7 @@ class Picked(BaseModel):
 
 
 @router.get("/search/recent")
-def recent_searches(db: Session = Depends(get_db), user: User = Depends(current_user)):
+def recent_searches(db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
     """What the user picked from search results lately, newest first, each as search gives it
     now: one that has since gone (or been hidden) drops out."""
     rows = db.execute(select(RecentSearch.kind, RecentSearch.item_id).where(RecentSearch.user_id == user.id)
@@ -483,7 +482,7 @@ def recent_searches(db: Session = Depends(get_db), user: User = Depends(current_
 
 
 @router.post("/search/recent")
-def remember_search(body: Picked, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def remember_search(body: Picked, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
     if body.kind not in RECENT_KINDS:
         raise HTTPException(400, "Not something search finds")
     db.merge(RecentSearch(user_id=user.id, kind=body.kind, item_id=body.id, at=datetime.now(timezone.utc)))
@@ -497,7 +496,7 @@ def remember_search(body: Picked, db: Session = Depends(get_db), user: User = De
 
 
 @router.delete("/search/recent/{kind}/{item_id}")
-def forget_search(kind: str, item_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def forget_search(kind: str, item_id: int, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
     db.execute(delete(RecentSearch).where(RecentSearch.user_id == user.id, RecentSearch.kind == kind,
                                           RecentSearch.item_id == item_id))
     db.commit()
@@ -505,7 +504,7 @@ def forget_search(kind: str, item_id: int, db: Session = Depends(get_db), user: 
 
 
 @router.delete("/search/recent")
-def clear_searches(db: Session = Depends(get_db), user: User = Depends(current_user)):
+def clear_searches(db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
     db.execute(delete(RecentSearch).where(RecentSearch.user_id == user.id))
     db.commit()
     return {"ok": True}
@@ -526,7 +525,10 @@ def vgm_systems(db: Session = Depends(get_db), user: User = Depends(current_user
 def _send(data, ident, size):
     if not data:
         return Response(status_code=404)
-    path = art.resized(data, ident, size)
+    return _picture(art.resized(data, ident, size))
+
+
+def _picture(path: str | None):
     if not path:
         return Response(status_code=404)
     return FileResponse(path, media_type="image/webp", headers={"Cache-Control": "public, max-age=604800"})
@@ -544,20 +546,28 @@ def _resolved(ref: str, db: Session):
 
 
 @router.get("/art/album/{album_id}")
-def album_art(album_id: int, s: int = 300, db: Session = Depends(get_db)):
+def album_art(album_id: int, s: int = 300, db: Session = Depends(get_db_with_copies)):
     a = db.get(Album, album_id)
     if a is None or not a.art:
         return Response(status_code=404)
+    if a.art.startswith(mirror.ROOT):           # another server's (the Library Network)
+        ref = a.art
+        db.close()
+        return _picture(mirror.picture(ref, s))
     ref, path_of = _resolved(a.art, db)
     data, ident = art.source_bytes(ref, path_of)
     return _send(data, ident, s)
 
 
 @router.get("/art/artist/{artist_id}")
-def artist_art(artist_id: int, s: int = 300, db: Session = Depends(get_db)):
+def artist_art(artist_id: int, s: int = 300, db: Session = Depends(get_db_with_copies)):
     a = db.get(Artist, artist_id)
     if a is None:
         return Response(status_code=404)
+    if a.image.startswith(mirror.ROOT):
+        ref = a.image
+        db.close()
+        return _picture(mirror.picture(ref, s))
     if a.image and os.path.exists(a.image):
         data, ident = art.source_bytes(a.image)
         return _send(data, ident, s)
@@ -565,6 +575,10 @@ def artist_art(artist_id: int, s: int = 300, db: Session = Depends(get_db)):
                     .order_by(Album.year).limit(1))
     if alb is None:
         return Response(status_code=404)
+    if alb.art.startswith(mirror.ROOT):
+        ref = alb.art
+        db.close()
+        return _picture(mirror.picture(ref, s))
     ref, path_of = _resolved(alb.art, db)
     data, ident = art.source_bytes(ref, path_of)
     return _send(data, ident, s)

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Activity, EyeOff, Folder, FolderOpen, HardDrive, History, Library, Plus, RefreshCw, Save, Settings2, Trash2, Upload, Users, X } from "lucide-react";
+import { Activity, EyeOff, Folder, FolderOpen, HardDrive, History, Library, Network, Plus, RefreshCw, Save, Settings2, Trash2, Upload, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { create } from "zustand";
@@ -11,6 +11,7 @@ import type { Job } from "../../types";
 import { SchemePicker } from "../Settings";
 import { Edits } from "./Edits";
 import { HiddenAndTrash } from "./HiddenTrash";
+import { LibraryNetwork } from "./Network";
 
 interface Root { id: number; path: string; kind: string; name: string; enabled: boolean; upload_target: boolean; excludes: string[]; items: number; exists: boolean; writable: boolean; last_scan: string | null }
 interface Status { version: string; tools: Record<string, boolean>; counts: Record<string, number>; cache_bytes: number | null; art_bytes: number | null; data_dir: string; data_free_bytes: number }
@@ -662,7 +663,7 @@ export default function Admin() {
   if (!user?.is_admin) return <div className="page"><Empty title="Admins only" /></div>;
   // files dragged over any admin page can be dropped to upload them
   const files = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
-  const nav = [["", "Overview", Activity], ["library", "Library folders", Library], ["upload", "Upload", Upload],
+  const nav = [["", "Overview", Activity], ["library", "Library folders", Library], ["network", "Library Network", Network], ["upload", "Upload", Upload],
     ["edits", "Edits", History], ["hidden", "Hidden & trash", EyeOff], ["jobs", "Jobs", RefreshCw], ["settings", "Settings", Settings2], ["users", "Users", Users]] as const;
   return (
     <div className="page wide"
@@ -689,6 +690,7 @@ export default function Admin() {
           <Routes>
             <Route index element={<Overview />} />
             <Route path="library" element={<LibraryFolders />} />
+            <Route path="network" element={<LibraryNetwork />} />
             <Route path="upload" element={<UploadArea />} />
             <Route path="edits" element={<Edits />} />
             <Route path="hidden" element={<HiddenAndTrash />} />

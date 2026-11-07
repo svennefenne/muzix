@@ -32,6 +32,7 @@ export interface PlayItem {
   spotifyUri?: string;
   spotifyArtist?: string;     // first artist, for the genre lookup
   auto?: boolean;             // added by autoplay
+  peer?: string | null;       // the server in the Library Network it's from
 }
 
 export function fromTrack(t: Track): PlayItem {
@@ -39,7 +40,7 @@ export function fromTrack(t: Track): PlayItem {
     key: `track:${t.id}`, kind: "track", id: t.id, title: t.title,
     artist: t.artist || t.albumartist, album: t.album, art: t.art, duration: t.duration,
     src: t.stream, genre: t.genre, tags: t.tags, system: t.system, trackKind: t.kind,
-    albumId: t.album_id, artistId: t.artist_id, format: t.format, castNative: t.cast_native, liked: t.liked,
+    albumId: t.album_id, artistId: t.artist_id, format: t.format, castNative: t.cast_native, liked: t.liked, peer: t.peer,
     detail: t.kind === "music" ? [t.bit_depth && `${t.bit_depth}-bit`, t.sample_rate && `${+(t.sample_rate / 1000).toFixed(1)} kHz`,
                                   t.bitrate && `${Math.round(t.bitrate / 1000)} kbps`].filter(Boolean).join(" · ") : "",
   };
@@ -59,7 +60,7 @@ export function fromBook(b: Book, from = b.position): PlayItem[] {
   return parts.slice(start).map((p, i) => ({
     key: `book:${b.id}:${p.position}`, kind: "book" as const, id: b.id, title: parts.length > 1 ? p.title : b.title,
     artist: b.author, album: b.title, art: b.art, duration: p.duration, src: p.stream,
-    bookId: b.id, partOffset: p.offset, resume: i === 0 ? Math.max(0, from - p.offset) : 0,
+    bookId: b.id, partOffset: p.offset, resume: i === 0 ? Math.max(0, from - p.offset) : 0, peer: b.peer,
   }));
 }
 

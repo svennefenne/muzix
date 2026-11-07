@@ -95,18 +95,26 @@ async function hide(t: Target) {
 }
 
 /** The cog: Edit metadata, Hide from library, Delete. Only in admin mode. */
-export function AdminCog({ kind, id, title, className = "" }: { kind: ItemKind; id: number; title: string; className?: string }) {
+export function AdminCog({ kind, id, title, className = "", peer }: {
+  kind: ItemKind; id: number; title: string; className?: string; peer?: string | null;    // another server's: only hidden here
+}) {
   const on = useAdminMode();
   const showMenu = useMenu((s) => s.show);
   const { setEdit, setConfirm } = useAdminDialogs();
   if (!on) return null;
   const t = { kind, id, title };
   return (
-    <button className={`admin-cog ${className}`} aria-label={`Admin: ${title}`} data-tip={`Edit, hide or delete this ${NOUN[kind]}`}
+    <button className={`admin-cog ${className}`} aria-label={`Admin: ${title}`}
+            data-tip={peer ? `Hide this ${NOUN[kind]}` : `Edit, hide or delete this ${NOUN[kind]}`}
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              showMenu(e, [
+              showMenu(e, peer ? [
+                { heading: title },
+                { label: "Hide from library", icon: <EyeOff size={16} />, onClick: () => hide(t) },
+                { sep: true },
+                { heading: `In ${peer}'s library: its admin edits it` },
+              ] : [
                 { heading: title },
                 { label: "Edit metadata", icon: <Pencil size={16} />, onClick: () => setEdit(t) },
                 { label: "Hide from library", icon: <EyeOff size={16} />, onClick: () => hide(t) },

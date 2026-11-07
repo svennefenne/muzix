@@ -13,7 +13,7 @@ import httpx
 import mutagen
 from mutagen.id3 import ID3
 
-from . import art, enrich, settings
+from . import enrich, mirror, settings
 from .models import Album, LyricsCache, Track
 
 log = logging.getLogger(__name__)
@@ -156,11 +156,12 @@ def _answer(source: str, text: str, instrumental: bool = False, colors: list[str
 
 def for_track(s, t: Track) -> dict:
     """What the player shows for a song (see the module's docstring for where it comes from)."""
-    colors = []
     alb = s.get(Album, t.album_id) if t.album_id else None
-    if alb is not None and alb.art and not alb.art.startswith("embedded:"):
-        colors = art.dominant_colors(alb.art)
-    if t.subsong < 0:                       # chip files hold many songs and no lyrics
+    colors = mirror.colors(alb.art) if alb is not None else []
+    if t.peer_id is not None:               # another server's song: its files are there
+        if (got := mirror.lyrics(t.path)) is not None:
+            return {**got, "colors": colors}
+    elif t.subsong < 0:                     # chip files hold many songs and no lyrics
         if (lrc := sidecar(t.path)):
             try:
                 if (got := _answer("file", read_text(lrc), colors=colors))["lines"]:

@@ -51,13 +51,17 @@ class ManageError(Exception):
     pass
 
 
-def _row(s, kind: str, id_: int):
+def _row(s, kind: str, id_: int, theirs: bool = False):
+    """The item to change. Another server's (the Library Network: mirror.py) is only read here,
+    and only hidden from this one (`theirs`)."""
     model = MODELS.get(kind)
     if model is None:
         raise ManageError(f"Unknown kind of item: {kind}")
     row = s.get(model, id_)
     if row is None:
         raise ManageError("That item isn't there any more")
+    if not theirs and getattr(row, "peer_id", None) is not None:
+        raise ManageError("That's in another server's library: only its own admin can change it")
     return row
 
 
@@ -79,7 +83,7 @@ def _tidy_later():
 
 def set_hidden(kind: str, id_: int, hidden: bool):
     with db.session() as s:
-        _row(s, kind, id_)
+        _row(s, kind, id_, theirs=True)
         if kind == "album":
             s.execute(update(Album).where(Album.id == id_).values(hidden=hidden))
             s.execute(update(Track).where(Track.album_id == id_).values(hidden=hidden))
@@ -265,16 +269,9 @@ def delete_item(kind: str, id_: int) -> dict:
 def trash_items() -> list[dict]:
     with db.session() as s:
         return [{"id": t.id, "kind": t.kind, "title": t.title, "subtitle": t.subtitle, "size": t.size,
-                 "files": len(t.moves), "created_at": _utc(t.created_at),
+                 "files": len(t.moves), "created_at": serial.iso(t.created_at),
                  "where": os.path.dirname(t.moves[0][0]) if t.moves else ""}
                 for t in s.scalars(select(TrashItem).order_by(TrashItem.created_at.desc()))]
-
-
-def _utc(when) -> str | None:
-    """SQLite gives times back without their zone; they're UTC."""
-    if when is None:
-        return None
-    return (when if when.tzinfo else when.replace(tzinfo=timezone.utc)).isoformat()
 
 
 def restore(trash_id: int) -> dict:
@@ -968,8 +965,10 @@ def rename_artist_job(ctx: jobs.JobContext, artist_id: int, name: str, picture: 
         renamed_row = s.scalar(select(func.count()).select_from(Artist).where(Artist.name == name)) == 0
         if renamed_row:
             a.name = name
-        albums = list(s.scalars(select(Album.id).where(Album.artist_id == artist_id)))
-        loose = list(s.scalars(select(Track).where(Track.artist_id == artist_id, ~Track.album_id.in_(albums))))
+        # their songs in this library (other servers' keep the name they have there)
+        albums = list(s.scalars(select(Album.id).where(Album.artist_id == artist_id, Album.peer_id.is_(None))))
+        loose = list(s.scalars(select(Track).where(Track.artist_id == artist_id, ~Track.album_id.in_(albums),
+                                                   Track.peer_id.is_(None))))
     ctx.log(f"{old} → {name}: {len(albums)} albums")
     parts = []      # what undoes each album and song, in the order they were done
     report = {"old": old, "name": name, "albums": 0, "songs": 0, "folders": [], "failed": [], "merged": False, "edit_id": None,
@@ -1090,7 +1089,7 @@ def edit_simple(kind: str, id_: int, fields: dict, picture: str = "") -> dict:
 def edit_list(limit: int = 100) -> list[dict]:
     with db.session() as s:
         return [{"id": e.id, "kind": e.kind, "item_id": e.item_id, "title": e.title, "summary": e.summary,
-                 "created_at": _utc(e.created_at), "undone_at": _utc(e.undone_at)}
+                 "created_at": serial.iso(e.created_at), "undone_at": serial.iso(e.undone_at)}
                 for e in s.scalars(select(EditRecord).order_by(EditRecord.id.desc()).limit(limit))]
 
 
@@ -1103,7 +1102,7 @@ def last_edit(s, kind: str, id_: int) -> dict | None:
     if since is not None:
         q = q.where(EditRecord.created_at >= since)
     e = s.scalar(q.order_by(EditRecord.id.desc()).limit(1))
-    return {"id": e.id, "summary": e.summary, "created_at": _utc(e.created_at)} if e else None
+    return {"id": e.id, "summary": e.summary, "created_at": serial.iso(e.created_at)} if e else None
 
 
 def _here(e: dict) -> str | None:

@@ -101,7 +101,7 @@ export function TrackList({ tracks, showArt, showAlbum = true, numbered = "index
                 </button>
               </div>
               <div className="t-main">
-                {showArt && <Art src={t.art} name={t.album || t.title} size={64} />}
+                {showArt && <Art src={t.art} name={t.album || t.title} size={64} peer={t.peer} />}
                 <div style={{ minWidth: 0 }}>
                   <div className="t-title ellipsis">{t.title}</div>
                   <div className="t-artist ellipsis">
@@ -117,7 +117,7 @@ export function TrackList({ tracks, showArt, showAlbum = true, numbered = "index
               {/* phones show the playing bars here, right of the time; desktops in place of the number */}
               <div className="t-eq">{isCur && <span className="eq"><i /><i /><i /></span>}</div>
               <div className="t-actions">
-                <AdminCog kind="track" id={t.id} title={t.title} className="inline" />
+                <AdminCog kind="track" id={t.id} title={t.title} className="inline" peer={t.peer} />
                 <button className={`mini t-like ${on ? "liked" : ""}`} aria-label={on ? "Unlike" : "Like"} data-tip={likeTip(on)} onClick={() => like(t)}>
                   <Heart size={15} fill={on ? "currentColor" : "none"} />
                 </button>

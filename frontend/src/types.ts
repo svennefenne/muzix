@@ -20,6 +20,7 @@ export interface Prefs {
   search_engine?: string;                // web search for a song: a URL with %s for the words
   radio_buffer?: number;                 // seconds of a station gathered before it starts playing
   autoplay?: boolean;                    // similar songs once the queue runs out
+  network?: boolean;                     // false: the Library Network's music left out (only this server's)
   browse?: Record<string, BrowsePref>;   // sort and display mode per page
 }
 
@@ -72,6 +73,7 @@ export interface Track {
   liked: boolean;
   tags: string[];
   item_id?: number;
+  peer?: string | null;       // the server in the Library Network it's from (null: this one's)
 }
 
 export interface Album {
@@ -88,6 +90,7 @@ export interface Album {
   art: string | null;
   added_at: string | null;
   liked: boolean;
+  peer?: string | null;       // the server in the Library Network it's from (null: this one's)
 }
 
 export interface AlbumDetail extends Album {
@@ -129,24 +132,24 @@ export interface Genre {
   art: string[];
 }
 
-export interface SidebarAlbum { id: number; title: string; artist: string; year: number; kind: "music" | "vgm"; art: string | null; liked: boolean }
+export interface SidebarAlbum { id: number; title: string; artist: string; year: number; kind: "music" | "vgm"; art: string | null; liked: boolean; peer?: string | null }
 /** A playlist file found in the music folders (read-only, everyone's). */
-export interface FilePlaylist { id: number; name: string; tracks: number; entries: number; art: string[] }
-export interface FilePlaylistDetail { id: number; name: string; path: string; entries: number; tracks: Track[] }
+export interface FilePlaylist { id: number; name: string; tracks: number; entries: number; art: string[]; peer?: string | null }
+export interface FilePlaylistDetail { id: number; name: string; path: string; entries: number; tracks: Track[]; peer?: string | null }
 
 export interface SidebarData {
   liked_songs: number;
   playlists: { id: number; name: string; art: string | null }[];
-  file_playlists: { id: number; name: string; tracks: number; art: string | null }[];
+  file_playlists: { id: number; name: string; tracks: number; art: string | null; peer?: string | null }[];
   albums: SidebarAlbum[];
   games: SidebarAlbum[];
   artists: { id: number; name: string; art: string | null }[];
-  books: { id: number; title: string; author: string; art: string | null; progress: number }[];
+  books: { id: number; title: string; author: string; art: string | null; progress: number; peer?: string | null }[];
   podcasts: { id: number; title: string; author: string; art: string | null; new: boolean }[];
   stations: Station[];
 }
 
-export interface BookHit { id: number; title: string; author: string; series: string; art: string | null }
+export interface BookHit { id: number; title: string; author: string; series: string; art: string | null; peer?: string | null }
 export interface SearchResults { artists: Artist[]; albums: Album[]; tracks: Track[]; books: BookHit[] }
 export type RecentKind = "artist" | "album" | "track" | "book";
 /** Something picked from search results, as search gives it now. */
@@ -192,6 +195,7 @@ export interface Book {
   description?: string;
   chapters?: { title: string; start: number }[];
   parts?: { position: number; title: string; duration: number; offset: number; format: string; stream: string }[];
+  peer?: string | null;       // the server in the Library Network it's from (null: this one's)
 }
 
 export interface Feed {

@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, db, env, jobs, settings
+from . import __version__, db, env, jobs, network, settings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -39,15 +39,16 @@ def create_app() -> FastAPI:
     jobs.recover()
 
     # job implementations register themselves on import
-    from . import books, enrich, maintenance, podcasts, scanner  # noqa: F401
+    from . import books, enrich, maintenance, mirror, podcasts, scanner  # noqa: F401
     from .organize import importer  # noqa: F401
     from .api import admin, android, auth, books as books_api, library, me, podcasts as podcasts_api
-    from .api import connect, manage as manage_api, online, radio, spotify, stream, themes, upload
+    from .api import connect, manage as manage_api, network as network_api, online, radio, spotify, stream
+    from .api import themes, upload
 
     app = FastAPI(title="Muzix", version=__version__, docs_url="/api/docs", openapi_url="/api/openapi.json")
     app.add_middleware(NoProxyBuffering)
     for mod in (auth, library, stream, me, admin, books_api, podcasts_api, radio, spotify, themes, upload,
-                online, manage_api, connect, android):
+                online, manage_api, connect, android, network_api):
         app.include_router(mod.router)
         if hasattr(mod, "art_router"):
             app.include_router(mod.art_router)
@@ -111,6 +112,7 @@ def create_app() -> FastAPI:
     jobs.every("refresh_feeds", lambda: int(settings.get("podcast_refresh_hours")) * 3600)
     jobs.every("artist_tags", lambda: 24 * 3600 if settings.get("artist_tags") != "off" else 0)
     jobs.every("prune_cache", lambda: 24 * 3600)
+    jobs.every("network_sync", lambda: 24 * 3600 if network.linked() else 0)
     if not os.environ.get("MUZIX_NO_SCHEDULER"):
         jobs.start_scheduler()
     return app

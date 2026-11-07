@@ -9,12 +9,12 @@ import { Art } from "./ui";
 export function AlbumCard({ a }: { a: Album }) {
   return (
     <Link to={`/album/${a.id}`} className="card">
-      <Art src={a.art} name={a.title} />
+      <Art src={a.art} name={a.title} peer={a.peer} />
       <button className="play-fab" aria-label={`Play ${a.title}`} data-tip={`Play ${a.title}`}
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); playAlbum(a.id); }}>
         <Play size={20} fill="currentColor" />
       </button>
-      <AdminCog kind="album" id={a.id} title={a.title} />
+      <AdminCog kind="album" id={a.id} title={a.title} peer={a.peer} />
       <div className="card-title ellipsis">{a.title}</div>
       <div className="card-sub ellipsis">{[a.year || null, a.artist].filter(Boolean).join(" · ")}</div>
     </Link>

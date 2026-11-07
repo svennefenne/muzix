@@ -29,7 +29,7 @@ function LyricsMode({ cur }: { cur: PlayItem | null }) {
       </div>
       {cur && (
         <div className="lyr-song">
-          <Art src={cur.art} name={cur.album || cur.title} size={96} />
+          <Art src={cur.art} name={cur.album || cur.title} size={96} peer={cur.peer} />
           <div className="lyr-song-text">
             <b className="ellipsis">{cur.title}</b>
             <span className="ellipsis">{cur.artist}</span>
@@ -71,7 +71,7 @@ export function NowPanel() {
       {cur ? (
         <div className="np-scroll">
           <button className="np-cover" onClick={() => setNowPlayingOpen(true)} aria-label="Open the full-screen player" data-tip="Open the full-screen player">
-            <Art src={cur.art} name={cur.album || cur.title} size={600} />
+            <Art src={cur.art} name={cur.album || cur.title} size={600} peer={cur.peer} />
           </button>
           <div className="np-id">
             <div className="np-idtext">
@@ -109,7 +109,7 @@ export function NowPanel() {
             </div>
             {next.length ? next.map((it, i) => (
               <button key={it.key + i} className="np-qrow" data-tip={`Play now: ${it.title}`} onClick={() => engine.jump(index + 1 + i)}>
-                <Art src={it.art} name={it.album || it.title} size={96} />
+                <Art src={it.art} name={it.album || it.title} size={96} peer={it.peer} />
                 <span className="np-qtext"><span className="ellipsis">{it.title}</span><small className="ellipsis">{it.artist}</small></span>
                 <small className="np-qdur">{it.duration ? fmtTime(it.duration) : ""}</small>
               </button>

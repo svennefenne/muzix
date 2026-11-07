@@ -1,11 +1,13 @@
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Network } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { create } from "zustand";
 import { sized } from "../api";
 
-/** Cover art with a generated fallback (colour from the name, big initials). */
-export function Art({ src, name, size = 300, round, className = "", onClick }: {
+/** Cover art with a generated fallback (colour from the name, big initials); `peer`: the server
+ * in the Library Network it's from, marked in the corner. */
+export function Art({ src, name, size = 300, round, className = "", onClick, peer }: {
   src?: string | null; name?: string; size?: number; round?: boolean; className?: string; onClick?: () => void;
+  peer?: string | null;
 }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -18,7 +20,22 @@ export function Art({ src, name, size = 300, round, className = "", onClick }: {
          style={!url || failed ? { background: `linear-gradient(135deg, hsl(${hue} 55% 38%), hsl(${(hue + 50) % 360} 60% 22%))` } : undefined}>
       {url && !failed ? <img src={url} alt="" loading="lazy" onError={() => setFailed(true)} />
         : <div className="art-fallback">{initials(name || "?")}</div>}
+      {peer && <NetworkMark peer={peer} />}
     </div>
+  );
+}
+
+/** "From Kompisens Muzix" beside a title: what's from another server in the Library Network. */
+export function FromPeer({ peer }: { peer: string }) {
+  return <span className="dotsep from-peer" data-tip="In another library of the Library Network"><Network size={13} /> From {peer}</span>;
+}
+
+/** What's from another server in the Library Network: a small mark, its name on hover. */
+export function NetworkMark({ peer, className = "" }: { peer: string; className?: string }) {
+  return (
+    <span className={`net-mark ${className}`} role="img" aria-label={`From ${peer}`} data-tip={`From ${peer}'s library`}>
+      <Network />
+    </span>
   );
 }
 

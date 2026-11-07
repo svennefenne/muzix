@@ -389,8 +389,8 @@ def finish_scan(ctx):
               SELECT genre FROM albums a WHERE a.artist_id = artists.id AND a.genre != ''
               GROUP BY genre ORDER BY count(*) DESC LIMIT 1), '') END
         """))
-        # covers
-        rows = s.execute(select(Album.id, Album.folder, Album.art)).all()
+        # covers (another server's albums have theirs there: mirror.py)
+        rows = s.execute(select(Album.id, Album.folder, Album.art).where(Album.peer_id.is_(None))).all()
     updates = []
     for aid, folder, was in rows:
         if was and not was.startswith("embedded:") and os.path.exists(was):
@@ -406,6 +406,8 @@ def finish_scan(ctx):
         for aid, cover, _ in updates:
             s.execute(update(Album).where(Album.id == aid).values(art=cover))
     art.changed("album", *[aid for aid, _, was in updates if was])     # new ones had no address to keep
+    from . import mirror      # (it imports this module)
+    mirror.dedupe()           # an album another library of the network has too: one copy shows
     rebuild_search()
 
 

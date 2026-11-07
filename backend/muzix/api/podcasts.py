@@ -15,6 +15,7 @@ from .. import jobs, podcasts, settings
 from ..db import get_db
 from ..models import Episode, EpisodeProgress, Feed, Subscription, User
 from ..security import current_user, stream_user
+from ..serial import iso
 from .proxy import check_url, relay
 
 log = logging.getLogger("muzix.podcasts")
@@ -26,12 +27,12 @@ def feed_json(f: Feed, sub: Subscription | None = None, unplayed: int | None = N
             "description": f.description, "image": f.image, "link": f.link, "categories": f.categories,
             "error": f.error, "subscribed": sub is not None,
             "auto_download": bool(sub and sub.auto_download), "autoplay": bool(sub and sub.autoplay), "unplayed": unplayed, "new": new,
-            "last_checked": f.last_checked.isoformat() if f.last_checked else None}
+            "last_checked": iso(f.last_checked)}
 
 
 def episode_json(e: Episode, prog: EpisodeProgress | None, feed: Feed | None = None, sub: Subscription | None = None):
     return {"id": e.id, "feed_id": e.feed_id, "title": e.title, "description": e.description,
-            "published": e.published.isoformat() if e.published else None, "duration": e.duration,
+            "published": iso(e.published), "duration": e.duration,
             "image": e.image or (feed.image if feed else ""), "downloaded": bool(e.local_path),
             "position": prog.position if prog else 0, "finished": bool(prog and prog.finished),
             "new": is_new(e, sub, prog), "stream": f"/api/podcasts/episodes/{e.id}/stream",

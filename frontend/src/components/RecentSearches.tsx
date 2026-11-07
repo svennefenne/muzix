@@ -11,6 +11,7 @@ import { Art, Section } from "./ui";
 
 export interface Picked {
   kind: RecentKind; id: number; title: string; sub: string; art: string | null; round?: boolean; go: () => void;
+  peer?: string | null;
 }
 
 const KEY = ["recent-searches"];
@@ -40,13 +41,13 @@ export function picked(e: RecentSearch, nav: NavigateFunction): Picked {
                go: () => nav(`/library/artists/${e.item.id}`) };
     case "album":
       return { kind: "album", id: e.item.id, title: e.item.title, sub: `${e.item.kind === "vgm" ? "Game" : "Album"} · ${e.item.artist}`,
-               art: e.item.art, go: () => nav(`/album/${e.item.id}`) };
+               art: e.item.art, go: () => nav(`/album/${e.item.id}`), peer: e.item.peer };
     case "track":
       return { kind: "track", id: e.item.id, title: e.item.title, sub: `Song · ${e.item.artist}`, art: e.item.art,
-               go: () => playTracks([e.item]) };
+               go: () => playTracks([e.item]), peer: e.item.peer };
     case "book":
       return { kind: "book", id: e.item.id, title: e.item.title, sub: `Audiobook${e.item.author ? ` · ${e.item.author}` : ""}`,
-               art: e.item.art, go: () => nav(`/audiobooks/${e.item.id}`) };
+               art: e.item.art, go: () => nav(`/audiobooks/${e.item.id}`), peer: e.item.peer };
   }
 }
 
@@ -63,7 +64,7 @@ export function RecentSearches() {
           return (
             <div key={`${p.kind}${p.id}`} className="recent-row">
               <button className="recent-open" onClick={() => { rememberSearch(p.kind, p.id); p.go(); }}>
-                <Art src={p.art} name={p.title} size={96} round={p.round} />
+                <Art src={p.art} name={p.title} size={96} round={p.round} peer={p.peer} />
                 <span className="qs-text">
                   <span className="qs-title ellipsis">{p.title}</span>
                   <span className="qs-sub ellipsis">{p.sub}</span>

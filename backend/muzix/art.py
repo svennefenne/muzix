@@ -52,11 +52,21 @@ def source_bytes(ref: str, track_path_of=None) -> tuple[bytes | None, str]:
         return None, ""
 
 
+def _rendition(ident: str, size: int):
+    key = hashlib.sha1(f"{ident}|{pick_size(size)}".encode()).hexdigest()
+    return key, env.ART_DIR / key[:2] / f"{key}.webp"
+
+
+def cached(ident: str, size: int) -> str | None:
+    """The WebP rendition `resized` made of the picture `ident`, if it's there."""
+    out = _rendition(ident, size)[1]
+    return str(out) if out.exists() else None
+
+
 def resized(data: bytes, ident: str, size: int) -> str | None:
     """Path of a cached WebP rendition of `data` at `size` px (longest side)."""
     size = pick_size(size)
-    key = hashlib.sha1(f"{ident}|{size}".encode()).hexdigest()
-    out = env.ART_DIR / key[:2] / f"{key}.webp"
+    key, out = _rendition(ident, size)
     if out.exists():
         return str(out)
     with _lock(key):
@@ -111,8 +121,12 @@ def _known() -> dict[tuple[str, int], int]:
         return _versions
 
 
+def version(kind: str, id_: int) -> int:
+    return _known().get((kind, id_), 1)
+
+
 def url(kind: str, id_: int) -> str:
-    return f"/api/art/{kind}/{id_}?v={_known().get((kind, id_), 1)}"
+    return f"/api/art/{kind}/{id_}?v={version(kind, id_)}"
 
 
 def changed(kind: str, *ids: int | None) -> None:

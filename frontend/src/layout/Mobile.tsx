@@ -49,7 +49,7 @@ export function MiniPlayer() {
            onKeyDown={(e) => e.key === "Enter" && e.target === e.currentTarget && open(true)}>
         <div className="mp-now">
           <div ref={slide} className="mp-slide">
-            <Art src={cur.art} name={cur.album || cur.title} size={96} />
+            <Art src={cur.art} name={cur.album || cur.title} size={96} peer={cur.peer} />
             <div className="mp-text">
               <div className="mp-title ellipsis">{live || cur.title}</div>
               {castOn && !error ? <CastNote className="mp-sub cast-note" />
