@@ -15,7 +15,7 @@ import time
 
 from sqlalchemy import delete, select
 
-from . import db, formats, jobs
+from . import db, formats, jobs, modules
 from .meta import tags
 from .models import Book, BookPart, Root
 from .scanner import find_cover
@@ -117,6 +117,9 @@ def read_book(path: str, parts: list[str]) -> dict:
 
 @jobs.job("scan_books")
 def scan_books(ctx: jobs.JobContext, full: bool = False):
+    if not modules.on("audiobooks"):
+        ctx.log("Audiobooks are turned off (Admin → Modules), nothing scanned")
+        return {"added": 0, "updated": 0}
     gen = int(time.time())
     with db.session() as s:
         roots = [(r.id, r.path) for r in s.scalars(select(Root).where(Root.kind == "audiobooks", Root.enabled.is_(True)))]

@@ -28,7 +28,7 @@ import httpx
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import delete, insert, or_, select, union, update
 
-from . import art, db, enrich, jobs, network, scanner
+from . import art, db, enrich, jobs, modules, network, scanner
 from .models import Album, Artist, Book, BookPart, FilePlaylist, FilePlaylistItem, Peer, Root, Track
 
 log = logging.getLogger(__name__)
@@ -334,6 +334,9 @@ def sync_peer(ctx: jobs.JobContext, peer_id: int, share: float = 1.0, base_progr
 @jobs.job("network_sync")
 def sync_job(ctx: jobs.JobContext, peer_id: int | None = None):
     """The linked servers' catalogs (or one's), mirrored here."""
+    if not modules.on("network"):
+        ctx.log("The Library Network is turned off (Admin → Modules), nothing synced")
+        return {"synced": 0, "servers": 0}
     with db.session() as s:
         ids = [p.id for p in s.scalars(select(Peer).where(Peer.sent.is_(True), Peer.received.is_(True)))
                if peer_id in (None, p.id)]

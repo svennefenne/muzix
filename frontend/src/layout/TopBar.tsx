@@ -7,6 +7,7 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useAppUpdate } from "../appUpdate";
 import { Logo } from "../components/Logo";
+import { useShown } from "../modules";
 import { NewDot, useMenu } from "../components/ui";
 import { appPlayer } from "../player/app";
 import { usePlayer } from "../store/player";
@@ -34,9 +35,10 @@ const SECTIONS = [
 ];
 
 function SectionPills() {
+  const sections = useShown(SECTIONS);
   return (
     <nav className="topnav" aria-label="Sections">
-      {SECTIONS.map(({ to, label, icon: Icon, tip }) => (
+      {sections.map(({ to, label, icon: Icon, tip }) => (
         <NavLink key={to} to={to} className="topnav-pill" data-tip={tip} data-tip-key="Q / E" aria-label={label}>
           <Icon size={16} /><span>{label}</span>
         </NavLink>
@@ -66,7 +68,8 @@ export function TopBar() {
   const atHome = loc.pathname === "/";
   const showMenu = useMenu((s) => s.show);
   const update = useAppUpdate();
-  const tabs = user?.is_admin ? [...TABS, { to: "/admin", label: "Admin" }] : TABS;
+  const shown = useShown(TABS);
+  const tabs = user?.is_admin ? [...shown, { to: "/admin", label: "Admin" }] : shown;
 
   // Q / E step through the sections, like a console's shoulder buttons
   useEffect(() => {

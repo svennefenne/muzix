@@ -18,12 +18,13 @@ const GROUPS: [Palette["category"], string][] = [["muzix", "Muzix"], ["builtin",
 
 /** The linked servers' music (the Library Network): in everyone's library, unless they leave it out. */
 function NetworkMusic() {
-  const servers = useQuery({ queryKey: ["network-servers"], queryFn: () => api.get<string[]>("/api/network/servers") });
+  const linking = useUi((s) => s.modules.network);
+  const servers = useQuery({ queryKey: ["network-servers"], enabled: linking, queryFn: () => api.get<string[]>("/api/network/servers") });
   const user = useUi((s) => s.user);
   const setUser = useUi((s) => s.setUser);
   const [busy, setBusy] = useState(false);
   const names = servers.data || [];
-  if (!names.length || !user) return null;
+  if (!linking || !names.length || !user) return null;
   const on = user.prefs.network !== false;
   const who = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0];
   return (

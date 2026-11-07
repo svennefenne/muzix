@@ -37,8 +37,14 @@ export type LibraryView = "genres" | "artists" | "albums";
 export type DisplayMode = "list" | "grid" | "gallery";
 export interface BrowsePref { display?: DisplayMode; sort?: string; hide_finished?: boolean; collapsed?: boolean }
 
+/** The parts of Muzix a server can do without (modules.ts). */
+export type ModuleKey = "vgm" | "audiobooks" | "podcasts" | "radio" | "spotify" | "network";
+export type Modules = Record<ModuleKey, boolean>;
+
 export interface AuthState {
   needs_setup: boolean;
+  setup: boolean;                  // an admin still has the rest of the setup to do (pages/Setup.tsx)
+  modules: Modules;
   user: User | null;
   site_name: string;
   allow_signup: boolean;

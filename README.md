@@ -147,7 +147,10 @@ applies you choose from 98 colour schemes, each with a light and a dark version.
    used). "Library folders on first start" says which
    sub-folders become music / VGM / audiobook folders (changeable later).
 3. Start it and open `http://<server>:8080`. The first visit creates the admin
-   account and starts the first scan.
+   account, then the setup: the folders your music is in (the mounted ones are
+   suggested, others can be browsed to), the modules this server runs, its name
+   and public address, and each module's own settings. The first scan starts
+   when it's done. *Skip setup* takes the mounted folders with every module on.
 
 Plain Docker:
 
@@ -161,6 +164,18 @@ docker run -d --name muzix -p 8080:8080 \
   -e PUID=99 -e PGID=100 \
   ghcr.io/svennefenne/muzix:latest
 ```
+
+### Modules
+
+Music is Muzix itself; the rest are modules a server can run or leave out:
+VGM, Audiobooks, Podcasts, Radio, Spotify and the Library Network. They're
+chosen in the setup and turned on or off later under *Admin → Modules*, where
+each module also has its settings (and its folders). A module that's off is
+gone from the menus, its pages say it's off, its content is left out of every
+list and search, its requests answer 404 and its background work (scans, feed
+refreshes, syncing with linked servers) waits. Nothing of it is deleted: turned
+on again, it's all back, and it catches up on what it missed. Servers from
+before modules have every module on.
 
 ### HTTPS and Spotify
 

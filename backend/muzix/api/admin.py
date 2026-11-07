@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import __version__, env, jobs, render, serial, settings
+from .. import __version__, env, jobs, modules, network, render, serial, settings
 from ..db import get_db, get_db_with_copies
 from ..meta import gme, openmpt
 from ..models import Album, Artist, Book, Feed, Job, Root, Track, User
@@ -39,6 +39,42 @@ def put_settings(values: dict):
     except (ValueError, KeyError) as e:
         raise HTTPException(400, str(e))
     return settings.public_schema()
+
+
+# ---------------------------------------------------------------- modules
+
+def module_json(m: modules.Module):
+    return {"key": m.key, "label": m.label, "about": m.about, "kinds": list(m.kinds), "on": modules.on(m.key),
+            "settings": [settings.public(settings.spec(k)) for k in (*m.settings, *m.more)]}
+
+
+@router.get("/modules")
+def module_list():
+    return [module_json(m) for m in modules.MODULES]
+
+
+class Turn(BaseModel):
+    on: bool
+
+
+@router.put("/modules/{key}")
+def turn_module(key: str, body: Turn):
+    """A module on or off. Turned on, it catches up on what it missed while it was off."""
+    m = modules.BY_KEY.get(key)
+    if m is None:
+        raise HTTPException(404, "No such module")
+    was = modules.on(key)
+    settings.set_many({modules.setting(key): body.on})
+    if body.on and not was:
+        if key == "vgm":
+            jobs.submit("scan", "Scan the library")
+        elif key == "audiobooks":
+            jobs.submit("scan_books", "Scan audiobooks")
+        elif key == "podcasts":
+            jobs.submit("refresh_feeds", "Refresh podcasts")
+        elif key == "network" and network.linked():
+            jobs.submit("network_sync", "Sync linked servers")
+    return module_json(m)
 
 
 # ---------------------------------------------------------------- library folders

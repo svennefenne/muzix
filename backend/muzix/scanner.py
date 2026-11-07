@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.exc import IntegrityError
 
-from . import art, db, formats, jobs, playlists as file_playlists, settings
+from . import art, db, formats, jobs, modules, playlists as file_playlists, settings
 from .meta import chip, tags
 from .models import Album, Artist, Root, TagOverride, Track
 
@@ -168,7 +168,8 @@ def album_key(row: dict, path: str) -> str:
 @jobs.job("scan")
 def scan_job(ctx: jobs.JobContext, root_id: int | None = None, full: bool = False):
     with db.session() as s:
-        q = select(Root).where(Root.enabled.is_(True), Root.kind.in_(("music", "vgm")))
+        # VGM's folders wait while its module is off (modules.py)
+        q = select(Root).where(Root.enabled.is_(True), Root.kind.in_({"music", "vgm"} & modules.kinds()))
         if root_id:
             q = q.where(Root.id == root_id)
         roots = [(r.id, r.path, r.kind, list(r.excludes or [])) for r in s.scalars(q)]
@@ -186,7 +187,7 @@ def scan_job(ctx: jobs.JobContext, root_id: int | None = None, full: bool = Fals
     ctx.log(f"done: {totals}")
     if (totals["added"] or totals["updated"]) and settings.get("artist_tags") != "off":
         jobs.submit("artist_tags", "Fetch artist genres")
-    if root_id is None:
+    if root_id is None and modules.on("audiobooks"):
         jobs.submit("scan_books", "Scan audiobooks")
     return totals
 

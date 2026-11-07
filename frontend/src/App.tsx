@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { lazy, type RefObject, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Route, Routes, useLocation, useNavigate, useNavigationType } from "react-router-dom";
+import { Link, Route, Routes, useLocation, useNavigate, useNavigationType } from "react-router-dom";
 import { queryClient } from "./actions";
 import { api } from "./api";
 import { AdminHost } from "./components/AdminMode";
@@ -25,7 +25,7 @@ import { engine } from "./player/engine";
 import { usePlayer } from "./store/player";
 import { useUi } from "./store/ui";
 import { ThemeApplier } from "./theme/ThemeApplier";
-import type { AuthState } from "./types";
+import type { AuthState, ModuleKey } from "./types";
 
 const Vgm = lazy(() => import("./pages/Vgm"));
 const Books = lazy(() => import("./pages/Books"));
@@ -37,6 +37,25 @@ const Radio = lazy(() => import("./pages/Radio"));
 const Spotify = lazy(() => import("./pages/Spotify"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Admin = lazy(() => import("./pages/admin/Admin"));
+const Setup = lazy(() => import("./pages/Setup"));
+
+const MODULE_NAMES: Record<ModuleKey, string> = {
+  vgm: "VGM", audiobooks: "Audiobooks", podcasts: "Podcasts", radio: "Radio", spotify: "Spotify", network: "Library Network",
+};
+
+/** A module's page, while the module is on (modules.ts); else a word that it's off. */
+function Gate({ module, children }: { module: ModuleKey; children: React.ReactNode }) {
+  const on = useUi((s) => s.modules[module]);
+  const admin = useUi((s) => !!s.user?.is_admin);
+  if (on) return children;
+  return (
+    <div className="page">
+      <Display l1={MODULE_NAMES[module]} l2="is off" />
+      <p className="lede">This server doesn't run {MODULE_NAMES[module]} at the moment.{admin ? " You can turn it on under Admin → Modules." : ""}</p>
+      {admin && <Link className="btn accent" to="/admin/modules">Open Modules</Link>}
+    </div>
+  );
+}
 
 function Shortcuts() {
   const nav = useNavigate();
@@ -184,14 +203,14 @@ function Shell() {
               <Route path="/playlist/:id" element={<PlaylistPage />} />
               <Route path="/playlist/file/:id" element={<FilePlaylistPage />} />
               <Route path="/search" element={<SearchPage />} />
-              <Route path="/vgm/*" element={<Vgm />} />
-              <Route path="/audiobooks" element={<Books />} />
-              <Route path="/audiobooks/:id" element={<BookPage />} />
-              <Route path="/podcasts" element={<Podcasts />} />
-              <Route path="/podcasts/:id" element={<PodcastPage />} />
-              <Route path="/podcasts/episode/:eid" element={<EpisodePage />} />
-              <Route path="/radio" element={<Radio />} />
-              <Route path="/spotify/*" element={<Spotify />} />
+              <Route path="/vgm/*" element={<Gate module="vgm"><Vgm /></Gate>} />
+              <Route path="/audiobooks" element={<Gate module="audiobooks"><Books /></Gate>} />
+              <Route path="/audiobooks/:id" element={<Gate module="audiobooks"><BookPage /></Gate>} />
+              <Route path="/podcasts" element={<Gate module="podcasts"><Podcasts /></Gate>} />
+              <Route path="/podcasts/:id" element={<Gate module="podcasts"><PodcastPage /></Gate>} />
+              <Route path="/podcasts/episode/:eid" element={<Gate module="podcasts"><EpisodePage /></Gate>} />
+              <Route path="/radio" element={<Gate module="radio"><Radio /></Gate>} />
+              <Route path="/spotify/*" element={<Gate module="spotify"><Spotify /></Gate>} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/admin/*" element={<Admin />} />
               <Route path="*" element={<div className="page"><Display l1="Lost" l2="in space" /><p className="lede">That page doesn't exist.</p></div>} />
@@ -244,7 +263,7 @@ function AuthScreen({ state, onDone }: { state: AuthState; onDone: () => void })
         </div>
         <Kicker parts={[setup ? "First start" : "Welcome back", `v${state.version}`]} />
         <Display l1={setup ? "Set up" : mode === "signup" ? "Join" : "Sign in"} l2={setup ? "Muzix" : undefined} small />
-        {setup && <p className="lede">Create the admin account. Muzix then adds the folders mounted at /music, /vgm and /audiobooks and starts scanning.</p>}
+        {setup && <p className="lede">First the admin account. Then you pick the folders your music is in, and what else this server should do.</p>}
         <div className="field"><label htmlFor="u">Username</label>
           <input id="u" className="input" autoFocus autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} /></div>
         <div className="field"><label htmlFor="p">Password</label>
@@ -269,7 +288,7 @@ export default function App() {
   useEffect(() => {
     const s = state.data;
     if (!s) return;
-    useUi.setState({ siteName: s.site_name });
+    useUi.setState({ siteName: s.site_name, modules: s.modules });
     if (s.user) setUser(s.user);
     api.get<{ skin_map: Record<string, string> }>("/api/themes/rules").then((r) => useUi.setState({ skinRules: r.skin_map || {} })).catch(() => {});
   }, [state.data, setUser]);
@@ -280,5 +299,8 @@ export default function App() {
   }, [state]);
   if (!state.data) return <div className="auth"><Loading /></div>;
   if (!state.data.user) return <AuthScreen state={state.data} onDone={() => state.refetch()} />;
+  if (state.data.setup) {
+    return <Suspense fallback={<div className="auth"><Loading /></div>}><Setup onDone={() => state.refetch()} /></Suspense>;
+  }
   return <Shell />;
 }

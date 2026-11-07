@@ -78,28 +78,55 @@ def _ours_artist(cls):
     return and_(cls.hidden.is_(False), cls.peer_only.is_(False))
 
 
+# the same, without chiptunes (the VGM module is off)
+def _visible_music(cls):
+    return and_(cls.hidden.is_(False), cls.kind != "vgm")
+
+
+def _listed_music(cls):
+    return and_(cls.hidden.is_(False), cls.shadowed.is_(False), cls.kind != "vgm")
+
+
+def _ours_music(cls):
+    return and_(cls.hidden.is_(False), cls.peer_id.is_(None), cls.kind != "vgm")
+
+
+def _nothing(cls):
+    """What a module that's off holds (its audiobooks, podcasts or stations)."""
+    return cls.id.is_(None)
+
+
 @event.listens_for(Session, "do_orm_execute")
 def _without_hidden(state: ORMExecuteState):
     """In sessions that serve the web pages, whatever an admin hid isn't there; nor is another
     library's copy of an album or audiobook that one first in line has (the Library Network:
     mirror.dedupe), unless the session keeps copies (or the statement asks for them). For
     someone who left the network's music out (their "network" preference: security.py says
-    so as the request comes in), only this server's own library is there, every copy of it."""
+    so as the request comes in), only this server's own library is there, every copy of it; so
+    it is for everyone while the Library Network is off. What a module that's off holds isn't
+    there either (modules.py)."""
     if not state.is_select or not state.session.info.get("hide") or state.execution_options.get("include_hidden"):
         return
-    from .models import HIDEABLE, SHADOWABLE, Artist
+    from . import modules
+    from .models import HIDEABLE, SHADOWABLE, Album, Artist, Book, Feed, Station, Track
+    off = modules.off()
+    gone = {model for model, key in ((Book, "audiobooks"), (Feed, "podcasts"), (Station, "radio")) if key in off}
+    no_vgm = "vgm" in off
     copies = state.session.info.get("copies") or state.execution_options.get("include_copies")
     viewer = state.session.info.get("viewer")
-    ours = viewer is not None and getattr(viewer, "network", True) is False
+    ours = "network" in off or viewer is not None and getattr(viewer, "network", True) is False
     for model in HIDEABLE:
-        if ours and model is Artist:
+        music = no_vgm and model in (Album, Track)
+        if model in gone:
+            crit = _nothing
+        elif ours and model is Artist:
             crit = _ours_artist
         elif ours and hasattr(model, "peer_id"):
-            crit = _ours
+            crit = _ours_music if music else _ours
         elif model in SHADOWABLE and not copies and not ours:
-            crit = _listed
+            crit = _listed_music if music else _listed
         else:
-            crit = _visible
+            crit = _visible_music if music else _visible
         state.statement = state.statement.options(with_loader_criteria(model, crit, include_aliases=True))
 
 

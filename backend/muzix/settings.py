@@ -111,6 +111,13 @@ SCHEMA: list[Spec] = [
     # spotify
     Spec("spotify_client_id", "str", "", "Spotify", "Client ID",
          "From developer.spotify.com → your app. Redirect URI: <public URL>/api/spotify/callback"),
+    # modules (modules.py): on unless turned off, so a server from before them keeps everything
+    Spec("module_vgm", "bool", True, "Modules", "VGM"),
+    Spec("module_audiobooks", "bool", True, "Modules", "Audiobooks"),
+    Spec("module_podcasts", "bool", True, "Modules", "Podcasts"),
+    Spec("module_radio", "bool", True, "Modules", "Radio"),
+    Spec("module_spotify", "bool", True, "Modules", "Spotify"),
+    Spec("module_network", "bool", True, "Modules", "Library Network"),
 ]
 
 _BY_KEY = {s.key: s for s in SCHEMA}
@@ -169,11 +176,19 @@ def coerce(spec: Spec, value):
     return v
 
 
+def public(spec: Spec, include_secrets=False) -> dict:
+    """A setting for the admin's forms, with its value (a secret's only as whether it's set) and
+    the module it belongs to, if any."""
+    from .modules import OWNER
+    value = get(spec.key)
+    if spec.type == "secret" and not include_secrets:
+        value = "••••••" if value else ""
+    return {**spec.__dict__, "value": value, "module": OWNER.get(spec.key)}
+
+
 def public_schema(include_secrets=False):
-    out = []
-    for spec in SCHEMA:
-        value = get(spec.key)
-        if spec.type == "secret" and not include_secrets:
-            value = "••••••" if value else ""
-        out.append({**spec.__dict__, "value": value})
-    return out
+    return [public(spec, include_secrets) for spec in SCHEMA]
+
+
+def spec(key: str) -> Spec:
+    return _BY_KEY[key]

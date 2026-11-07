@@ -1,15 +1,14 @@
-import os
-
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import __version__, env, jobs, settings
+from .. import __version__, modules, settings
 from ..db import get_db
-from ..models import Root, User
+from ..models import User
 from ..security import (check_password, end_session, has_users, hash_password, optional_user,
                         start_session)
+from . import setup as first_setup
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -29,6 +28,9 @@ def user_json(u: User | None):
 def state(db: Session = Depends(get_db), user: User | None = Depends(optional_user)):
     return {
         "needs_setup": not has_users(db),
+        # the admin account is there; the rest of the setup isn't done (api/setup.py)
+        "setup": bool(user and user.is_admin and first_setup.pending()),
+        "modules": modules.states(),
         "user": user_json(user),
         "site_name": settings.get("site_name"),
         "allow_signup": settings.get("allow_signup"),
@@ -47,25 +49,9 @@ def setup(body: Credentials, request: Request, response: Response, db: Session =
     user = User(username=body.username.strip(), password_hash=hash_password(body.password), is_admin=True)
     db.add(user)
     db.commit()
-    add_default_roots(db)
+    first_setup.begin()          # the library's folders and the modules come next
     start_session(db, user, request, response)
-    jobs.submit("scan", "First library scan")
     return {"user": user_json(user)}
-
-
-def add_default_roots(db: Session):
-    """Register the folders the container mounts, if they exist and aren't known yet."""
-    for item in env.DEFAULT_ROOTS.split(","):
-        if ":" not in item:
-            continue
-        path, kind = item.rsplit(":", 1)
-        path = path.rstrip("/") or "/"
-        if not os.path.isdir(path) or db.scalar(select(Root.id).where(Root.path == path)):
-            continue
-        excludes = [d for d in ("Other formats", "Duplicates") if os.path.isdir(os.path.join(path, d))]
-        db.add(Root(path=path, kind=kind, name=os.path.basename(path) or path,
-                    excludes=excludes, upload_target=(kind == "music")))
-    db.commit()
 
 
 @router.post("/login")

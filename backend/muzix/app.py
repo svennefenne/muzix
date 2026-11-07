@@ -3,11 +3,11 @@
 import logging
 import os
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, db, env, jobs, network, settings
+from . import __version__, db, env, jobs, modules, network, settings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -42,16 +42,20 @@ def create_app() -> FastAPI:
     from . import books, enrich, maintenance, mirror, podcasts, scanner  # noqa: F401
     from .organize import importer  # noqa: F401
     from .api import admin, android, auth, books as books_api, library, me, podcasts as podcasts_api
-    from .api import connect, manage as manage_api, network as network_api, online, radio, spotify, stream
-    from .api import themes, upload
+    from .api import connect, manage as manage_api, network as network_api, online, radio, setup, spotify
+    from .api import stream, themes, upload
 
     app = FastAPI(title="Muzix", version=__version__, docs_url="/api/docs", openapi_url="/api/openapi.json")
     app.add_middleware(NoProxyBuffering)
-    for mod in (auth, library, stream, me, admin, books_api, podcasts_api, radio, spotify, themes, upload,
+    # the requests of a module answer only while it's on
+    module_of = {books_api: "audiobooks", podcasts_api: "podcasts", radio: "radio", spotify: "spotify",
+                 online: "vgm", network_api: "network"}
+    for mod in (auth, setup, library, stream, me, admin, books_api, podcasts_api, radio, spotify, themes, upload,
                 online, manage_api, connect, android, network_api):
-        app.include_router(mod.router)
+        needs = [Depends(modules.needed(module_of[mod]))] if mod in module_of else []
+        app.include_router(mod.router, dependencies=needs)
         if hasattr(mod, "art_router"):
-            app.include_router(mod.art_router)
+            app.include_router(mod.art_router, dependencies=needs)
 
     @app.get("/api/health")
     def health():
@@ -77,9 +81,9 @@ def create_app() -> FastAPI:
                 {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
                 {"src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
             ],
-            "shortcuts": [{"name": label, "url": url, "icons": [icon]} for label, url in (
-                ("Library", "/library"), ("VGM", "/vgm"), ("Audiobooks", "/audiobooks"),
-                ("Podcasts", "/podcasts"), ("Radio", "/radio"))],
+            "shortcuts": [{"name": label, "url": url, "icons": [icon]} for label, url, module in (
+                ("Library", "/library", None), ("VGM", "/vgm", "vgm"), ("Audiobooks", "/audiobooks", "audiobooks"),
+                ("Podcasts", "/podcasts", "podcasts"), ("Radio", "/radio", "radio")) if module is None or modules.on(module)],
         }, media_type="application/manifest+json", headers={"Cache-Control": "no-cache", "Vary": "User-Agent"})
 
     @app.exception_handler(404)
@@ -109,10 +113,10 @@ def create_app() -> FastAPI:
         return _index()
 
     jobs.every("scan", lambda: int(settings.get("scan_interval_hours")) * 3600)
-    jobs.every("refresh_feeds", lambda: int(settings.get("podcast_refresh_hours")) * 3600)
+    jobs.every("refresh_feeds", lambda: int(settings.get("podcast_refresh_hours")) * 3600 if modules.on("podcasts") else 0)
     jobs.every("artist_tags", lambda: 24 * 3600 if settings.get("artist_tags") != "off" else 0)
     jobs.every("prune_cache", lambda: 24 * 3600)
-    jobs.every("network_sync", lambda: 24 * 3600 if network.linked() else 0)
+    jobs.every("network_sync", lambda: 24 * 3600 if modules.on("network") and network.linked() else 0)
     if not os.environ.get("MUZIX_NO_SCHEDULER"):
         jobs.start_scheduler()
     return app

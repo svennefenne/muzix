@@ -1,12 +1,13 @@
 import { create } from "zustand";
 import { api } from "../api";
-import type { BrowsePref, LibraryView, Prefs, User } from "../types";
+import type { BrowsePref, LibraryView, Modules, Prefs, User } from "../types";
 
 type Mode = "system" | "light" | "dark";
 
 interface UiState {
   user: User | null;
   siteName: string;
+  modules: Modules;              // the server's (modules.ts)
   scheme: string;
   mode: Mode;
   genreSkins: boolean;
@@ -74,6 +75,7 @@ const initial = localPrefs();
 export const useUi = create<UiState>((set, get) => ({
   user: null,
   siteName: "Muzix",
+  modules: { vgm: true, audiobooks: true, podcasts: true, radio: true, spotify: true, network: true },
   scheme: initial.scheme || "muzix",
   mode: initial.mode || "system",
   genreSkins: initial.genre_skins ?? true,

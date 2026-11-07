@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Activity, EyeOff, Folder, FolderOpen, HardDrive, History, Library, Network, Plus, RefreshCw, Save, Settings2, Trash2, Upload, Users, X } from "lucide-react";
+import { Activity, Blocks, EyeOff, FolderOpen, HardDrive, History, Library, Network, Plus, RefreshCw, Save, Settings2, Trash2, Upload, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { create } from "zustand";
@@ -8,14 +8,14 @@ import { queryClient } from "../../actions";
 import { Display, Empty, Kicker, Loading, Modal, Switch } from "../../components/ui";
 import { useUi } from "../../store/ui";
 import type { Job } from "../../types";
-import { SchemePicker } from "../Settings";
 import { Edits } from "./Edits";
 import { HiddenAndTrash } from "./HiddenTrash";
+import { FolderBrowser, SettingField, type SettingSpec } from "./fields";
+import { Modules } from "./Modules";
 import { LibraryNetwork } from "./Network";
 
 interface Root { id: number; path: string; kind: string; name: string; enabled: boolean; upload_target: boolean; excludes: string[]; items: number; exists: boolean; writable: boolean; last_scan: string | null }
 interface Status { version: string; tools: Record<string, boolean>; counts: Record<string, number>; cache_bytes: number | null; art_bytes: number | null; data_dir: string; data_free_bytes: number }
-interface SettingSpec { key: string; type: string; default: unknown; group: string; label: string; help: string; choices: string[]; min: number | null; max: number | null; value: unknown }
 
 const TOOL_INFO: Record<string, string> = {
   ffmpeg: "Transcoding and FLAC encoding", ffprobe: "Chapters and lengths", libopenmpt: "Tracker modules (MOD/XM/IT/S3M/MT2)",
@@ -109,31 +109,10 @@ function Overview() {
 
 // ---------------------------------------------------------------- library folders
 
-function FolderBrowser({ onPick, onClose }: { onPick: (p: string) => void; onClose: () => void }) {
-  const [path, setPath] = useState("/");
-  const q = useQuery({ queryKey: ["browse", path], queryFn: () => api.get<{ path: string; parent: string | null; folders: string[] }>("/api/admin/browse", { path }) });
-  return (
-    <Modal onClose={onClose}>
-      <div className="kicker">Inside the container</div>
-      <div className="h2" style={{ marginBottom: 10, wordBreak: "break-all" }}>{path}</div>
-      <div className="list" style={{ maxHeight: 360, overflow: "auto", marginBottom: 14 }}>
-        {q.data?.parent && <button className="list-row" onClick={() => setPath(q.data!.parent!)}><FolderOpen size={16} /> ..</button>}
-        {q.data?.folders.map((f) => (
-          <button key={f} className="list-row" style={{ textAlign: "left", cursor: "pointer" }} onClick={() => setPath(`${path.replace(/\/$/, "")}/${f}`)}>
-            <Folder size={16} /> <span className="grow">{f}</span>
-          </button>
-        ))}
-      </div>
-      <div className="row-actions" style={{ justifyContent: "flex-end" }}>
-        <button className="btn ghost" onClick={onClose}>Cancel</button>
-        <button className="btn accent" onClick={() => onPick(path)}>Use this folder</button>
-      </div>
-    </Modal>
-  );
-}
-
 function RootRow({ r, reload }: { r: Root; reload: () => void }) {
   const [excl, setExcl] = useState(r.excludes.join(", "));
+  const modules = useUi((s) => s.modules);
+  const resting = (r.kind === "vgm" && !modules.vgm) || (r.kind === "audiobooks" && !modules.audiobooks);
   const save = async (patch: Partial<Root>) => {
     await api.put(`/api/admin/roots/${r.id}`, { ...r, ...patch });
     reload();
@@ -146,6 +125,7 @@ function RootRow({ r, reload }: { r: Root; reload: () => void }) {
           <div style={{ fontWeight: 700, wordBreak: "break-all" }}>{r.path}</div>
           <div className="dim" style={{ fontSize: 12.5 }}>
             {fmtNumber(r.items)} {r.kind === "audiobooks" ? "books" : "tracks"} · scanned {r.last_scan ? ago(r.last_scan) : "never"}
+            {resting && ` · not scanned while ${r.kind === "vgm" ? "VGM" : "Audiobooks"} is off`}
             {r.exists && !r.writable && " · read-only"}
           </div>
         </div>
@@ -178,6 +158,7 @@ function LibraryFolders() {
   const [browsing, setBrowsing] = useState(false);
   const [path, setPath] = useState("");
   const [kind, setKind] = useState("music");
+  const modules = useUi((s) => s.modules);
   const [err, setErr] = useState("");
   const add = async () => {
     setErr("");
@@ -198,7 +179,9 @@ function LibraryFolders() {
           <input className="input" style={{ flex: 1, minWidth: 220 }} placeholder="/music/mp3" value={path} onChange={(e) => setPath(e.target.value)} />
           <button className="btn" onClick={() => setBrowsing(true)}><FolderOpen size={15} /> Browse</button>
           <select className="select" style={{ width: 150 }} value={kind} onChange={(e) => setKind(e.target.value)}>
-            <option value="music">Music</option><option value="vgm">VGM / chiptunes</option><option value="audiobooks">Audiobooks</option>
+            <option value="music">Music</option>
+            {modules.vgm && <option value="vgm">VGM / chiptunes</option>}
+            {modules.audiobooks && <option value="audiobooks">Audiobooks</option>}
           </select>
           <button className="btn accent" disabled={!path} onClick={add}><Plus size={15} /> Add & scan</button>
         </div>
@@ -511,43 +494,6 @@ function Jobs() {
 
 // ---------------------------------------------------------------- settings (from the server schema)
 
-function SettingField({ s, value, onChange }: { s: SettingSpec; value: unknown; onChange: (v: unknown) => void }) {
-  const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-  if (s.key === "default_scheme") return <SchemePicker value={String(value)} onChange={onChange} dark={dark} />;
-  switch (s.type) {
-    case "bool":
-      return <Switch checked={!!value} onChange={onChange} label={s.label} />;
-    case "int":
-    case "float":
-      return <input className="input" style={{ maxWidth: 200 }} type="number" min={s.min ?? undefined} max={s.max ?? undefined}
-                    step={s.type === "float" ? "0.1" : "1"} value={value as number} onChange={(e) => onChange(Number(e.target.value))} />;
-    case "choice":
-      return <select className="select" style={{ maxWidth: 320 }} value={String(value)} onChange={(e) => onChange(e.target.value)}>
-        {s.choices.map((c) => <option key={c} value={c}>{c}</option>)}
-      </select>;
-    case "json":
-      return <JsonField value={value} onChange={onChange} />;
-    case "secret":
-      return <input className="input" type="password" autoComplete="off" value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} />;
-    default:
-      return <input className="input" value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} />;
-  }
-}
-
-function JsonField({ value, onChange }: { value: unknown; onChange: (v: unknown) => void }) {
-  const [text, setText] = useState(JSON.stringify(value ?? {}, null, 2));
-  const [bad, setBad] = useState(false);
-  return (
-    <>
-      <textarea className="input" value={text} onChange={(e) => {
-        setText(e.target.value);
-        try { onChange(JSON.parse(e.target.value)); setBad(false); } catch { setBad(true); }
-      }} />
-      {bad && <span className="error-text">Not valid JSON yet</span>}
-    </>
-  );
-}
-
 function AdminSettings() {
   const q = useQuery({ queryKey: ["admin-settings"], queryFn: () => api.get<SettingSpec[]>("/api/admin/settings") });
   const [edits, setEdits] = useState<Record<string, unknown>>({});
@@ -556,7 +502,8 @@ function AdminSettings() {
   const loc = useLocation();
   const groups = useMemo(() => {
     const g: Record<string, SettingSpec[]> = {};
-    for (const s of q.data || []) (g[s.group] ||= []).push(s);
+    // a module's settings, and the modules themselves, are under Modules
+    for (const s of q.data || []) if (!s.module && s.group !== "Modules") (g[s.group] ||= []).push(s);
     return g;
   }, [q.data]);
   useEffect(() => {
@@ -581,7 +528,6 @@ function AdminSettings() {
       {Object.entries(groups).map(([group, specs]) => (
         <section key={group} className="panel" id={group}>
           <div className="panel-head"><div className="h3">{group}</div></div>
-          {group === "Chiptunes" && <p className="dim" style={{ marginTop: 0 }}>Game music usually loops forever. Choose how long looping songs play; the new lengths apply to songs rendered from now on (clear the chiptune cache on the overview to redo older ones).</p>}
           {specs.map((s) => (
             <div key={s.key} className="field">
               <label htmlFor={s.key}>{s.label}</label>
@@ -658,12 +604,14 @@ function AdminUsers() {
 
 export default function Admin() {
   const user = useUi((s) => s.user);
+  const modules = useUi((s) => s.modules);
   const [dragging, setDragging] = useState(false);
   const go = useNavigate();
   if (!user?.is_admin) return <div className="page"><Empty title="Admins only" /></div>;
   // files dragged over any admin page can be dropped to upload them
   const files = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
-  const nav = [["", "Overview", Activity], ["library", "Library folders", Library], ["network", "Library Network", Network], ["upload", "Upload", Upload],
+  const nav = [["", "Overview", Activity], ["library", "Library folders", Library], ["modules", "Modules", Blocks],
+    ...(modules.network ? [["network", "Library Network", Network] as const] : []), ["upload", "Upload", Upload],
     ["edits", "Edits", History], ["hidden", "Hidden & trash", EyeOff], ["jobs", "Jobs", RefreshCw], ["settings", "Settings", Settings2], ["users", "Users", Users]] as const;
   return (
     <div className="page wide"
@@ -690,6 +638,7 @@ export default function Admin() {
           <Routes>
             <Route index element={<Overview />} />
             <Route path="library" element={<LibraryFolders />} />
+            <Route path="modules" element={<Modules />} />
             <Route path="network" element={<LibraryNetwork />} />
             <Route path="upload" element={<UploadArea />} />
             <Route path="edits" element={<Edits />} />

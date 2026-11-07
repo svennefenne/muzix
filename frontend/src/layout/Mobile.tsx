@@ -15,6 +15,7 @@ import { Art, NewDot } from "../components/ui";
 import { appPlayer } from "../player/app";
 import { engine } from "../player/engine";
 import { usePlayer } from "../store/player";
+import { useShown } from "../modules";
 import { useUi } from "../store/ui";
 import { useSwipeSongs } from "../swipeSongs";
 import { hasNext as canNext, SpokenSteps } from "./PlayerBar";
@@ -109,6 +110,7 @@ function MoreSheet({ onClose }: { onClose: () => void }) {
   const nav = useNavigate();
   const user = useUi((s) => s.user);
   const update = useAppUpdate();
+  const more = useShown(MORE);
   useEffect(() => {
     const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", key);
@@ -116,7 +118,7 @@ function MoreSheet({ onClose }: { onClose: () => void }) {
   }, [onClose]);
   const go = (to: string) => { nav(to); onClose(); };
   const items = [
-    ...MORE,
+    ...more,
     { to: "/settings", label: "Settings", sub: "Colours, playback and your account", icon: Settings },
     ...(user?.is_admin ? [{ to: "/admin", label: "Admin", sub: "Library folders, uploads, users", icon: Shield }] : []),
   ];

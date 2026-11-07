@@ -30,12 +30,13 @@ export function Footer() {
   const castOn = usePlayer((s) => s.castState === "connected");
   const castDevice = usePlayer((s) => s.castDevice);
   const lastScan = (jobs.data || []).find((j) => j.type === "scan");
+  const vgm = useUi((s) => s.modules.vgm);
   return (
     <footer className="footer">
       <span>Muzix</span><span className="sep">·</span>
       <span className="hide-sm" data-tip="The server Muzix plays from">Node {location.hostname}</span><span className="sep hide-sm">·</span>
       <Link to="/settings" data-tip="Your settings">{user?.username}</Link>
-      {home.data && <><span className="sep hide-sm">·</span><span className="hide-sm" data-tip="Everything in the library">{fmtNumber(home.data.stats.tracks)} tracks · {fmtNumber(home.data.stats.vgm_tracks)} chiptunes · {home.data.stats.hours} h</span></>}
+      {home.data && <><span className="sep hide-sm">·</span><span className="hide-sm" data-tip="Everything in the library">{fmtNumber(home.data.stats.tracks)} tracks{vgm && ` · ${fmtNumber(home.data.stats.vgm_tracks)} chiptunes`} · {home.data.stats.hours} h</span></>}
       <span className="sep">·</span>
       <span data-tip={theme.skin ? `${theme.skin.blurb}. The look follows the genre of what plays; pin one in Settings.` : "Genre skins are off; turn them on in Settings"}>
         {theme.skin ? `Skin: ${theme.skin.name}` : "Skin: off"}

@@ -6,10 +6,22 @@ import { ago, api, fmtLong, fmtNumber } from "../api";
 import { playAlbum, playRandom } from "../actions";
 import { AlbumRow, GenreCard } from "../components/Cards";
 import { Art, Display, Kicker, Loading, NewDot, Section } from "../components/ui";
+import { useModules, useShown } from "../modules";
 import { engine } from "../player/engine";
 import { fromEpisode, useStartedEpisodes } from "../store/player";
 import { useUi } from "../store/ui";
 import type { Album, Episode, Home as HomeData } from "../types";
+
+// the sections, as chips on phones (desktops have them in the top bar)
+const SECTIONS = [
+  { to: "/library", label: "Music" }, { to: "/podcasts", label: "Podcasts" }, { to: "/vgm", label: "VGM" },
+  { to: "/audiobooks", label: "Audiobooks" }, { to: "/radio", label: "Radio" }, { to: "/spotify", label: "Spotify" },
+];
+
+/** "a, b and c" */
+function listed(parts: string[]) {
+  return parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts.join("");
+}
 
 function greeting() {
   const h = new Date().getHours();
@@ -45,6 +57,8 @@ export default function Home() {
     return pool[Math.floor(Math.random() * pool.length)];
   }, [q.data]);
   const started = useStartedEpisodes();
+  const sections = useShown(SECTIONS);
+  const modules = useModules();
   if (!q.data) return <div className="page"><Loading /></div>;
   const d = q.data;
   const latest = d.recently_added[0];
@@ -58,8 +72,7 @@ export default function Home() {
     <div className="page">
       <nav className="home-chips phone-only" aria-label="Sections">
         <button className="hchip on phone-only" onClick={() => playRandom({ kind: "music" })}><Shuffle size={14} /> Shuffle</button>
-        {[["/library", "Music"], ["/podcasts", "Podcasts"], ["/vgm", "VGM"], ["/audiobooks", "Audiobooks"], ["/radio", "Radio"], ["/spotify", "Spotify"]]
-          .map(([to, label]) => (
+        {sections.map(({ to, label }) => (
             <Link key={to} to={to} className="hchip">
               {to === "/podcasts" && fresh.some((p) => p.dot) && <NewDot label="New episodes" />}{label}
             </Link>
@@ -72,8 +85,11 @@ export default function Home() {
           </div>
           <Display l1={`${greeting()},`} l2={user?.username || "listener"} />
           <p className="lede desktop-only">
-            Your whole collection in one place: {fmtNumber(d.stats.artists)} artists, {fmtNumber(d.stats.vgm_tracks)} chiptunes and tracker
-            songs, audiobooks, podcasts and radio. The app dresses up for whatever's playing.
+            Your whole collection in one place: {listed([
+              `${fmtNumber(d.stats.artists)} artists`,
+              ...(modules.vgm ? [`${fmtNumber(d.stats.vgm_tracks)} chiptunes and tracker songs`] : []),
+              ...(["audiobooks", "podcasts", "radio"] as const).filter((m) => modules[m]),
+            ])}. The app dresses up for whatever's playing.
           </p>
           <div className="row-actions desktop-only">
             <button className="btn primary" onClick={() => playRandom({ kind: "music" })}><Shuffle size={15} /> Shuffle everything</button>
