@@ -238,11 +238,11 @@ class GenreMapper:
 
         base = os.path.dirname(lg.__file__)
         self.exact = _parse_exact(EXACT_TABLE)
-        with open(os.path.join(base, "aliases.yaml")) as f:
+        with open(os.path.join(base, "aliases.yaml"), encoding="utf-8") as f:
             aliases = yaml.safe_load(f)
         self.aliases = [(re.compile(p), tmpl)
                         for tmpl, pats in aliases.items() for p in pats]
-        with open(os.path.join(base, "genres-tree.yaml")) as f:
+        with open(os.path.join(base, "genres-tree.yaml"), encoding="utf-8") as f:
             tree = yaml.safe_load(f)
         self.tree_nodes = {hk(k): v for k, v in TREE_NODES.items()}
         self.parents = defaultdict(set)
@@ -342,7 +342,7 @@ class LastFmTags:
         self.dirty = 0
         self.failed = 0
         try:
-            with open(cache_path) as f:
+            with open(cache_path, encoding="utf-8") as f:
                 self.cache = json.load(f)
         except (OSError, ValueError):
             self.cache = {}
@@ -350,7 +350,7 @@ class LastFmTags:
     def save(self):
         with self.lock:
             tmp = self.path + ".tmp"
-            with open(tmp, "w") as f:
+            with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(self.cache, f, ensure_ascii=False)
             os.replace(tmp, self.path)
             self.dirty = 0
@@ -993,14 +993,14 @@ class MusicOrgPlugin(BeetsPlugin):
         path = self.config["artist_genres"].as_str()
         if not path or not os.path.isfile(os.path.expanduser(path)):
             return {}
-        with open(os.path.expanduser(path)) as f:
+        with open(os.path.expanduser(path), encoding="utf-8") as f:
             return {nkey(k): v for k, v in json.load(f).items() if v in MAIN_GENRES}
 
     def _overrides(self):
         path = os.path.expanduser(self.config["overrides"].as_str())
         out = {}
         if os.path.isfile(path):
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 for k, v in (yaml.safe_load(f) or {}).items():
                     if v in MAIN_GENRES:
                         out[nkey(str(k))] = v
@@ -1303,7 +1303,7 @@ class MusicOrgPlugin(BeetsPlugin):
         for k, v in reasons.most_common():
             print(f"{v:6d}  {k}")
         if opts.out:
-            with open(opts.out, "w") as f:
+            with open(opts.out, "w", encoding="utf-8") as f:
                 f.write("root\tartist\talbumdir\treason\ttracks\tsource\tscores\tdupe_of\torig_dir\town_genre\trepaired\n")
                 for r in sorted(rows, key=lambda r: [str(x) for x in r]):
                     f.write("\t".join(str(x) for x in r) + "\n")

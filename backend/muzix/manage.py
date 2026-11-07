@@ -338,14 +338,14 @@ def _pictures_of(tracks: list[Track]) -> dict:
 
 def _save_pictures(saved: dict, path: str):
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(saved, f)
 
 
 def _put_pictures(path: str) -> bool:
     """The pictures saved in `path` back into the files that are still where they were."""
     try:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             saved = json.load(f)
     except (OSError, ValueError):
         return False
