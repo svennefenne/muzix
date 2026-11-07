@@ -19,7 +19,7 @@ jobs:
             asset: muzix-desktop-linux-x86_64.tar.gz
           - os: windows-latest
             asset: muzix-desktop-windows-x64.zip
-          - os: macos-14            # Apple silicon
+          - os: macos-latest        # Apple silicon
             asset: muzix-desktop-macos-arm64.zip
     runs-on: ${{ matrix.os }}
     defaults:
