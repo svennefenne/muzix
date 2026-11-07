@@ -10,7 +10,9 @@ LABEL = "se.svennefenne.muzix-desktop"
 
 
 def command() -> list[str]:
-    """How this program is started: the app itself when it's built, else Python with the package."""
+    """How this program is started: its AppImage, the app itself when it's built, else Python with the package."""
+    if os.environ.get("APPIMAGE"):      # an AppImage runs from a new temporary folder each time
+        return [os.environ["APPIMAGE"]]
     if getattr(sys, "frozen", False):
         exe = sys.executable
         if sys.platform == "darwin" and ".app/Contents/MacOS/" in exe:

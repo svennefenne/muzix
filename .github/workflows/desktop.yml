@@ -16,9 +16,9 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04        # an older glibc, so the build runs on more Linux versions
-            asset: muzix-desktop-linux-x86_64.tar.gz
+            asset: muzix-desktop-linux-x86_64.AppImage
           - os: windows-latest
-            asset: muzix-desktop-windows-x64.zip
+            asset: muzix-desktop-windows-x64-setup.exe
           - os: macos-latest        # Apple silicon
             asset: muzix-desktop-macos-arm64.zip
     runs-on: ${{ matrix.os }}
@@ -68,18 +68,59 @@ jobs:
           if (Test-Path check.txt) { Get-Content check.txt }
           exit $p.ExitCode
 
-      - name: Pack
+      # the AppImage, with appimagetool and the AppImage runtime pinned to these files
+      - name: Pack (AppImage)
+        if: runner.os == 'Linux'
+        env:
+          TOOL: https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+          TOOL_SHA256: ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
+          RUNTIME: https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64
+          RUNTIME_SHA256: 2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
         run: |
-          case "$RUNNER_OS" in
-            Linux) tar -C dist -czf "../${{ matrix.asset }}" muzix-desktop ;;
-            macOS) ditto -c -k --keepParent "dist/Muzix Desktop.app" "../${{ matrix.asset }}" ;;
-            Windows) powershell -Command "Compress-Archive -Path 'dist/Muzix Desktop' -DestinationPath '../${{ matrix.asset }}'" ;;
-          esac
+          curl -sSL -o "$RUNNER_TEMP/appimagetool" "$TOOL"
+          curl -sSL -o "$RUNNER_TEMP/runtime-x86_64" "$RUNTIME"
+          printf '%s  %s\n' "$TOOL_SHA256" "$RUNNER_TEMP/appimagetool" "$RUNTIME_SHA256" "$RUNNER_TEMP/runtime-x86_64" | sha256sum -c
+          chmod +x "$RUNNER_TEMP/appimagetool"
+          packaging/linux/build-appimage.sh "$RUNNER_TEMP/appimagetool" "$RUNNER_TEMP/runtime-x86_64" "$GITHUB_WORKSPACE/${{ matrix.asset }}"
+
+      - name: Check the AppImage
+        if: runner.os == 'Linux'
+        timeout-minutes: 5
+        env:
+          QT_QPA_PLATFORM: offscreen
+          APPIMAGE_EXTRACT_AND_RUN: "1"       # no FUSE on a build machine
+        run: '"$GITHUB_WORKSPACE/${{ matrix.asset }}" --check'
+
+      # the installer, then installed, checked and uninstalled as a user would
+      - name: Pack (installer)
+        if: runner.os == 'Windows'
+        timeout-minutes: 15
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
+          $version = (Select-String -Path muzix_desktop\__init__.py -Pattern '__version__ = "(.+)"').Matches[0].Groups[1].Value
+          & $iscc /Q "/DAppVersion=$version" "/DSource=$PWD\dist\Muzix Desktop" "/O$env:GITHUB_WORKSPACE" packaging\windows\muzix-desktop.iss
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $dir = "$env:RUNNER_TEMP\Muzix Desktop test"
+          $setup = Start-Process -FilePath "$env:GITHUB_WORKSPACE\${{ matrix.asset }}" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/CURRENTUSER", "/DIR=`"$dir`"" -Wait -PassThru
+          if ($setup.ExitCode) { Write-Output "Installing failed ($($setup.ExitCode))"; exit 1 }
+          $p = Start-Process -FilePath "$dir\Muzix Desktop.exe" -ArgumentList "--check", "--report", "$env:RUNNER_TEMP\installed.txt" -PassThru
+          if (-not $p.WaitForExit(180000)) { $p.Kill(); Write-Output "The installed app's check didn't finish"; exit 1 }
+          Get-Content "$env:RUNNER_TEMP\installed.txt"
+          if ($p.ExitCode) { exit $p.ExitCode }
+          $un = Start-Process -FilePath "$dir\unins000.exe" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES" -Wait -PassThru
+          Start-Sleep -Seconds 5      # the uninstaller finishes in a copy of itself
+          if (Test-Path "$dir\Muzix Desktop.exe") { Write-Output "Uninstalling left the app behind"; exit 1 }
+
+      - name: Pack (macOS)
+        if: runner.os == 'macOS'
+        run: ditto -c -k --keepParent "dist/Muzix Desktop.app" "$GITHUB_WORKSPACE/${{ matrix.asset }}"
 
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset }}
-          path: ${{ matrix.asset }}
+          path: ${{ github.workspace }}/${{ matrix.asset }}
 
   release:
     needs: build

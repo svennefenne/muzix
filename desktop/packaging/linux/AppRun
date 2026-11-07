@@ -1,0 +1,4 @@
+#!/bin/sh
+# The AppImage's start: Muzix Desktop as PyInstaller built it, in usr/lib/muzix-desktop.
+HERE="$(dirname "$(readlink -f "$0")")"
+exec "$HERE/usr/lib/muzix-desktop/muzix-desktop" "$@"

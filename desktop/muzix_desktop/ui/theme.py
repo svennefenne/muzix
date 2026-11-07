@@ -25,12 +25,18 @@ def load_fonts():
 
 
 def icon() -> QIcon:
-    return QIcon(os.path.join(ASSETS, "icon.png"))
+    """Muzix's own icon (frontend/public): drawn for each size, so the small ones in the tray and the
+    title bar are sharp (16 px is Muzix's simpler drawing for that size), and the big one beside them."""
+    i = QIcon()
+    folder = os.path.join(ASSETS, "icons")
+    for n in sorted(os.listdir(folder)) if os.path.isdir(folder) else []:
+        i.addFile(os.path.join(folder, n))
+    i.addFile(os.path.join(ASSETS, "icon.png"))
+    return i
 
 
 def tray_icon() -> QIcon:
-    path = os.path.join(ASSETS, "tray.png")
-    return QIcon(path) if os.path.exists(path) else icon()
+    return icon()
 
 
 def ui_font(size: float = 10) -> QFont:

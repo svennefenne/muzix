@@ -1,13 +1,16 @@
 # PyInstaller: Muzix Desktop as one folder per platform (an .app on macOS).
 #   cd desktop && pyinstaller muzix-desktop.spec
 import os
+import re
 import sys
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 here = os.path.abspath(".")
+version = re.search(r'__version__ = "(.+?)"', open(os.path.join(here, "muzix_desktop", "__init__.py")).read()).group(1)
 backend = os.path.abspath("../backend")
-icon = os.path.join(here, "muzix_desktop", "assets", "icon.png")
+# Muzix's icon: every size drawn for Windows, the big one for the others (made into .icns on a Mac)
+icon = os.path.join(here, "muzix_desktop", "assets", "icon.ico" if sys.platform == "win32" else "icon.png")
 
 datas = [(os.path.join(here, "muzix_desktop", "assets"), "muzix_desktop/assets")]
 datas += collect_data_files("beetsplug.lastgenre")       # the genre tree the filing rules use
@@ -42,5 +45,5 @@ if sys.platform == "darwin":
         icon=icon,
         bundle_identifier="se.svennefenne.muzix-desktop",
         info_plist={"LSUIElement": True, "NSHighResolutionCapable": True,
-                    "CFBundleShortVersionString": os.environ.get("MUZIX_DESKTOP_VERSION", "0.1.0")},
+                    "CFBundleShortVersionString": version, "CFBundleVersion": version},
     )

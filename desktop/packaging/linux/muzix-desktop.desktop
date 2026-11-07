@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Muzix Desktop
+Comment=Share your music folders with Muzix servers, and fix albums' metadata and artwork
+Exec=muzix-desktop
+Icon=muzix-desktop
+Categories=AudioVideo;Audio;
+Terminal=false

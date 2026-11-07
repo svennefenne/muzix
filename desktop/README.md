@@ -19,14 +19,17 @@ the background, from an icon in the system tray (the menu bar on a Mac):
 Download the file for your system from the newest `desktop-v…` release on the
 [releases page](https://github.com/svennefenne/muzix/releases).
 
-- **Windows**: unzip `muzix-desktop-windows-x64.zip` somewhere (Documents, say)
-  and start `Muzix Desktop.exe` in it. The app isn't signed, so Windows may say it
+- **Windows**: run `muzix-desktop-windows-x64-setup.exe`. It installs Muzix Desktop
+  for you (no administrator needed) with a Start menu entry, and it's uninstalled
+  from Windows' list of apps. The installer isn't signed, so Windows may say it
   protected your PC: choose *More info → Run anyway*.
 - **macOS** (Apple silicon): unzip `muzix-desktop-macos-arm64.zip` and move
   *Muzix Desktop* to Applications. The app isn't notarized: the first time,
   right-click it and choose *Open*, then *Open* again.
-- **Linux**: unpack `muzix-desktop-linux-x86_64.tar.gz` and start
-  `muzix-desktop/muzix-desktop`. On GNOME, tray icons need the *AppIndicator and
+- **Linux**: `muzix-desktop-linux-x86_64.AppImage` is the whole app in one file.
+  Make it executable (in the file's properties, or `chmod +x`) and start it. With
+  AppImageLauncher installed, it offers to move the file to `~/Applications` and
+  add it to the menu. On GNOME, tray icons need the *AppIndicator and
   KStatusNotifierItem Support* extension.
 
 *Settings → Sharing → Start Muzix Desktop when I log in* keeps it running.
@@ -68,6 +71,12 @@ python3 -m venv .venv
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests
 .venv/bin/pyinstaller muzix-desktop.spec   # build into dist/
 ```
+
+The desktop workflow packs that: an installer for Windows (Inno Setup,
+`packaging/windows/muzix-desktop.iss`), an AppImage for Linux
+(`packaging/linux/build-appimage.sh`; the workflow pins appimagetool and the
+AppImage runtime by checksum) and the .app zipped for macOS. The installer is installed, checked
+and uninstalled again before it's published.
 
 It shares the server's code (`../backend`): reading songs, the metadata sources,
 writing tags and filing albums. Its side of the server connection is in
