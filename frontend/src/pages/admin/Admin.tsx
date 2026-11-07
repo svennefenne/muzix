@@ -215,7 +215,7 @@ interface Batch {
 interface ImportDone {
   id: number; batch: string; status: string; message: string; progress: number; started_at: string | null; finished_at: string | null;
   music: number | null; vgm: number | null; vgm_folder: string; left: string[];
-  albums: { artist: string; album: string; year: number; genre: string; songs: number; where: string; album_id: number | null }[];
+  albums: { artist: string; album: string; year: number; songs: number; where: string; album_id: number | null }[];
 }
 const MUSIC_KINDS = ["native", "decode"];
 

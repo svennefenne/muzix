@@ -1,4 +1,5 @@
-"""Jumping to a letter in the library: where each first letter begins, in the list's own order."""
+"""Jumping to a letter in the library: where the names under each letter run in the list's own
+order: digits and signs ("#") first, then A to Z, then other letters ("…")."""
 from types import SimpleNamespace
 
 from fastapi import FastAPI
@@ -25,11 +26,11 @@ def test_letters_follow_the_list():
     app.include_router(library.router)
     app.dependency_overrides[current_user] = lambda: SimpleNamespace(id=1)
     c = TestClient(app)
-    got = c.get("/api/letters", params={"of": "albums", "sort": "name"}).json()
+    runs = c.get("/api/letters", params={"of": "albums", "sort": "name"}).json()
     titles = [a["title"] for a in c.get("/api/albums", params={"sort": "name", "limit": 500}).json()["items"]]
-    for g in got:       # each letter's offset is the first album under it in the list itself
-        assert library.initial(titles[g["offset"]]) == g["letter"]
-        assert all(library.initial(t) != g["letter"] for t in titles[:g["offset"]])
-    letters = [g["letter"] for g in got]
-    assert {"#", "A", "B", "Z", "Å", "Ö", "…"} <= set(letters)
-    assert library.initial("  the Beatles") == "T" and library.initial("") == "#"
+    for r, after in zip(runs, runs[1:] + [{"offset": len(titles)}]):     # each run is its letter's, all of it
+        assert {library.initial(t) for t in titles[r["offset"]:after["offset"]]} == {r["letter"]}
+    letters = [r["letter"] for r in runs]
+    assert set(letters) <= set("#ABCDEFGHIJKLMNOPQRSTUVWXYZ…") and {"#", "A", "B", "Z", "…"} <= set(letters)
+    assert letters[0] == "#" and letters[-1] == "…"         # 2Pac first; Å, Ö and Би-2 after Z
+    assert library.initial("  the Beatles") == "T" and library.initial("") == "#" and library.initial("Örjan") == "…"

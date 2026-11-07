@@ -62,12 +62,15 @@ function scrollerOf(el: HTMLElement | null) {
 
 const STUCK_PADDING = 18;      // .browse-sticky.stuck's padding (base.css)
 
+interface Jump { seq: number; at: number }      // the nth jump, to this place in the whole list
+const ITEMS = ":scope > .grid > *, .lrow";      // a list's items, as gallery or grid cards or as rows
+
 /** Loads more pages as the end of the list scrolls into view (and earlier ones at its top, after a
  * jump). `onTop` hears the place in the whole list of the first item under the bars; a new `jump`
- * brings the list's start up to the bars. */
+ * brings the item it's to up to the bars. */
 function Infinite<T>({ q, children, empty, onTop, jump }: {
   q: ReturnType<typeof usePaged<T>>; children: (items: T[]) => ReactNode; empty?: ReactNode;
-  onTop?: (index: number) => void; jump?: number;
+  onTop?: (index: number) => void; jump?: Jump;
 }) {
   const more = useCallback(() => { if (q.hasNextPage && !q.isFetchingNextPage) q.fetchNextPage(); }, [q]);
   const before = useCallback(() => { if (q.hasPreviousPage && !q.isFetchingPreviousPage) q.fetchPreviousPage(); }, [q]);
@@ -87,16 +90,20 @@ function Infinite<T>({ q, children, empty, onTop, jump }: {
     was.current = { first, height: scroller.scrollHeight };
   });
 
-  // a letter picked: the list from it, just under the bars
+  // a letter picked: its first item just under the bars (earlier pages may be here already)
   const jumped = useRef<number | undefined>(undefined);
+  const target = useRef<number | undefined>(undefined);
   useLayoutEffect(() => {
-    if (jump === undefined || jump === jumped.current || !items.length || !list.current) return;
-    jumped.current = jump;
+    if (!jump || jump.seq === jumped.current || !list.current) return;
+    const node = list.current.querySelectorAll<HTMLElement>(ITEMS)[jump.at - first];
+    if (jump.at < first || !node) return;         // its page isn't here yet
+    jumped.current = jump.seq;
+    target.current = jump.at;
     const { scroller, bars } = scrollerOf(list.current);
     if (!scroller) return;
-    // the bars as they are once stuck (they're taller then), and the list right under them
+    // the bars as they are once stuck (they're taller then), and the item's row right under them
     const barsHeight = bars ? bars.offsetHeight + (bars.classList.contains("stuck") ? 0 : STUCK_PADDING) : 0;
-    const top = list.current.getBoundingClientRect().top - scroller.getBoundingClientRect().top - barsHeight - 6;
+    const top = node.getBoundingClientRect().top - scroller.getBoundingClientRect().top - barsHeight - 6;
     scroller.scrollBy({ top, behavior: "instant" });
   });
 
@@ -107,7 +114,7 @@ function Infinite<T>({ q, children, empty, onTop, jump }: {
     let frame = 0;
     const look = () => {
       frame = 0;
-      const nodes = list.current?.querySelectorAll<HTMLElement>(":scope > .grid > *, .lrow");
+      const nodes = list.current?.querySelectorAll<HTMLElement>(ITEMS);
       if (!nodes?.length) return;
       const { line } = scrollerOf(list.current);
       let lo = 0, hi = nodes.length - 1;
@@ -117,7 +124,13 @@ function Infinite<T>({ q, children, empty, onTop, jump }: {
         if (r.bottom > line + r.height * 0.35) hi = mid;
         else lo = mid + 1;
       }
-      onTop(first + lo);
+      // a row of cards can hold the end of one letter and the start of the next: the one jumped
+      // to is the one looked at while its row is the top one
+      const rowTop = nodes[lo].getBoundingClientRect().top;
+      let end = lo;
+      while (end + 1 < nodes.length && Math.abs(nodes[end + 1].getBoundingClientRect().top - rowTop) < 2) end++;
+      const t = target.current;
+      onTop(t !== undefined && t >= first + lo && t <= first + end ? t : first + lo);
     };
     const later = () => { if (!frame) frame = requestAnimationFrame(look); };
     later();
@@ -129,7 +142,8 @@ function Infinite<T>({ q, children, empty, onTop, jump }: {
   if (!items.length) return <>{empty || <Empty title="Nothing here yet">Add music folders on the admin page and scan them.</Empty>}</>;
   return (
     <div className="paged" ref={list}>
-      {q.hasPreviousPage && <div ref={top} className="paged-before">{q.isFetchingPreviousPage && <Loading />}</div>}
+      {/* nothing shows here while earlier pages load: whatever it was would push the list down */}
+      {q.hasPreviousPage && <div ref={top} className="paged-before" />}
       {children(items)}
       <div ref={sentinel} style={{ height: 1 }} />
     </div>
@@ -138,8 +152,10 @@ function Infinite<T>({ q, children, empty, onTop, jump }: {
 
 // ---------------------------------------------------------------- jumping to a letter
 
-interface Letter { letter: string; offset: number }
+interface Letter { letter: string; offset: number }      // where a run of names under a letter starts
 const AZ = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+const SIGNS = "#";       // digits and signs: they sort first
+const OTHER = "…";       // Å, Ä, Ö and other scripts: they sort after Z
 
 /** A list's first letters to jump to (sorted by name; another sort turns to it on a jump), and
  * the letter being looked at. The jump is kept in the address (?at=), so Back comes to it again. */
@@ -149,7 +165,7 @@ function useLetters(of: "albums" | "artists", params: Record<string, string | nu
   const sorted = alpha.includes(browse.sort);
   const by = sorted ? browse.sort : alpha[0];
   const at = sorted ? Number(search.get("at")) || 0 : 0;
-  const [jump, setJump] = useState<number>();
+  const [jump, setJump] = useState<Jump>();
   const [top, setTop] = useState(at);
   const q = useQuery({ queryKey: ["letters", of, params, by], staleTime: 60_000,
                        queryFn: () => api.get<Letter[]>("/api/letters", { of, ...params, sort: by }) });
@@ -158,7 +174,7 @@ function useLetters(of: "albums" | "artists", params: Record<string, string | nu
     setSearch((p) => { const n = new URLSearchParams(p); if (offset) n.set("at", String(offset)); else n.delete("at"); return n; },
               { replace: true });
     setTop(offset);
-    setJump((j) => (j ?? 0) + 1);
+    setJump((j) => ({ seq: (j?.seq ?? 0) + 1, at: offset }));
   };
   const letters = q.data || [];
   const active = sorted ? [...letters].reverse().find((l) => l.offset <= top)?.letter : undefined;
@@ -184,15 +200,20 @@ function LetterBar({ letters, active, onJump, hint }: { letters: Letter[]; activ
     const left = on.offsetLeft - row.clientWidth / 2 + on.offsetWidth / 2;
     row.scrollTo({ left, behavior: "smooth" });
   }, [active]);
-  const at = new Map(letters.map((l) => [l.letter, l]));
-  const shown = [...(at.has("#") ? ["#"] : []), ...AZ, ...letters.map((l) => l.letter).filter((l) => l !== "#" && !AZ.includes(l))];
+  // where each letter jumps to: its first run ("#" has a short second one after Z: { | ~)
+  const at = new Map<string, Letter>();
+  for (const l of letters) if (!at.has(l.letter)) at.set(l.letter, l);
+  const shown = [...(at.has(SIGNS) ? [SIGNS] : []), ...AZ, ...(at.has(OTHER) ? [OTHER] : [])];
   return (
     <nav className="letters" aria-label="Jump to a letter" ref={bar}>
       {shown.map((letter) => {
         const l = at.get(letter);
         return (
           <button key={letter} className={letter === active ? "on" : ""} disabled={!l} aria-current={letter === active || undefined}
-                  data-tip={l ? hint : undefined} onClick={() => l && onJump(l)}>
+                  data-tip={!l ? undefined : [letter === OTHER ? "Å, Ä, Ö and other scripts" : letter === SIGNS ? "Digits and signs" : "",
+                                              hint].filter(Boolean).join(" · ") || undefined}
+                  aria-label={letter === OTHER ? "Other letters: Å, Ä, Ö and other scripts" : letter === SIGNS ? "Digits and signs" : undefined}
+                  onClick={() => l && onJump(l)}>
             {letter}
           </button>
         );

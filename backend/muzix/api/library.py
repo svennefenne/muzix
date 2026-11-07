@@ -1,7 +1,6 @@
 import os
 import random
 import re
-import unicodedata
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -202,22 +201,19 @@ def artists(db: Session = Depends(get_db), user: User = Depends(current_user),
 
 
 def initial(name: str) -> str:
-    """What a name is listed under by its first letter: A to Z, Å, Ä, Ö and the like as they are,
-    "#" for digits and signs, and "…" for other scripts."""
-    c = (name or "").strip()[:1]
-    if not c or not c.isalpha():
-        return "#"
-    if c.isascii():
-        return c.upper()
-    return c.upper() if "LATIN" in unicodedata.name(c, "") else "…"
+    """What a name is listed under by its first letter: "#" for digits and signs (they sort first),
+    A to Z, and "…" for other letters (Å, Ä, Ö, other scripts: they sort after Z)."""
+    c = (name or "").strip()[:1].upper()
+    return c if "A" <= c <= "Z" else "…" if c.isalpha() else "#"
 
 
 @router.get("/letters")
 def letters(db: Session = Depends(get_db), user: User = Depends(current_user), of: str = "albums",
             kind: str = "music", genre: str | None = None, artist_id: int | None = None, liked_only: bool = False,
             sort: str = "name"):
-    """Where each first letter begins in a list sorted by name (/api/albums or /api/artists with the same
-    filters): [{letter, offset}], in the list's order, for jumping to a letter."""
+    """Where the names under each first letter run in a list sorted by name (/api/albums or
+    /api/artists with the same filters): [{letter, offset}] for each run, in the list's order, for
+    jumping to a letter. "#" can run twice: most signs sort before A, a few ({, |, ~) after Z."""
     if of == "artists":
         q, _ = _artists_query(user, genre, liked_only)
         names = db.scalars(q.with_only_columns(Artist.name).order_by(func.lower(Artist.name), Artist.id))
@@ -225,11 +221,10 @@ def letters(db: Session = Depends(get_db), user: User = Depends(current_user), o
         column = Album.artist_name if sort == "artist" else Album.title
         q = _albums_query(user, kind, genre, artist_id, None, liked_only, column)
         names = db.scalars(q.order_by(*ALBUM_SORTS["artist" if sort == "artist" else "name"], Album.id))
-    out, seen = [], set()
+    out = []
     for i, name in enumerate(names):
         letter = initial(name)
-        if letter not in seen:
-            seen.add(letter)
+        if not out or out[-1]["letter"] != letter:
             out.append({"letter": letter, "offset": i})
     return out
 

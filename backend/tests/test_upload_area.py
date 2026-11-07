@@ -71,7 +71,7 @@ def test_the_latest_imports_say_where_the_albums_went():
         s.flush()
         s.add(Job(type="import_upload", title="Import", status="done", params={"batch": "b1"},
                   result={"music": 7, "vgm": 0, "music_root": root, "left": ["CW/cover.jpg"],
-                          "albums": [{"artist": "Kraftwerk", "album": "Computer World", "year": 1981, "genre": "Electronic",
+                          "albums": [{"artist": "Kraftwerk", "album": "Computer World", "year": 1981,
                                       "folder": folder, "songs": 7}]}))
         album_id = al.id
     [imp] = client().get("/api/upload/imports").json()
