@@ -153,6 +153,22 @@ class Albums(BaseModel):
     ids: list[int] = Field(min_length=1, max_length=500)
 
 
+class Merge(BaseModel):
+    ids: list[int] = Field(min_length=2, max_length=20)       # the first one stays, its songs disc 1
+    fields: dict = {}                                           # title, artist, year, genre
+
+
+@router.post("/albums/merge/plan")
+def merge_plan(body: Merge):
+    """What merging these albums would do: the folder, and each album's disc and songs."""
+    return _do(manage.merge_plan, body.ids, body.fields)
+
+
+@router.post("/albums/merge")
+def merge_albums(body: Merge):
+    return _do(manage.merge_albums, body.ids, body.fields)
+
+
 @router.post("/albums/delete")
 def delete_albums(body: Albums):
     """Several albums into the trash at once (each its own entry there, to put back on its own):

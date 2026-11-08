@@ -2,7 +2,8 @@
 
 `write(path, changes)` sets the given fields (title, artist, albumartist, album, track_no,
 disc_no, year, genre); an empty value removes the tag. Track and disc totals already in the file
-("3/12") are kept. Chip and tracker formats have no tags to write: `writable()` says no, and
+("3/12") are kept, unless `disc_total` gives the disc's. A new year takes the original release
+date out too (it's what's read first, so a reissue tagged with it would keep its old year). Chip and tracker formats have no tags to write: `writable()` says no, and
 their edits are kept in the database instead (TagOverride).
 
 `snapshot(path, fields)` keeps the tags behind those fields exactly as the file has them (absent
@@ -13,11 +14,12 @@ and `put_pictures(path, snap)` do the same for the embedded pictures a new cover
 import base64
 
 import mutagen
+import mutagen.id3
 from mutagen.apev2 import APEv2, APEValue, BINARY
 from mutagen.asf import ASF
 from mutagen.flac import FLAC, Picture
 from mutagen.id3 import APIC, ID3, TALB, TCON, TDRC, TIT2, TPE1, TPE2, TPOS, TRCK
-from mutagen.mp4 import MP4, MP4Cover
+from mutagen.mp4 import MP4, MP4Cover, MP4FreeForm
 from mutagen.ogg import OggFileType
 
 from .. import formats
@@ -38,6 +40,10 @@ APE = {"title": "Title", "artist": "Artist", "albumartist": "Album Artist", "alb
        "track_no": "Track", "disc_no": "Disc", "year": "Year", "genre": "Genre"}
 ASF_KEYS = {"title": "Title", "artist": "Author", "albumartist": "WM/AlbumArtist", "album": "WM/AlbumTitle",
             "track_no": "WM/TrackNumber", "disc_no": "WM/PartOfSet", "year": "WM/Year", "genre": "WM/Genre"}
+# the original release date (mediafile's original_date), read before the year
+ORIGINAL = {"id3": ("TDOR", "TORY"), "vorbis": ("ORIGINALDATE", "ORIGINALYEAR"), "ape": ("ORIGINALDATE",),
+            "mp4": ("----:com.apple.iTunes:ORIGINAL YEAR", "----:com.apple.iTunes:ORIGINALDATE"),
+            "asf": ("WM/OriginalReleaseYear",)}
 
 
 class TagError(Exception):
@@ -52,11 +58,12 @@ def _text(v) -> str:
     return "" if v in (None, 0) else str(v)
 
 
-def _numbered(new, old: str) -> str:
-    """A track or disc number, keeping the total the file already had ("3/12")."""
+def _numbered(new, old: str, total: int | None = None) -> str:
+    """A track or disc number, with `total` or the total the file already had ("3/12")."""
     if not new:
         return ""
-    total = old.split("/", 1)[1] if "/" in (old or "") else ""
+    if not total:
+        total = old.split("/", 1)[1] if "/" in (old or "") else ""
     return f"{new}/{total}" if total else str(new)
 
 
@@ -71,12 +78,16 @@ def write(path: str, changes: dict):
     if audio.tags is None:
         audio.add_tags()
     t = audio.tags
+    discs = changes.get("disc_total")
     changes = {k: v for k, v in changes.items() if k in FIELDS}
+    if "year" in changes:
+        _drop_original(audio)
+    total = lambda k: discs if k == "disc_no" else None
     if isinstance(t, ID3):
         for k, v in changes.items():
             if k in ("track_no", "disc_no"):
                 frame = "TRCK" if k == "track_no" else "TPOS"
-                value = _numbered(v, str(t[frame]) if frame in t else "")
+                value = _numbered(v, str(t[frame]) if frame in t else "", total(k))
                 t.delall(frame)
                 if value:
                     t.add((TRCK if k == "track_no" else TPOS)(encoding=3, text=value))
@@ -90,9 +101,9 @@ def write(path: str, changes: dict):
         for k, v in changes.items():
             if k in ("track_no", "disc_no"):
                 key = "trkn" if k == "track_no" else "disk"
-                total = t[key][0][1] if key in t and t[key] else 0
+                of = total(k) or (t[key][0][1] if key in t and t[key] else 0)
                 if v:
-                    t[key] = [(int(v), total)]
+                    t[key] = [(int(v), of)]
                 else:
                     t.pop(key, None)
             elif _text(v):
@@ -102,6 +113,8 @@ def write(path: str, changes: dict):
         audio.save()
     elif isinstance(audio, ASF):
         for k, v in changes.items():
+            if k == "disc_no" and v and total(k):
+                v = f"{v}/{total(k)}"
             if _text(v):
                 t[ASF_KEYS[k]] = [_text(v)]
             else:
@@ -110,7 +123,7 @@ def write(path: str, changes: dict):
     elif isinstance(audio, (FLAC, OggFileType)):
         for k, v in changes.items():
             key = VORBIS[k]
-            value = _numbered(v, (t.get(key) or [""])[0]) if k in ("track_no", "disc_no") else _text(v)
+            value = _numbered(v, (t.get(key) or [""])[0], total(k)) if k in ("track_no", "disc_no") else _text(v)
             if value:
                 t[key] = [value]
             elif key in t:
@@ -120,7 +133,7 @@ def write(path: str, changes: dict):
         for k, v in changes.items():
             key = APE[k]
             old = str(t[key]) if key in t else ""
-            value = _numbered(v, old) if k in ("track_no", "disc_no") else _text(v)
+            value = _numbered(v, old, total(k)) if k in ("track_no", "disc_no") else _text(v)
             if value:
                 t[key] = value
             elif key in t:
@@ -128,6 +141,23 @@ def write(path: str, changes: dict):
         audio.save()
     else:
         raise TagError(f"{path}: {type(t).__name__} tags aren't supported")
+
+
+def _drop_original(audio):
+    """Takes the original release date out of the tags (not saved)."""
+    try:
+        kind, _ = _kind(audio)
+    except TagError:
+        return
+    t = audio.tags
+    for key in ORIGINAL.get(kind, ()):
+        if kind == "id3":
+            t.delall(key)
+        elif kind == "ape":     # its keys ignore case
+            for k in [k for k in t.keys() if k.lower() == key.lower()]:
+                del t[k]
+        elif key in t:
+            del t[key]
 
 
 def _open(path: str):
@@ -163,10 +193,10 @@ def snapshot(path: str, fields) -> dict:
         audio.add_tags()        # not saved: only to know which tags an edit will give it
     kind, keys = _kind(audio)
     t, out = audio.tags, {}
-    for f in fields:
-        if f not in keys:
-            continue
-        key = keys[f]
+    wanted = [keys[f] for f in fields if f in keys]
+    if "year" in fields:
+        wanted += ORIGINAL.get(kind, ())     # a new year takes these out
+    for key in wanted:
         if kind == "ape":       # APE keys ignore case: keep the file's own spelling
             key = next((k for k in t.keys() if k.lower() == key.lower()), key)
         if key not in t:
@@ -175,6 +205,8 @@ def snapshot(path: str, fields) -> dict:
             out[key] = [str(x) for x in t[key].text]
         elif kind == "mp4" and key in ("trkn", "disk"):
             out[key] = [list(x) for x in t[key]]
+        elif kind == "mp4" and key.startswith("----"):
+            out[key] = [bytes(x).decode("utf-8", "replace") for x in t[key]]
         elif kind == "ape":
             out[key] = [str(t[key])]
         else:
@@ -195,13 +227,14 @@ def put_back(path: str, snap: dict):
         if snap["kind"] == "id3":
             t.delall(key)
             if values:
-                frame = {"TRCK": TRCK, "TPOS": TPOS}.get(key) or next(c for c in ID3_FRAMES.values() if c.__name__ == key)
-                t.add(frame(encoding=3, text=values))
+                t.add(mutagen.id3.Frames[key](encoding=3, text=values))
         elif values is None:
             if key in t:
                 del t[key]
         elif snap["kind"] == "mp4" and key in ("trkn", "disk"):
             t[key] = [tuple(v) for v in values]
+        elif snap["kind"] == "mp4" and key.startswith("----"):
+            t[key] = [MP4FreeForm(v.encode("utf-8")) for v in values]
         elif snap["kind"] == "ape":
             if key in t:
                 del t[key]      # whatever its case now, then with the case it had

@@ -1,14 +1,15 @@
 /** Admin mode: a cog on every library item (albums, songs, artists, books, podcasts, playlists,
- * stations) with Edit metadata, Hide from library and Delete (and an artist's Edit tags). Deleted files go to a trash on
+ * stations) with Edit metadata, Hide from library and Delete (and an artist's Edit tags, an album's Merge). Deleted files go to a trash on
  * their share; hidden things and the trash are on the admin page. */
 
-import { EyeOff, Pencil, Settings, Tags, Trash2 } from "lucide-react";
+import { Combine, EyeOff, Pencil, Settings, Tags, Trash2 } from "lucide-react";
 import { create } from "zustand";
 import { queryClient } from "../actions";
 import { api } from "../api";
 import { useUi } from "../store/ui";
 import type { Job } from "../types";
 import { EditDialog } from "./EditDialog";
+import { MergeAlbums } from "./MergeAlbums";
 import { TagEditor } from "./TagEditor";
 import { Modal, useMenu } from "./ui";
 
@@ -65,18 +66,22 @@ interface AdminDialogs {
   edit: Target | null;
   confirm: Target | null;
   tags: number | null;                  // the artist whose tags are edited
+  merge: number | null;                 // the album others are merged into
   setEdit: (t: Target | null) => void;
   setConfirm: (t: Target | null) => void;
   setTags: (artist: number | null) => void;
+  setMerge: (album: number | null) => void;
 }
 
 export const useAdminDialogs = create<AdminDialogs>((set) => ({
   edit: null,
   confirm: null,
   tags: null,
+  merge: null,
   setEdit: (edit) => set({ edit }),
   setConfirm: (confirm) => set({ confirm }),
   setTags: (tags) => set({ tags }),
+  setMerge: (merge) => set({ merge }),
 }));
 
 export function useAdminMode() {
@@ -105,7 +110,7 @@ export function AdminCog({ kind, id, title, className = "", peer }: {
 }) {
   const on = useAdminMode();
   const showMenu = useMenu((s) => s.show);
-  const { setEdit, setConfirm, setTags } = useAdminDialogs();
+  const { setEdit, setConfirm, setTags, setMerge } = useAdminDialogs();
   if (!on) return null;
   const t = { kind, id, title };
   return (
@@ -123,6 +128,7 @@ export function AdminCog({ kind, id, title, className = "", peer }: {
                 { heading: title },
                 { label: "Edit metadata", icon: <Pencil size={16} />, onClick: () => setEdit(t) },
                 ...(kind === "artist" ? [{ label: "Edit tags", icon: <Tags size={16} />, onClick: () => setTags(id) }] : []),
+                ...(kind === "album" ? [{ label: "Merge with another album", icon: <Combine size={16} />, onClick: () => setMerge(id) }] : []),
                 { label: "Hide from library", icon: <EyeOff size={16} />, onClick: () => hide(t) },
                 { label: "Delete", icon: <Trash2 size={16} />, onClick: () => setConfirm(t) },
               ]);
@@ -134,11 +140,12 @@ export function AdminCog({ kind, id, title, className = "", peer }: {
 
 /** The edit window and the delete question, wherever a cog was clicked. */
 export function AdminHost() {
-  const { edit, confirm, tags, setEdit, setConfirm, setTags } = useAdminDialogs();
+  const { edit, confirm, tags, merge, setEdit, setConfirm, setTags, setMerge } = useAdminDialogs();
   return (
     <>
       {edit && <EditDialog kind={edit.kind} id={edit.id} onClose={() => setEdit(null)} />}
       {tags !== null && <TagEditor id={tags} onClose={() => setTags(null)} />}
+      {merge !== null && <MergeAlbums id={merge} onClose={() => setMerge(null)} />}
       {confirm && <ConfirmDelete t={confirm} onClose={() => setConfirm(null)} />}
     </>
   );

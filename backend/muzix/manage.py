@@ -626,6 +626,7 @@ def refile(folder: str, target: str, moves: dict[str, str]) -> dict[str, str]:
         for tmp, new in temp:
             if os.path.lexists(new):
                 raise ManageError(f"{new} is already there")
+            os.makedirs(os.path.dirname(new), exist_ok=True)       # (undoing a merge: its own folder again)
             os.rename(tmp, new)
             renamed.append((new, tmp))
     except (OSError, ManageError):
@@ -972,6 +973,258 @@ def edit_track(id_: int, fields: dict, remember: bool = True) -> dict:
             **({} if remember else {"undo": undo if files else None})}
 
 
+# ---------------------------------------------------------------- merging albums
+
+def _mv(src: str, dst: str):
+    """A file or folder to `dst`, which mustn't be there yet."""
+    if os.path.lexists(dst):
+        raise ManageError(f"{dst} is already there; nothing was moved over it")
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    try:
+        os.rename(src, dst)
+    except OSError as e:
+        if e.errno != 18:          # EXDEV: another file system
+            raise
+        shutil.move(src, dst)
+
+
+def _merging(s, ids: list[int], fields: dict) -> dict:
+    """What merging the albums `ids` comes to, nothing touched yet. In that order: the first one
+    stays (its id, cover and likes) and its songs are disc 1, the next album's disc 2 and so on (an
+    album with discs of its own keeps them, numbered on). `fields` (title, artist, year, genre)
+    are the merged album's; what's left out is the first one's."""
+    ids = list(dict.fromkeys(int(i) for i in ids))
+    if len(ids) < 2:
+        raise ManageError("Pick at least two albums to merge")
+    albums = [_row(s, "album", i) for i in ids]
+    first = albums[0]
+    rows = {a.id: list(s.scalars(select(Track).where(Track.album_id == a.id).order_by(Track.disc_no, Track.track_no, Track.id)))
+            for a in albums}
+    for a in albums:
+        if a.kind != "music":
+            raise ManageError(f"{a.title} isn't music: only music albums are merged")
+        if not rows[a.id]:
+            raise ManageError(f"{a.title} has no songs")
+        if not all(_taggable(t) for t in rows[a.id]):
+            raise ManageError(f"{a.title} has songs whose tags can't be written")
+    root = s.get(Root, rows[first.id][0].root_id)
+    if root is None or root.kind != "music" or any(t.root_id != root.id for r in rows.values() for t in r):
+        raise ManageError("The albums have to be in the same music library folder")
+    folders = {a.id: album_dir(sorted(t.path for t in rows[a.id])) for a in albums}
+    folder = folders[first.id]
+    paths = {a.id: {t.path for t in rows[a.id]} for a in albums}
+    depth = len(os.path.relpath(folder, root.path).split(os.sep))
+    if depth != 3 or not _owns_folder(folder, paths[first.id], root.path):
+        raise ManageError(f"{first.title} isn't in a <Genre>/<Artist>/<Album> folder of its own, so the songs have "
+                          "nowhere to go: put another album first, or file it with Edit metadata")
+    new = _clean_fields({"album": fields.get("title") or first.title, "albumartist": fields.get("artist") or first.artist_name,
+                         "year": fields.get("year") if fields.get("year") not in (None, "") else first.year,
+                         "genre": fields.get("genre") if fields.get("genre") is not None else first.genre})
+    if not new["album"]:
+        raise ManageError("The merged album needs a title")
+    # discs: each album's own (0 is 1), numbered on from the album before
+    disc, songs = 0, []
+    for a in albums:
+        own = sorted({t.disc_no or 1 for t in rows[a.id]})
+        renumber = {d: disc + i + 1 for i, d in enumerate(own)}
+        disc += len(own)
+        songs += [(a, t, renumber[t.disc_no or 1]) for t in rows[a.id]]
+    # the other albums' own folders empty out: what else is in them goes to the trash, and one
+    # of their names can be the merged album's
+    vacated = {f for a, f in folders.items() if a != first.id and f != folder
+               and len(os.path.relpath(f, root.path).split(os.sep)) == 3 and _owns_folder(f, paths[a], root.path)}
+    top = _filed_under(root.path, folder, new["genre"], new["genre"] != first.genre)[0]
+    artist = new["albumartist"] or os.path.relpath(folder, root.path).split(os.sep)[1]
+    base = target = os.path.join(root.path, top, clean(artist), album_name({"title": new["album"], "year": new["year"]}, artist))
+    n = 1
+    while os.path.normpath(target) != os.path.normpath(folder) and target not in vacated and os.path.lexists(target):
+        n += 1
+        target = f"{base} [{n}]"
+    # names as filing gives them ("<disc>-<n>. ..." when numbers repeat), each song known by its id
+    plan_tracks = [{"path": os.path.join(folder, f"{t.id}{os.path.splitext(t.path)[1]}"), "title": t.title, "artist": t.artist,
+                    "track_no": t.track_no, "disc_no": d, "year": new["year"]} for _, t, d in songs]
+    named = song_names(target, folder, {"title": new["album"], "year": new["year"]}, plan_tracks, artist)
+    names = {t.id: named[p["path"]] for (_, t, _), p in zip(songs, plan_tracks)}
+    return {"albums": albums, "rows": rows, "songs": songs, "discs": disc, "root": root, "folder": folder,
+            "folders": folders, "vacated": vacated, "target": target, "names": names, "new": new}
+
+
+def merge_plan(ids: list[int], fields: dict) -> dict:
+    """What merging would do, for the merge window: the folder, and each album's disc and songs."""
+    with db.session() as s:
+        m = _merging(s, ids, fields)
+        rel = lambda p: os.path.relpath(p, m["root"].path)
+        discs = []
+        for a in m["albums"]:
+            mine = [(t, d) for b, t, d in m["songs"] if b is a]
+            discs.append({"album_id": a.id, "title": a.title, "artist": a.artist_name, "year": a.year,
+                          "folder": rel(m["folders"][a.id]), "discs": sorted({d for _, d in mine}),
+                          "songs": [{"title": t.title, "disc": d, "name": os.path.basename(m["names"][t.id])} for t, d in mine]})
+        return {"folder": rel(m["target"]), "fields": {"title": m["new"]["album"], "artist": m["new"]["albumartist"],
+                                                       "year": m["new"]["year"], "genre": m["new"]["genre"]},
+                "albums": discs, "discs": m["discs"], "trashed": [rel(f) for f in sorted(m["vacated"])]}
+
+
+def merge_albums(ids: list[int], fields: dict) -> dict:
+    """Merges the albums into the first one (see _merging): every song's tags say the merged album
+    and its disc, the songs go into the first album's folder, filed and named again, and what else
+    the others' own folders held goes to the trash. One edit, to undo."""
+    with db.session() as s:
+        m = _merging(s, ids, fields)
+        albums, root, folder, target, new = m["albums"], m["root"], m["folder"], m["target"], m["new"]
+        first = albums[0]
+        every = [t for _, t, _ in m["songs"]]
+        if any(not _writable(f) for f in {os.path.dirname(t.path) for t in every} | {folder}):
+            raise ManageError("A folder of these albums is read-only for Muzix")
+        _check_unchanged(every)
+        title_before, art_before = first.title, first.art
+        before, todo = [], []
+        for a, t, d in m["songs"]:
+            want = {"album": new["album"], "albumartist": new["albumartist"], "year": new["year"], "genre": new["genre"],
+                    "disc_no": d}
+            # the disc always: written with the number of discs ("2/2")
+            changes = {k: v for k, v in want.items() if getattr(t, k) != v or k == "disc_no"}
+            before.append(_before(s, t, changes))
+            todo.append((t, changes))
+        steps, trashed, cover = [], [], None
+
+        def step(do, back):
+            do()
+            steps.append(back)
+
+        try:
+            for t, changes in todo:
+                if changes:
+                    try:
+                        tagwrite.write(t.path, {**changes, "disc_total": m["discs"]})
+                    except (tagwrite.TagError, OSError) as e:
+                        raise ManageError(f"Couldn't write the tags of {os.path.basename(t.path)}: {e}")
+            # 1. the other albums' songs into the first one's folder, under names of their own for now
+            now = {t.id: t.path for t in every}
+            for i, t in enumerate(x for x in every if os.path.dirname(x.path) != folder and x.album_id != first.id):
+                ext = os.path.splitext(t.path)[1]
+                for src, dst in [(t.path, os.path.join(folder, f".muzix-merge-{i}{ext}"))] + \
+                        [(lrc, os.path.join(folder, f".muzix-merge-{i}.lrc")) for lrc in [lyrics.sidecar(t.path)] if lrc]:
+                    step(functools.partial(_mv, src, dst), functools.partial(_mv, dst, src))
+                now[t.id] = os.path.join(folder, f".muzix-merge-{i}{ext}")
+            # 2. what's left in the others' own folders: a cover for the first album if it has none,
+            #    the rest into the trash, the empty folders gone
+            for f in sorted(m["vacated"]):
+                left = [os.path.join(f, n) for n in sorted(os.listdir(f))]
+                if cover is None and not scanner.find_cover(folder) and (found := scanner.find_cover(f)):
+                    cover = (found, os.path.join(folder, "cover" + os.path.splitext(found)[1].lower()))
+                    step(functools.partial(_mv, *cover), functools.partial(_mv, cover[1], cover[0]))
+                    left.remove(found)
+                if left:
+                    item = _to_trash(root, "files", os.path.basename(f), f"Left in its folder when it was merged into {new['album']}", left)
+                    steps.append(functools.partial(_untrash, item))
+                    trashed.append(item)
+                step(functools.partial(_remove_empty, f), functools.partial(os.makedirs, f, exist_ok=True))
+            # 3. the folder to the merged album's name, 4. every song to its name
+            if os.path.normpath(target) != os.path.normpath(folder):
+                step(functools.partial(_mv, folder, target), functools.partial(_mv, target, folder))
+                now = {i: target + p[len(folder):] for i, p in now.items()}
+                if cover:
+                    cover = (cover[0], target + cover[1][len(folder):])
+            moves = {now[t.id]: m["names"][t.id] for t in every}
+            step(functools.partial(refile, target, target, moves),
+                 functools.partial(refile, target, target, {b: a for a, b in moves.items()}))
+            for d, dirs, files in sorted(os.walk(target, topdown=False), key=lambda x: -len(x[0])):
+                if d != target and not dirs and not files:      # CD folders the songs left
+                    os.rmdir(d)
+            # the database: songs to their paths, the albums as one
+            _set_paths(s, [(t, m["names"][t.id]) for t in every])
+            if first.art and first.art.startswith(folder + "/"):
+                first.art = target + first.art[len(folder):]
+            if cover:
+                first.art = cover[1]
+            for a in albums[1:]:
+                a.key = f"{a.key}\x1fmerged into {first.id}"      # out of the way of the merged album's
+                for like in s.scalars(select(Like).where(Like.item_type == "album", Like.item_id == a.id)):
+                    if s.scalar(select(func.count()).select_from(Like).where(
+                            Like.user_id == like.user_id, Like.item_type == "album", Like.item_id == first.id)):
+                        s.delete(like)
+                    else:
+                        like.item_id = first.id
+            s.flush()
+            _rekey(s, first, m["rows"][first.id][0], new["album"])
+            files = _after(s, before, {t.id: m["names"][t.id] for t in every})
+            files.sort(key=lambda e: e["id"] not in {t.id for t in m["rows"][first.id]})     # the first album's first
+            for item in trashed:
+                s.add(item)
+            s.flush()
+            others = [{"id": a.id, "title": a.title, "first_track": m["rows"][a.id][0].id, "added_at": serial.iso(a.added_at),
+                       "mbid": a.mbid, "hidden": a.hidden} for a in albums[1:]]
+            undo = {"album_id": first.id, "album_title": [title_before, new["album"]], "files": files,
+                    "folder": [folder, target] if os.path.normpath(target) != os.path.normpath(folder) else None,
+                    "art": [art_before, first.art] if first.art != art_before else None,
+                    "merged": {"albums": others, "trash": [i.id for i in trashed],
+                               "cover": [cover[0], os.path.relpath(cover[1], target)] if cover else None}}
+            _reread(s, root, [(t.id, t.subsong, t.path) for t in every], scanner.Resolver())
+            s.flush()
+            _summarize(s, {a.id for a in albums})
+            shown = 3 if target.split(os.sep)[-3] != folder.split(os.sep)[-3] else 2
+            summary = "Merged with " + _and([f"{a.title} ({len(m['rows'][a.id])} songs)" for a in albums[1:]]) \
+                + f"; {m['discs']} discs; filed in " + " / ".join(target.split(os.sep)[-shown:])
+            edit_id = _remember(s, "album", first.id, new["album"], summary, undo)
+        except Exception as err:
+            for back in reversed(steps):
+                try:
+                    back()
+                except Exception:
+                    log.exception("couldn't undo a step of a failed merge")
+            for e in before:
+                if "tags" in e and os.path.exists(e["was"]):
+                    try:
+                        tagwrite.put_back(e["was"], e["tags"])
+                    except Exception:
+                        log.exception("couldn't put the tags of %s back", e["was"])
+            if isinstance(err, ManageError):
+                raise
+            log.exception("merging albums %s failed", ids)
+            raise ManageError(f"Merging failed ({type(err).__name__}), so the files were put back as they were") from err
+        album_id = first.id
+    art.changed("album", album_id)
+    _tidy_later()
+    return {"album_id": album_id, "edit_id": edit_id, "moved_to": target, "summary": summary}
+
+
+def _untrash(item: TrashItem):
+    """Files a failed merge put in the trash, back where they were."""
+    for src, dst in reversed(item.moves):
+        _mv(dst, src)
+    _remove_empty(item.folder)
+
+
+def _unmerge(s, u: dict):
+    """After a merge's files are back: what the trash took from the other albums' folders, a cover
+    the merged album took from one, and those albums' own dates and states."""
+    m = u["merged"]
+    for tid in m["trash"]:
+        item = s.get(TrashItem, tid)
+        if item is not None:
+            _restore(s, item)
+    first = s.get(Album, u["album_id"])
+    if m.get("cover") and first is not None:
+        here = os.path.join(first.folder, m["cover"][1])
+        if os.path.exists(here) and not os.path.lexists(m["cover"][0]):
+            _mv(here, m["cover"][0])
+    s.flush()
+    for a in m["albums"]:
+        aid = s.scalar(select(Track.album_id).where(Track.id == a["first_track"]))
+        alb = s.get(Album, aid) if aid else None
+        if alb is None:
+            continue
+        alb.mbid, alb.hidden = a["mbid"], a["hidden"]
+        if a["added_at"]:
+            alb.added_at = datetime.fromisoformat(a["added_at"])
+    for aid in {u["album_id"]} | set(s.scalars(select(Track.album_id).where(Track.id.in_([e["id"] for e in u["files"]])))):
+        alb = s.get(Album, aid) if aid else None
+        if alb is not None and not (alb.art and (alb.art.startswith("embedded:") or os.path.exists(alb.art))):
+            alb.art = scanner.find_cover(alb.folder)
+    s.flush()
+
+
 @jobs.job("rename_artist")
 def rename_artist_job(ctx: jobs.JobContext, artist_id: int, name: str, picture: str = ""):
     """An artist's new name into all their songs (as artist or album artist), their albums filed again.
@@ -1144,6 +1397,8 @@ def _check_files(s, u: dict):
                 now = tagwrite.snapshot(here, e["fields"])
             except (tagwrite.TagError, OSError) as err:
                 raise ManageError(f"Couldn't read the tags of {name}: {err}")
+            # the tags the edit kept (one made before a year took the original date out kept fewer)
+            now = {**now, "keys": {k: v for k, v in now["keys"].items() if k in e["tags"]["keys"]}}
             if now not in (e["tags_after"], e["tags"]):
                 raise ManageError(f"{name} {later}")
         elif e["fields"]:
@@ -1253,6 +1508,8 @@ def undo_edit(edit_id: int) -> dict:
                 if u.get("cover"):      # in the folder the edit made, before that moves back
                     _undo_cover(s, u)
                 _undo_files(s, u)
+                if u.get("merged"):
+                    _unmerge(s, u)
             else:
                 _undo_fields(s, kind, item_id, u)
             rec.undone_at = datetime.now(timezone.utc)

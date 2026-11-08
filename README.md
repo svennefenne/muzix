@@ -128,6 +128,10 @@ applies you choose from 98 colour schemes, each with a light and a dark version.
     back or delete for good from Admin → Hidden & trash.
   - *Edit tags* (an artist's): take genre tags off that artist alone or add
     your own; later lookups keep to it.
+  - *Merge with another album* (an album's): albums that belong together (a
+    reissue's bonus disc and the album itself) become one, each a disc of its
+    own, in the first one's folder, filed and named again ("2-1. …"); what
+    else the others' folders held goes to the trash. One edit, to undo.
 - **Tags** (Admin → Tags): every genre tag the artists carry (from Last.fm or
   MusicBrainz), how many have it and which ones. Remove a tag everywhere,
   rename it or merge spellings into one ("hip-hop" and "hiphop" into

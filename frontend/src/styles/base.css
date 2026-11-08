@@ -850,6 +850,40 @@ a.stat-link.warn .v { color: var(--warning); }
 .tags + .tags.tag-group { margin-top: -8px; }
 .tag-group-label { font: 600 10px/1 var(--font-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--text-faint); margin-right: 2px; }
 
+/* merging albums (admin mode) */
+.modal.merge-albums { width: min(640px, 100%); }
+.merge-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.merge-folder { font: 500 11px/1.4 var(--font-mono); }
+.merge-row { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
+             background: color-mix(in srgb, var(--surface-2) 60%, transparent); }
+.merge-row.first { border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); }
+.merge-disc { flex: none; width: 52px; font: 600 10px/1.2 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--primary); }
+.merge-thumb { width: 44px; height: 44px; flex: none; border-radius: 6px; font-size: 13px; }
+.merge-moves { display: flex; flex: none; }
+.merge-moves .btn.small.ghost { width: 28px; padding: 0; }
+.merge-add { margin-top: 12px; display: grid; gap: 6px; }
+.merge-candidates { display: grid; gap: 2px; max-height: 190px; overflow: auto; }
+.merge-candidate { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 10px; border: 0; border-radius: 6px;
+                   background: none; color: var(--text); font: 500 13.5px/1.25 var(--font-ui); text-align: left; cursor: pointer; }
+.merge-candidate:hover { background: var(--surface-2); }
+.merge-candidate:hover svg { color: var(--primary); }
+.merge-candidate svg { flex: none; color: var(--text-faint); }
+.merge-fields { display: grid; grid-template-columns: 2fr 2fr 1fr 1.4fr; gap: 10px; margin-top: 16px; }
+.merge-fields .field { margin: 0; gap: 4px; font-size: 12px; }
+.merge-plan { display: grid; gap: 4px; margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: var(--bg-deep); font-size: 13px; }
+.merge-plan .mono-path { font-size: 12px; overflow-wrap: anywhere; }
+.merge-names { margin: 6px 0 0; padding-left: 0; list-style: none; display: grid; gap: 2px; max-height: 200px; overflow: auto;
+               font: 500 11.5px/1.4 var(--font-mono); color: var(--text-dim); }
+.merge-error { margin: 12px 0 0; color: var(--error-text); font-size: 13.5px; }
+.linkish { padding: 0; border: 0; background: none; color: var(--text-dim); font: inherit; text-decoration: underline;
+           text-underline-offset: 2px; cursor: pointer; }
+.linkish:hover { color: var(--primary); }
+@media (max-width: 640px) {
+  .merge-fields { grid-template-columns: 1fr 1fr; }
+  .merge-disc { width: 40px; }
+  .merge-thumb { display: none; }
+}
+
 /* Admin → Tags, and one artist's tag editor */
 .tag.mine { border-color: color-mix(in srgb, var(--primary) 60%, var(--border-strong)); color: var(--text); }
 .tag > small { margin-left: 6px; font: 600 9.5px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); }
