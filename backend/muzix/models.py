@@ -64,8 +64,13 @@ class Artist(Base):
     sort_name: Mapped[str] = mapped_column(String(512), default="")
     mbid: Mapped[str] = mapped_column(String(64), default="")
     genre: Mapped[str] = mapped_column(String(128), default="")        # main genre folder
-    tags: Mapped[list] = mapped_column(JSON, default=list)             # [[tag, weight], ...]
+    tags: Mapped[list] = mapped_column(JSON, default=list)             # [[tag, weight], ...]: its genres, as shown
     tags_checked: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # the tags as Last.fm, MusicBrainz or a linked server gave them (None: as `tags`, from before Admin
+    # → Tags); `tags` and `other_tags` are them after the admin's rules and this artist's own edits
+    source_tags: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    tag_edits: Mapped[dict | None] = mapped_column(JSON, nullable=True)    # {"add": [...], "remove": [...]}
+    other_tags: Mapped[list | None] = mapped_column(JSON, nullable=True)   # [[tag, weight], ...] in categories shown apart
     image: Mapped[str] = mapped_column(String(1024), default="")
     hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # admin: hidden from everyone
     peer_only: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # only in other servers' libraries
@@ -466,6 +471,27 @@ class Peer(Base):
     kind: Mapped[str] = mapped_column(String(16), default="server", server_default="server")
     check: Mapped[str] = mapped_column(String(64), default="", server_default="")   # a computer's: sha256 of our id and its code
     away: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # a computer that isn't connected
+
+
+class TagCategory(Base):
+    """A group of tags the admin made in Admin → Tags (a country, a mood...): shown with the genres,
+    on a row of its own on the artist's page, or not at all."""
+    __tablename__ = "tag_categories"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True)
+    show: Mapped[str] = mapped_column(String(16), default="apart")     # genre | apart | hidden
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class TagRule(Base):
+    """The admin's word on a tag name (its casefolded `key`): removed everywhere, renamed into
+    another (several into one merges them), or put in a category. Later lookups follow it too."""
+    __tablename__ = "tag_rules"
+    key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    removed: Mapped[bool] = mapped_column(Boolean, default=False)
+    to: Mapped[str] = mapped_column(String(128), default="")             # renamed into
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("tag_categories.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 # what an admin can hide: hidden rows stay out of every page and list (db.py)

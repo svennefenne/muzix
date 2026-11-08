@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 from sqlalchemy import func, or_, select, text
 
-from . import __version__, db, jobs, settings
+from . import __version__, db, jobs, settings, tagging
 from .models import Album, Artist
 
 UA = f"Muzix/{__version__} ( https://github.com/svennefenne/muzix )"
@@ -117,8 +117,9 @@ def artist_tags(ctx: jobs.JobContext, limit: int = 5000):
             with db.session() as s:
                 a = s.get(Artist, aid)
                 if a is not None:
-                    a.tags, a.mbid = tags, mbid2 or a.mbid
+                    a.source_tags, a.mbid = tags, mbid2 or a.mbid
                     a.tags_checked = datetime.now(timezone.utc)
+                    tagging.apply(a, tagging.Rules(s))     # the admin's rules (Admin → Tags)
             found += bool(tags)
             if i % 20 == 0:
                 ctx.update(i / max(1, len(rows)), f"{i}/{len(rows)} artists, {found} with genres")

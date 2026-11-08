@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import case, delete, func, or_, select, text, true
 from sqlalchemy.orm import Session
 
-from .. import art, lyrics, mirror, serial
+from .. import art, lyrics, mirror, serial, tagging
 from ..db import get_db, get_db_with_copies
 from ..models import Album, Artist, Book, FilePlaylist, FilePlaylistItem, Like, PlayEvent, RecentSearch, Track, User
 from ..security import current_user
@@ -247,6 +247,7 @@ def artist(artist_id: int, db: Session = Depends(get_db), user: User = Depends(c
         top += extra
     lk = liked(db, user, "album")
     return {**serial.artist(a, liked(db, user, "artist"), len(albums_)),
+            "tag_groups": tagging.groups(db, a),
             "albums": [serial.album(x, lk) for x in albums_],
             "top_tracks": tracks_json(db, user, top)}
 
@@ -413,11 +414,14 @@ def file_playlist(playlist_id: int, db: Session = Depends(get_db_with_copies), u
 # ---------------------------------------------------------------- tags
 
 def tag_artists(tag: str):
-    """Artists showing this tag: one of the (up to eight) genre tags their page shows, or their
-    genre folder. Case doesn't matter, so the folder "Electronic" and the tag "electronic" meet."""
+    """Artists showing this tag: one of the (up to eight) genre tags their page shows, one in a
+    category shown apart (tagging.py), or their genre folder. Case doesn't matter, so the folder
+    "Electronic" and the tag "electronic" meet."""
     return select(Artist.id).where(or_(
         text("EXISTS (SELECT 1 FROM json_each(artists.tags) j WHERE j.key < 8 "
              "AND casefold(json_extract(j.value, '$[0]')) = casefold(:tag))").bindparams(tag=tag),
+        text("EXISTS (SELECT 1 FROM json_each(artists.other_tags) j "
+             "WHERE casefold(json_extract(j.value, '$[0]')) = casefold(:tag))").bindparams(tag=tag),
         func.casefold(Artist.genre) == func.casefold(tag)))
 
 

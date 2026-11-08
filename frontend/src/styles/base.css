@@ -845,6 +845,71 @@ a.stat-link.warn .v { color: var(--warning); }
 .tag-pick small { margin-left: 4px; font: 500 10px/1 var(--font-mono); color: var(--text-faint); }
 .tag-pick.on { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
 .tag-pick.on small { color: inherit; opacity: .75; }
+/* an artist's tags in a category shown apart (Admin → Tags): a row of their own, named */
+.tags.tag-group { align-items: center; }
+.tags + .tags.tag-group { margin-top: -8px; }
+.tag-group-label { font: 600 10px/1 var(--font-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--text-faint); margin-right: 2px; }
+
+/* Admin → Tags, and one artist's tag editor */
+.tag.mine { border-color: color-mix(in srgb, var(--primary) 60%, var(--border-strong)); color: var(--text); }
+.tag > small { margin-left: 6px; font: 600 9.5px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); }
+.tag:has(> .tag-x) { display: inline-flex; align-items: center; padding-right: 5px; }
+.tag-x { display: inline-grid; place-items: center; width: 16px; height: 16px; margin-left: 4px; padding: 0; border: 0; border-radius: 50%;
+         background: none; color: var(--text-faint); cursor: pointer; transition: color .15s, background .15s; }
+.tag-x:hover { color: var(--error-text); background: color-mix(in srgb, var(--error) 14%, transparent); }
+.tag-edit { margin: 0 0 14px; }
+.tag-add { display: flex; gap: 8px; }
+.tag-back { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; font-size: 12.5px; }
+.tag-back .tag-pick { display: inline-flex; align-items: center; gap: 5px; }
+.tags-toolbar { margin-bottom: 12px; }
+.tags-toolbar .select { width: auto; max-width: 240px; }
+.tag-find { position: relative; flex: 1 1 220px; display: flex; align-items: center; }
+.tag-find svg { position: absolute; left: 11px; color: var(--text-faint); pointer-events: none; }
+.tag-find .input { padding-left: 34px; }
+.tag-list { gap: 6px; }
+.tag-row { display: grid; gap: 8px; padding: 6px 10px 6px 14px; }
+.tag-row.ticked { background: color-mix(in srgb, var(--primary) 8%, transparent); }
+.tag-row.open { border-color: var(--border-strong); }
+.tag-row-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.tag-row input[type="checkbox"] { width: 16px; height: 16px; flex: none; accent-color: var(--primary); }
+.tag-open { display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 4px 0; border: 0; background: none;
+            color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.tag-open svg { flex: none; color: var(--text-faint); }
+.tag-open:hover, .tag-open:hover svg { color: var(--primary); }
+.tag-row .badge { flex: none; }
+.tag-count { flex: none; font-size: 12.5px; white-space: nowrap; }
+.tag-row .btn.small.ghost { width: 30px; padding: 0; flex: none; }
+.tag-aliases, .tag-artists { padding-left: 47px; }
+.tag-aliases { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: -4px; font-size: 12px; }
+.tag-artists { padding-top: 10px; padding-bottom: 6px; border-top: 1px solid var(--border); }
+.tag-artists .tags { margin: 0 0 4px; }
+.tag-artist { padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.tag-artist:hover { color: var(--primary); }
+.tag-page-link { display: inline-block; margin-top: 10px; font-size: 12px; }
+.tag-page-link:hover { color: var(--primary); }
+.tag-artist-search { position: relative; width: min(280px, 100%); }
+.tag-artist-hits { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 20; display: grid; gap: 2px; padding: 4px;
+                   background: var(--surface); border: 1px solid var(--border-strong); border-radius: 8px; box-shadow: 0 16px 40px #000a; }
+.tag-artist-hits > span { padding: 8px 10px; font-size: 13px; }
+.tag-artist-hits button { display: grid; gap: 2px; padding: 7px 10px; border: 0; border-radius: 6px; background: none; color: var(--text);
+                          font: 500 13.5px/1.25 var(--font-ui); text-align: left; cursor: pointer; }
+.tag-artist-hits button:hover { background: var(--surface-2); }
+.tag-artist-hits button .faint { font-size: 11.5px; }
+.tag-category { flex-wrap: wrap; }
+.tag-category .input { flex: 1 1 120px; max-width: 240px; height: 32px; }
+.tag-category .seg button { height: 24px; padding: 0 10px; font-size: 10.5px; }
+.tag-category-end { display: inline-flex; gap: 4px; margin-left: auto; }
+.tag-category-end .btn.small.ghost:last-child { width: 30px; padding: 0; }
+.tag-category-picks { display: grid; gap: 8px; }
+.tag-category-picks .btn { justify-content: space-between; }
+.tag-category-picks .btn .faint { font-weight: 600; letter-spacing: .06em; }
+@media (max-width: 640px) {
+  .panel-head:has(.tag-artist-search) { flex-wrap: wrap; }
+  .tag-artist-search { width: 100%; }
+  .tag-row-main { flex-wrap: wrap; row-gap: 2px; }
+  .tag-count { order: 9; flex-basis: 100%; padding-left: 47px; margin-top: -6px; }
+  .tag-aliases, .tag-artists { padding-left: 0; }
+}
 .sh-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .sh-head .h3 { margin: 0 0 4px; }
 .sh-head p { margin: 0; font-size: 13px; }

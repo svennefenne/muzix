@@ -520,6 +520,7 @@ export function ArtistPage() {
           <Kicker parts={["Artist", a.genre, `${a.albums.length} albums`]} />
           <Display l1={a.name} small />
           {a.tags.length > 0 && <TagLinks tags={a.tags} />}
+          {a.tag_groups?.map((g) => <TagLinks key={g.name} label={g.name} tags={g.tags} />)}
           <div className="row-actions">
             <button className="btn accent" data-tip="Play the top songs" onClick={() => playTracks(a.top_tracks, 0)}><Play size={15} fill="currentColor" /> Play</button>
             <button className="btn" data-tip={`Shuffle every song by ${a.name}`} onClick={() => playRandom({ artist_id: a.id, kind: "all" })}><Shuffle size={15} /> Shuffle</button>
@@ -556,10 +557,11 @@ export function GenrePage() {
   );
 }
 
-/** Genre tags as links to everything else that carries them. */
-function TagLinks({ tags }: { tags: string[] }) {
+/** Genre tags as links to everything else that carries them (`label`: a category of them). */
+function TagLinks({ tags, label }: { tags: string[]; label?: string }) {
   return (
-    <div className="tags">
+    <div className={`tags ${label ? "tag-group" : ""}`}>
+      {label && <span className="tag-group-label">{label}</span>}
       {tags.map((t) => <Link className="tag" key={t} to={`/tag/${encodeURIComponent(t)}`} data-tip={`Everything tagged ${t}`}>{t}</Link>)}
     </div>
   );

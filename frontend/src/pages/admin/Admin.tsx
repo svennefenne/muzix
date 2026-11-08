@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Blocks, Disc3, EyeOff, FileQuestion, FolderOpen, Gamepad2, HardDrive, History, Image as ImageIcon, Library, Network, Plus, RefreshCw, Save, Settings2, Trash2, Upload, Users, X } from "lucide-react";
+import { Activity, Blocks, Disc3, EyeOff, FileQuestion, FolderOpen, Gamepad2, HardDrive, History, Image as ImageIcon, Library, Network, Plus, RefreshCw, Save, Settings2, Tags as TagsIcon, Trash2, Upload, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { create } from "zustand";
@@ -14,6 +14,7 @@ import { HiddenAndTrash } from "./HiddenTrash";
 import { FolderBrowser, SettingField, type SettingSpec } from "./fields";
 import { Modules } from "./Modules";
 import { LibraryNetwork } from "./Network";
+import { Tags } from "./Tags";
 
 interface Root { id: number; path: string; kind: string; name: string; enabled: boolean; upload_target: boolean; excludes: string[]; items: number; exists: boolean; writable: boolean; last_scan: string | null }
 interface Status {
@@ -857,7 +858,7 @@ export default function Admin() {
   const files = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
   const nav = [["", "Overview", Activity], ["library", "Library folders", Library], ["modules", "Modules", Blocks],
     ...(modules.network ? [["network", "Library Network", Network] as const] : []), ["upload", "Upload", Upload],
-    ["edits", "Edits", History], ["hidden", "Hidden & trash", EyeOff], ["jobs", "Jobs", RefreshCw], ["settings", "Settings", Settings2], ["users", "Users", Users]] as const;
+    ["tags", "Tags", TagsIcon], ["edits", "Edits", History], ["hidden", "Hidden & trash", EyeOff], ["jobs", "Jobs", RefreshCw], ["settings", "Settings", Settings2], ["users", "Users", Users]] as const;
   return (
     <div className="page wide"
          onDragOver={(e) => { if (!files(e)) return; e.preventDefault(); setDragging(true); }}
@@ -886,6 +887,7 @@ export default function Admin() {
             <Route path="modules" element={<Modules />} />
             <Route path="network" element={<LibraryNetwork />} />
             <Route path="upload" element={<UploadArea />} />
+            <Route path="tags" element={<Tags />} />
             <Route path="edits" element={<Edits />} />
             <Route path="hidden" element={<HiddenAndTrash />} />
             <Route path="jobs" element={<Jobs />} />

@@ -17,7 +17,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import enrich, settings
+from .. import enrich, settings, tagging
 from ..db import get_db
 from ..models import Artist, SpotifyLink, User
 from ..security import current_user
@@ -145,5 +145,10 @@ def genres(artist: str = Query(..., min_length=1, max_length=200), db: Session =
                     tags, _ = enrich.mb_tags(client, _limiter, artist.strip(), "")
         except httpx.HTTPError:
             return []
-        _genres[key] = [t[0] for t in tags[:8]]
+        _genres[key] = tagging.genres(db, tags)[:8]
         return _genres[key]
+
+
+def forget_genres():
+    """The admin changed the tag rules: look again."""
+    _genres.clear()

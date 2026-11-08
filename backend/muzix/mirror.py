@@ -30,7 +30,7 @@ from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import delete, insert, or_, select, union, update
 from sqlalchemy.exc import IntegrityError
 
-from . import art, db, enrich, jobs, modules, network, scanner, tunnel
+from . import art, db, enrich, jobs, modules, network, scanner, tagging, tunnel
 from .models import Album, Artist, Book, BookPart, FilePlaylist, FilePlaylistItem, Peer, Root, Track
 
 log = logging.getLogger(__name__)
@@ -211,13 +211,16 @@ def store(peer_id: int, sid: str, name: str, cat: dict) -> dict:
         for t in cat["tracks"]:
             artist(t["artist_ref"])
         known = [i for i in artist_ids.values() if i]
-        bare = {i for i, tags in s.execute(select(Artist.id, Artist.tags).where(Artist.id.in_(known))) if not tags}
+        bare = {i for i, given, tags in s.execute(select(Artist.id, Artist.source_tags, Artist.tags)
+                                                  .where(Artist.id.in_(known))) if not (tags if given is None else given)}
+        rules = tagging.Rules(s) if bare else None
         for n, aid in artist_ids.items():
             a = info.get(n.casefold())
             if aid in bare and a and a.get("tags"):
-                s.execute(update(Artist).where(Artist.id == aid).values(
-                    tags=a["tags"], mbid=a.get("mbid") or "", sort_name=a.get("sort_name") or "",
-                    tags_checked=datetime.now(timezone.utc)))
+                row = s.get(Artist, aid)
+                row.source_tags, row.mbid, row.sort_name = a["tags"], a.get("mbid") or "", a.get("sort_name") or ""
+                row.tags_checked = datetime.now(timezone.utc)
+                tagging.apply(row, rules)           # after the rules here (Admin → Tags)
         # its picture of an artist, for one without a picture here (or with its older one)
         images = dict(s.execute(select(Artist.id, Artist.image).where(Artist.id.in_(known))).all())
         for n, aid in artist_ids.items():

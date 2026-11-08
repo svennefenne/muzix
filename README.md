@@ -126,6 +126,15 @@ applies you choose from 98 colour schemes, each with a light and a dark version.
     trash shows it again.
   - *Delete*: the files move to a `.muzix-trash` folder on their share, to put
     back or delete for good from Admin → Hidden & trash.
+  - *Edit tags* (an artist's): take genre tags off that artist alone or add
+    your own; later lookups keep to it.
+- **Tags** (Admin → Tags): every genre tag the artists carry (from Last.fm or
+  MusicBrainz), how many have it and which ones. Remove a tag everywhere,
+  rename it or merge spellings into one ("hip-hop" and "hiphop" into
+  "hip hop"), and sort tags that aren't genres into categories (a country, a
+  mood…), shown on a row of their own on the artist's page or not at all.
+  The tags as they came are kept, so later lookups follow the rules and each
+  one can be taken back.
 - **Upload area**: drop files or whole folders in the browser. Music is matched
   with MusicBrainz (beets), gets cover art and a main genre, and is filed as
   `Genre/Artist/Artist - Year - Album/1. Artist - Album - Title (Year).ext`.

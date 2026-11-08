@@ -126,6 +126,7 @@ export interface TagDetail {
 }
 
 export interface ArtistDetail extends Artist {
+  tag_groups: { name: string; tags: string[] }[];     // tags in categories shown on a row of their own
   albums: Album[];
   top_tracks: Track[];
 }
