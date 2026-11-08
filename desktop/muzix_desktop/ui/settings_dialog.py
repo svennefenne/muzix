@@ -5,7 +5,7 @@ change is saved as it's made."""
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDialog, QFileDialog, QHBoxLayout, QLineEdit,
-                               QPushButton, QRadioButton, QScrollArea, QTabWidget, QVBoxLayout, QWidget)
+                               QProgressBar, QPushButton, QRadioButton, QScrollArea, QTabWidget, QVBoxLayout, QWidget)
 
 from .. import __version__, autostart, config, sharing
 from ..shared import use_keys
@@ -112,12 +112,15 @@ class SettingsDialog(QDialog):
         row.addStretch(1)
         self.catalog_text = label("", "faint")
         row.addWidget(self.catalog_text)
+        self.reading_bar = QProgressBar()
+        self.reading_bar.hide()
         again = _button("Read again", "ghost")
         again.setToolTip("Read the shared folders again now (it's done every few minutes too)")
         again.clicked.connect(self.rescan.emit)
         row.addWidget(again)
         bl.addLayout(row)
-        self.show_catalog()
+        bl.addWidget(self.reading_bar)
+        self.show_catalog(self.app.reading if self.app.scanning else None)
 
         name, nl = frame("panel")
         nl.addWidget(label("This computer's name", "h3"))
@@ -128,10 +131,20 @@ class SettingsDialog(QDialog):
         nl.addWidget(edit)
         return _page(on, box, name)
 
-    def show_catalog(self):
+    def show_catalog(self, reading: tuple[int, int] | None = None):
         c = self.app.catalog.counts()
         n = lambda k, one, many: f"{c[k]:,} {one if c[k] == 1 else many}".replace(",", " ")
-        self.catalog_text.setText(f"{n('tracks', 'song', 'songs')} in {n('albums', 'album', 'albums')}")
+        text = f"{n('tracks', 'song', 'songs')} in {n('albums', 'album', 'albums')}"
+        if reading and reading[1]:
+            text += f" · reading {reading[0]:,} of {reading[1]:,} new".replace(",", " ")
+        elif reading:
+            text += " · looking through the folders…"
+        self.catalog_text.setText(text)
+        # a bar while the folders are read: moving to and fro until it knows how many songs are new
+        self.reading_bar.setVisible(reading is not None)
+        if reading:
+            self.reading_bar.setRange(0, reading[1])
+            self.reading_bar.setValue(reading[0])
 
     def _fill_folders(self):
         clear(self.folder_rows)

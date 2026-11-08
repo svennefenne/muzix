@@ -135,3 +135,40 @@ def test_a_folder_with_other_music_keeps_its_name(album, fresh_config):
     assert os.path.exists(album / "3. Kraftwerk - Computer World - Numbers (1981).mp3")
     fixer.undo(done)
     assert os.path.exists(album / "03 track3.mp3")
+
+
+def test_a_slow_read_makes_no_one_wait_and_goes_on_where_it_stopped(album, tmp_path, monkeypatch):
+    """Tags read over a network share take minutes: the tray menu and the servers don't wait for it,
+    and a read that's stopped (the app quit) doesn't start over."""
+    import threading
+    import time
+    real_read, real_store, read, saves = catalog.scanner.read_file, catalog.Catalog._store, [], []
+
+    def slow(path, kind):
+        read.append(path)
+        time.sleep(0.3)
+        return real_read(path, kind)
+
+    def store(self, batch, gen):
+        if stop and saves:
+            raise KeyboardInterrupt      # the app quits after the first song is saved
+        saves.append(batch)
+        real_store(self, batch, gen)
+
+    monkeypatch.setattr(catalog.scanner, "read_file", slow)
+    monkeypatch.setattr(catalog.Catalog, "_store", store)
+    monkeypatch.setattr(catalog.Catalog, "BATCH", 1)
+    folders = [(str(tmp_path / "music"), "music")]
+    cat = catalog.Catalog(str(tmp_path / "index.db"))
+    stop = True
+    t = threading.Thread(target=lambda: pytest.raises(KeyboardInterrupt, cat.scan, folders))
+    t.start()
+    time.sleep(0.15)
+    began = time.monotonic()
+    cat.counts(), cat.page("tracks"), cat.path_of(1)
+    assert time.monotonic() - began < 0.05          # no waiting on the read
+    t.join()
+    stop, read[:] = False, []
+    again = catalog.Catalog(str(tmp_path / "index.db"))
+    assert again.scan(folders) and again.counts() == {"albums": 1, "tracks": 3}
+    assert len(read) == 2                           # not the song saved before the app quit

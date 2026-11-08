@@ -71,36 +71,49 @@ def walk(folder: str):
 
 
 class Catalog:
+    """The index and the catalog made from it. A read of the folders can take minutes (tags read over
+    a network share), so it never makes anyone wait: what the catalog holds is a finished view,
+    swapped in whole when a read is done, and read without a lock (the tray menu, the servers).
+    What's read is written to the index a batch at a time, so a read that's stopped (the app quit)
+    goes on where it was the next time."""
+
+    BATCH = 50          # songs read between saves to the index
+
     def __init__(self, path: str):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         self.path = path
-        self._lock = threading.RLock()
+        self._db_lock = threading.RLock()       # the index: one connection, used from several threads
+        self._scan_lock = threading.Lock()      # one read of the folders at a time
         self._db = sqlite3.connect(path, check_same_thread=False)
         self._db.executescript(SCHEMA)
         self._db.commit()
-        self.parts: dict[str, list[list]] = {p: [] for p in FIELDS}
-        self.files: dict[int, str] = {}         # song id → its file
-        self.covers: dict[int, tuple[str, str]] = {}    # album id → ("file" | "embedded", path)
-        self.folders: list[tuple[str, str]] = []
-        self._build()
+        # (parts, song id → its file, album id → its cover, the folders): swapped whole, never changed
+        self._view: tuple[dict, dict, dict, list] = ({p: [] for p in FIELDS}, {}, {}, [])
+        self._build([])
+
+    @property
+    def folders(self) -> list[tuple[str, str]]:
+        return self._view[3]
 
     # ------------------------------------------------------------ reading the folders
 
     def scan(self, folders: list[tuple[str, str]], progress=None) -> bool:
-        """Read what's new or changed under the shared folders ((path, kind)); whether the catalog changed."""
-        with self._lock:
-            self.folders = [(os.path.abspath(p), k) for p, k in folders]
-            # this read's mark on every file it finds (two reads in one millisecond still differ)
-            last = self._db.execute("SELECT max(seen) FROM files").fetchone()[0] or 0
-            gen = max(last + 1, int(datetime.now().timestamp() * 1000))
-            known = {(p, sub): (fid, size, mtime) for fid, p, sub, size, mtime in
-                     self._db.execute("SELECT id, path, subsong, size, mtime FROM files")}
+        """Read what's new or changed under the shared folders ((path, kind)); whether the catalog
+        changed. `progress(done, of)` hears how far it is."""
+        with self._scan_lock:
+            folders = [(os.path.abspath(p), k) for p, k in folders]
+            with self._db_lock:
+                # this read's mark on every file it finds (two reads in one millisecond still differ)
+                last = self._db.execute("SELECT max(seen) FROM files").fetchone()[0] or 0
+                gen = max(last + 1, int(datetime.now().timestamp() * 1000))
+                known = list(self._db.execute("SELECT id, path, subsong, size, mtime FROM files"))
             by_path: dict[str, list] = {}
-            for (p, sub), v in known.items():
-                by_path.setdefault(p, []).append(v)
+            for fid, p, sub, size, mtime in known:
+                by_path.setdefault(p, []).append((fid, size, mtime))
             todo, unchanged = [], []
-            for folder, kind in self.folders:
-                if not os.path.isdir(folder):
+            reachable = [f for f, _ in folders if os.path.isdir(f)]
+            for folder, kind in folders:
+                if folder not in reachable:
                     continue
                 for path, size, mtime in walk(folder):
                     old = by_path.get(path)
@@ -108,32 +121,56 @@ class Catalog:
                         unchanged += [o[0] for o in old]
                     else:
                         todo.append((path, size, mtime, kind))
-            changed = bool(todo)
-            for i in range(0, len(unchanged), 900):
-                chunk = unchanged[i:i + 900]
-                self._db.execute(f"UPDATE files SET seen = ? WHERE id IN ({','.join('?' * len(chunk))})", [gen, *chunk])
+            with self._db_lock:
+                for i in range(0, len(unchanged), 900):
+                    chunk = unchanged[i:i + 900]
+                    self._db.execute(f"UPDATE files SET seen = ? WHERE id IN ({','.join('?' * len(chunk))})", [gen, *chunk])
+                self._db.commit()
+            if progress:
+                progress(0, len(todo))
             with ThreadPoolExecutor(8) as pool:
-                rows_of = pool.map(lambda f: scanner.read_file(f[0], f[3]), todo)
-                for n, ((path, size, mtime, kind), rows) in enumerate(zip(todo, rows_of), 1):
-                    for row in rows:
-                        self._db.execute(
-                            "INSERT INTO files (path, subsong, size, mtime, kind, row, added_at, seen) "
-                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(path, subsong) DO UPDATE SET "
-                            "size = excluded.size, mtime = excluded.mtime, kind = excluded.kind, row = excluded.row, "
-                            "seen = excluded.seen",
-                            (path, row["subsong"], size, mtime, kind, _dump(row), _now(), gen))
-                    if progress and n % 50 == 0:
+                batch = []
+                for n, (f, rows) in enumerate(zip(todo, pool.map(lambda f: scanner.read_file(f[0], f[3]), todo)), 1):
+                    batch.append((f, rows))
+                    if len(batch) >= self.BATCH:
+                        self._store(batch, gen)
+                        batch = []
+                    if progress and (n % 10 == 0 or n == len(todo)):
                         progress(n, len(todo))
-            gone = self._db.execute("DELETE FROM files WHERE seen IS NOT ? ", (gen,)).rowcount
-            self._db.commit()
-            changed = changed or gone > 0
+                self._store(batch, gen)
+            with self._db_lock:
+                # gone: not found under a folder that could be read, or under no shared folder any
+                # more (a share that's away for now keeps its songs)
+                stale = self._db.execute("SELECT id, path FROM files WHERE seen IS NOT ?", (gen,)).fetchall()
+                gone = [fid for fid, path in stale
+                        if any(_inside(path, f) for f in reachable) or not any(_inside(path, f) for f, _ in folders)]
+                for i in range(0, len(gone), 900):
+                    chunk = gone[i:i + 900]
+                    self._db.execute(f"DELETE FROM files WHERE id IN ({','.join('?' * len(chunk))})", chunk)
+                self._db.commit()
+            changed = bool(todo or gone) or folders != self.folders
             if changed:
-                self._build()
+                self._build(folders)
             return changed
+
+    def _store(self, batch: list, gen: int):
+        """Songs just read, into the index (and kept there: a read stopped halfway goes on from them)."""
+        if not batch:
+            return
+        with self._db_lock:
+            for (path, size, mtime, kind), rows in batch:
+                for row in rows:
+                    self._db.execute(
+                        "INSERT INTO files (path, subsong, size, mtime, kind, row, added_at, seen) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(path, subsong) DO UPDATE SET "
+                        "size = excluded.size, mtime = excluded.mtime, kind = excluded.kind, row = excluded.row, "
+                        "seen = excluded.seen",
+                        (path, row["subsong"], size, mtime, kind, _dump(row), _now(), gen))
+            self._db.commit()
 
     def moved(self, moves: dict[str, str]):
         """Files Fix Metadata renamed: the same songs (same ids) at their new paths."""
-        with self._lock:
+        with self._db_lock:
             for old, new in moves.items():
                 self._db.execute("UPDATE OR IGNORE files SET path = ? WHERE path = ?", (new, old))
             self._db.commit()
@@ -146,12 +183,17 @@ class Catalog:
             return row[0]
         return self._db.execute(f"INSERT INTO {table} ({column}) VALUES (?)", (value,)).lastrowid
 
-    def _build(self):
-        """The catalog in the export format, from the index (songs grouped into albums as the server does)."""
+    def _build(self, folders: list[tuple[str, str]]):
+        """The catalog in the export format, from the index (songs grouped into albums as the server
+        does), swapped in whole when it's made."""
+        with self._db_lock:
+            self._make(folders)
+
+    def _make(self, folders: list[tuple[str, str]]):
         songs = []
         for fid, path, kind, raw, size, added in self._db.execute(
-                "SELECT id, path, kind, row, size, added_at FROM files ORDER BY id"):
-            if self.folders and not any(_inside(path, f) for f, _ in self.folders):
+                "SELECT id, path, kind, row, size, added_at FROM files ORDER BY id").fetchall():
+            if folders and not any(_inside(path, f) for f, _ in folders):
                 continue
             songs.append((fid, path, kind, _load(raw), size, added))
         # songs without an album tag join their folder's album, as on the server
@@ -212,35 +254,31 @@ class Catalog:
                                row["mbid"], row.get("extra") or {}, added])
         artist_rows = sorted([aid, name, "", "", [], 0] for aid, name in artists.values())
         self._db.commit()
-        self.parts = {"artists": artist_rows, "albums": sorted(album_rows), "tracks": track_rows,
-                      "books": [], "playlists": []}
-        self.files, self.covers = files, covers
+        parts = {"artists": artist_rows, "albums": sorted(album_rows), "tracks": track_rows, "books": [], "playlists": []}
+        self._view = (parts, files, covers, folders)
 
     def page(self, part: str, after: int = 0, limit: int = 1000) -> dict:
         """A page of the catalog, as a server asks for it (muzix.mirror.export's format)."""
         if part not in FIELDS:
             raise KeyError(part)
         limit = max(1, min(limit, 5000))
-        with self._lock:
-            rows = [r for r in self.parts[part] if r[0] > after][:limit]
+        rows = [r for r in self._view[0][part] if r[0] > after][:limit]
         return {"fields": FIELDS[part], "rows": rows, "next": rows[-1][0] if len(rows) == limit else None}
 
     def counts(self) -> dict[str, int]:
-        with self._lock:
-            return {"albums": len(self.parts["albums"]), "tracks": len(self.parts["tracks"])}
+        parts = self._view[0]
+        return {"albums": len(parts["albums"]), "tracks": len(parts["tracks"])}
 
     def path_of(self, track_id: int) -> str | None:
         """A song's file, if it's one this computer shares."""
-        with self._lock:
-            path = self.files.get(track_id)
-            folders = list(self.folders)
+        _, files, _, folders = self._view
+        path = files.get(track_id)
         if path and any(_inside(path, f) for f, _ in folders) and os.path.isfile(path):
             return path
         return None
 
     def cover(self, album_id: int) -> bytes | None:
-        with self._lock:
-            found = self.covers.get(album_id)
+        found = self._view[2].get(album_id)
         if not found:
             return None
         how, path = found
@@ -255,7 +293,7 @@ class Catalog:
             return None
 
     def close(self):
-        with self._lock:
+        with self._db_lock:
             self._db.close()
 
 

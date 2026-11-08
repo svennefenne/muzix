@@ -6,6 +6,7 @@ import httpx
 from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
+from shiboken6 import isValid
 
 from .. import sharing
 
@@ -141,6 +142,13 @@ def cover_label(size: int) -> QLabel:
     return lb
 
 
+def alive(w) -> bool:
+    """Whether a widget is still there: a picture can come after its card was closed."""
+    return w is not None and isValid(w)
+
+
 def set_cover(lb: QLabel, pm: QPixmap):
+    if not alive(lb):
+        return
     s = lb.width()
     lb.setPixmap(pm.scaled(s, s, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation).copy(0, 0, s, s))

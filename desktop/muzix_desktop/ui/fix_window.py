@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (QFrame, QGridLayout, QHBoxLayout, QLineEdit, QPus
 
 from .. import config, fixer
 from . import theme
-from .widgets import Elided, clear, cover_label, frame, heading, in_background, label, picture, restyle, set_cover
+from .widgets import Elided, alive, clear, cover_label, frame, heading, in_background, label, picture, restyle, set_cover
 
 THUMB = 46
 
@@ -286,7 +286,7 @@ class AlbumCard(QFrame):
                 b.setToolTip(f"{c.get('source')}: {c.get('title') or ''}")
                 b.setCursor(Qt.PointingHandCursor)
                 b.setStyleSheet("padding: 0; border-radius: 4px;")
-                picture(c["thumb"], 72, lambda pm, b=b: (b.setIcon(QIcon(pm)), b.setIconSize(b.size())))
+                picture(c["thumb"], 72, lambda pm, b=b: alive(b) and (b.setIcon(QIcon(pm)), b.setIconSize(b.size())))
                 b.clicked.connect(lambda _=False, url=c["url"]: self._use_cover(url, grid_box))
                 grid.addWidget(b, i // 5, i % 5)
             holder = QWidget()

@@ -26,8 +26,9 @@ SOCKET = "muzix-desktop-" + (os.environ.get("USER") or os.environ.get("USERNAME"
 
 
 class _Bridge(QObject):
-    """Status from the sharing thread, to the window's thread."""
+    """Status from the sharing thread and how far a read of the folders is, to the window's thread."""
     status = Signal(str, str)
+    progress = Signal(int, int)
 
 
 class App:
@@ -38,6 +39,8 @@ class App:
         self.catalog = Catalog(os.path.join(config.DATA_DIR, "index.db"))
         self.bridge = _Bridge()
         self.bridge.status.connect(self._status)
+        self.bridge.progress.connect(self._progress)
+        self.reading: tuple[int, int] | None = None     # (songs read, of) while the folders are read
         self.sharing = Sharing(self.catalog, lambda sid, st: self.bridge.status.emit(sid, st))
         self.scanning = False
         self.fix_window = None
@@ -96,7 +99,9 @@ class App:
         else:
             text = f"Sharing {c['tracks']:,} songs with {linked} {'server' if linked == 1 else 'servers'}".replace(",", " ")
         if self.scanning:
-            text += " · reading folders…"
+            done, of = self.reading or (0, 0)
+            text += f" · reading folders: {done:,} of {of:,} new songs ({done * 100 // of} %)".replace(",", " ") if of \
+                else " · looking through the folders…"
         self.status_action.setText(text)
         self.toggle_action.setText("Stop sharing" if self.cfg.sharing else "Start sharing")
         self.tray.setToolTip(f"Muzix Desktop\n{text}")
@@ -134,16 +139,25 @@ class App:
         if self.settings:
             self.settings.show_servers()
 
+    def _progress(self, done: int, of: int):
+        self.reading = (done, of)
+        self._menu_text()
+        self.tray.setIcon(theme.tray_icon(done / of if of else 0))
+        if self.settings:
+            self.settings.show_catalog(self.reading)
+
     def scan(self):
         if self.scanning:
             return
         self.scanning = True
-        self._menu_text()
+        self._progress(0, 0)            # looking through the folders, before it knows how many are new
         folders = [(f.path, f.kind) for f in self.cfg.folders]
 
         def done(changed):
             self.scanning = False
+            self.reading = None
             self._menu_text()
+            self.tray.setIcon(theme.tray_icon())
             if self.settings:
                 self.settings.show_catalog()
             if changed and self.cfg.sharing:
@@ -151,10 +165,14 @@ class App:
 
         def failed(why):
             self.scanning = False
+            self.reading = None
             self._menu_text()
+            self.tray.setIcon(theme.tray_icon())
+            if self.settings:
+                self.settings.show_catalog()
             log.warning("reading the folders failed: %s", why)
 
-        in_background(lambda: self.catalog.scan(folders), done, failed)
+        in_background(lambda: self.catalog.scan(folders, lambda d, n: self.bridge.progress.emit(d, n)), done, failed)
 
     # ------------------------------------------------------------ windows
 

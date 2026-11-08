@@ -3,7 +3,8 @@ accent, Saira for words and JetBrains Mono for codes and labels (bundled under f
 
 import os
 
-from PySide6.QtGui import QFont, QFontDatabase, QIcon
+from PySide6.QtCore import QRectF, Qt
+from PySide6.QtGui import QColor, QFont, QFontDatabase, QIcon, QPainter
 
 HERE = os.path.dirname(os.path.dirname(__file__))
 ASSETS = os.path.join(HERE, "assets")
@@ -35,8 +36,21 @@ def icon() -> QIcon:
     return i
 
 
-def tray_icon() -> QIcon:
-    return icon()
+def tray_icon(progress: float | None = None) -> QIcon:
+    """The tray's icon; with `progress` (0 to 1) a bar across its foot shows how far a read of the
+    folders is."""
+    if progress is None:
+        return icon()
+    pm = icon().pixmap(64, 64)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.setPen(Qt.NoPen)
+    p.setBrush(QColor(DEEP))
+    p.drawRoundedRect(QRectF(2, 48, 60, 14), 5, 5)
+    p.setBrush(QColor(ACCENT))
+    p.drawRoundedRect(QRectF(4, 50, max(6.0, 56 * min(1.0, progress)), 10), 4, 4)
+    p.end()
+    return QIcon(pm)
 
 
 def ui_font(size: float = 10) -> QFont:
@@ -108,6 +122,9 @@ QHeaderView::section {{ background: {PANEL}; color: {DIM}; border: none; border-
                         padding: 4px 6px; font-family: "{MONO}"; font-size: 8pt; }}
 QTableWidget::item:selected, QListWidget::item:selected {{ background: {RAISED}; color: {BONE}; }}
 
+QProgressBar {{ background: {DEEP}; border: 1px solid {LINE_STRONG}; border-radius: 5px; max-height: 10px;
+                text-align: center; color: transparent; }}
+QProgressBar::chunk {{ background: {ACCENT}; border-radius: 4px; }}
 QMenu {{ background: {PANEL}; border: 1px solid {LINE_STRONG}; padding: 4px; }}
 QMenu::item {{ padding: 6px 22px 6px 14px; border-radius: 4px; }}
 QMenu::item:selected {{ background: {RAISED}; }}
