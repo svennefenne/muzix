@@ -139,6 +139,7 @@ def from_computer(peer_id: int, sid: str, track_id: int, fmt: str, codec: str, s
         raise HTTPException(502, str(e))
     if prefetch:
         return Response(status_code=204)
+    tunnel.playing(peer_id, track_id)       # its owner sees it played (a song fetched ahead isn't yet)
     if loading is not None:
         plain = formats.family(fmt) not in formats.RENDERED and not render.needs_transcode(fmt, codec, sample_rate, q)
         if plain and not t and tunnel.started(path, loading):

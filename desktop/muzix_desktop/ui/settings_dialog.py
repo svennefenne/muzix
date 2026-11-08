@@ -89,7 +89,7 @@ class SettingsDialog(QDialog):
         onl.addWidget(self.share_box)
         onl.addWidget(label("Your music is listed on the servers under Servers while this computer is on, and hidden "
                             "while it's off. Nothing on this computer is changed by sharing.", "dim", wrap=True))
-        start = QCheckBox("Start Muzix Desktop when I log in")
+        start = QCheckBox("Start Muzix Desktop minimized when I log in")
         try:
             start.setChecked(autostart.enabled())
         except OSError:

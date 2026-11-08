@@ -87,8 +87,9 @@ class Catalog:
         self._db = sqlite3.connect(path, check_same_thread=False)
         self._db.executescript(SCHEMA)
         self._db.commit()
-        # (parts, song id → its file, album id → its cover, the folders): swapped whole, never changed
-        self._view: tuple[dict, dict, dict, list] = ({p: [] for p in FIELDS}, {}, {}, [])
+        # (parts, song id → its file, album id → its cover, the folders, song id → (artist, title,
+        # seconds)): swapped whole, never changed
+        self._view: tuple[dict, dict, dict, list, dict] = ({p: [] for p in FIELDS}, {}, {}, [], {})
         self._build([])
 
     @property
@@ -255,7 +256,8 @@ class Catalog:
         artist_rows = sorted([aid, name, "", "", [], 0] for aid, name in artists.values())
         self._db.commit()
         parts = {"artists": artist_rows, "albums": sorted(album_rows), "tracks": track_rows, "books": [], "playlists": []}
-        self._view = (parts, files, covers, folders)
+        named = {r[0]: (r[8] or r[2], r[7], r[15] or 0) for r in track_rows}
+        self._view = (parts, files, covers, folders, named)
 
     def page(self, part: str, after: int = 0, limit: int = 1000) -> dict:
         """A page of the catalog, as a server asks for it (muzix.mirror.export's format)."""
@@ -269,9 +271,13 @@ class Catalog:
         parts = self._view[0]
         return {"albums": len(parts["albums"]), "tracks": len(parts["tracks"])}
 
+    def song(self, track_id: int) -> tuple[str, str, float] | None:
+        """A shared song's (artist, title, seconds)."""
+        return self._view[4].get(track_id)
+
     def path_of(self, track_id: int) -> str | None:
         """A song's file, if it's one this computer shares."""
-        _, files, _, folders = self._view
+        _, files, _, folders, _ = self._view
         path = files.get(track_id)
         if path and any(_inside(path, f) for f, _ in folders) and os.path.isfile(path):
             return path

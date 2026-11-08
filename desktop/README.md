@@ -32,7 +32,10 @@ Download the file for your system from the newest `desktop-v…` release on the
   add it to the menu. On GNOME, tray icons need the *AppIndicator and
   KStatusNotifierItem Support* extension.
 
-*Settings → Sharing → Start Muzix Desktop when I log in* keeps it running.
+*Settings → Sharing → Start Muzix Desktop minimized when I log in* keeps it
+running: at login it opens no window, only its tray icon. The icon is grey while
+nobody listens to your music and in colour while someone does; hovering over it
+says what plays, on which server, and how much has been sent today.
 
 ## Sharing with a server
 

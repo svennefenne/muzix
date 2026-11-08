@@ -8,7 +8,8 @@ it's back when it is.
 What this server asks is a text frame {"id", "op", ...}. The computer answers in text ({"id",
 "result"} or {"id", "error"}) or, for a file or a picture, in binary frames that start with the
 request's id and a flag (HEAD; flag 1: the last one). It says {"op": "changed"} when its catalog
-changed, and this server tells it {"op": "state", "state": "waiting" | "linked" | "removed"}.
+changed, and this server tells it {"op": "state", "state": "waiting" | "linked" | "removed"}, and
+{"op": "playing", "track"} when someone here plays one of its songs.
 
 A song's file comes here once and is kept in the cache (cache_dir(), pruned to CACHE_LIMIT), where the
 rest of Muzix plays it like its own: converted, rendered (chiptunes), cast.
@@ -22,6 +23,7 @@ import os
 import queue
 import struct
 import threading
+import time
 from datetime import datetime, timezone
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -157,6 +159,25 @@ def tell(peer_id: int, state: str):
         pass
 
 
+_told: dict[tuple[int, int], float] = {}        # (computer, song) → when it was last told it plays
+
+
+def playing(peer_id: int, track_id: int):
+    """Someone here plays one of a computer's songs (from its connection or the cache here): it's
+    told, once a minute per song at most (seeking asks for the song again), so its owner sees it."""
+    now = time.monotonic()
+    with _lock:
+        if now - _told.get((peer_id, track_id), -1e9) < 60:
+            return
+        if len(_told) > 1000:
+            for k in [k for k, at in _told.items() if now - at > 3600]:
+                del _told[k]
+        _told[(peer_id, track_id)] = now
+        c = _computers.get(peer_id)
+    if c is not None:       # not waited on: the song doesn't wait for the computer
+        asyncio.run_coroutine_threadsafe(c.ws.send_text(json.dumps({"op": "playing", "track": track_id})), c.loop)
+
+
 # ------------------------------------------------------------ who's away
 
 def refresh_away():
@@ -261,7 +282,9 @@ async def serve(ws: WebSocket):
                 del _computers[p.id]
         c.lost()
         if current:
-            await asyncio.to_thread(_left, p.id)
+            # right here, not in a thread: an await in a task being cancelled (the server stopping,
+            # a test client closing) would skip it, and the computer would stay "on"
+            _left(p.id)
 
 
 # ------------------------------------------------------------ what's asked of it

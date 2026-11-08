@@ -4,7 +4,7 @@ accent, Saira for words and JetBrains Mono for codes and labels (bundled under f
 import os
 
 from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QFontDatabase, QIcon, QPainter
+from PySide6.QtGui import QColor, QFont, QFontDatabase, QIcon, QImage, QPainter, QPixmap
 
 HERE = os.path.dirname(os.path.dirname(__file__))
 ASSETS = os.path.join(HERE, "assets")
@@ -36,12 +36,33 @@ def icon() -> QIcon:
     return i
 
 
-def tray_icon(progress: float | None = None) -> QIcon:
-    """The tray's icon; with `progress` (0 to 1) a bar across its foot shows how far a read of the
-    folders is."""
+def _greyed(pm: QPixmap) -> QPixmap:
+    """The icon without its colours, as dark as it is (Qt's own greying lightens it into a pale
+    square, brighter on a dark panel than the coloured one)."""
+    img = pm.toImage()
+    grey = img.convertToFormat(QImage.Format.Format_Grayscale8).convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
+    p = QPainter(grey)
+    p.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)     # its own outline
+    p.drawImage(0, 0, img)
+    p.end()
+    out = QPixmap.fromImage(grey)
+    out.setDevicePixelRatio(pm.devicePixelRatio())
+    return out
+
+
+def tray_icon(progress: float | None = None, active: bool = True) -> QIcon:
+    """The tray's icon: in colour while someone listens to the music shared from here (`active`),
+    grey while nobody does; with `progress` (0 to 1) a bar across its foot shows how far a read of
+    the folders is."""
+    base = icon()
+    if not active:
+        grey = QIcon()
+        for size in (16, 20, 24, 32, 48, 64, 128, 256):
+            grey.addPixmap(_greyed(base.pixmap(size, size)))
+        base = grey
     if progress is None:
-        return icon()
-    pm = icon().pixmap(64, 64)
+        return base
+    pm = base.pixmap(64, 64)
     p = QPainter(pm)
     p.setRenderHint(QPainter.Antialiasing)
     p.setPen(Qt.NoPen)

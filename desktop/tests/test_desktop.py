@@ -172,3 +172,19 @@ def test_a_slow_read_makes_no_one_wait_and_goes_on_where_it_stopped(album, tmp_p
     again = catalog.Catalog(str(tmp_path / "index.db"))
     assert again.scan(folders) and again.counts() == {"albums": 1, "tracks": 3}
     assert len(read) == 2                           # not the song saved before the app quit
+
+
+def test_started_at_login_minimized(tmp_path, monkeypatch):
+    """The login entry starts the app with --minimized (no window, only the tray icon), the AppImage
+    itself when it runs as one."""
+    from muzix_desktop import autostart
+    monkeypatch.setattr(autostart.sys, "platform", "linux")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.delenv("APPIMAGE", raising=False)
+    assert autostart.command()[-1] == "--minimized"
+    monkeypatch.setenv("APPIMAGE", "/home/anna/Applications/muzix-desktop.AppImage")
+    autostart.set_enabled(True)
+    entry = open(tmp_path / "autostart" / "muzix-desktop.desktop").read()
+    assert "Exec=/home/anna/Applications/muzix-desktop.AppImage --minimized" in entry and autostart.enabled()
+    autostart.set_enabled(False)
+    assert not autostart.enabled()

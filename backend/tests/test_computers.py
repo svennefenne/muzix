@@ -53,7 +53,7 @@ class Computer:
     """The desktop client: answers what the server asks, as the real one does (desktop/)."""
 
     def __init__(self, ws):
-        self.ws, self.states, self.asked = ws, [], []
+        self.ws, self.states, self.asked, self.played = ws, [], [], []
         self.thread = threading.Thread(target=self.run, daemon=True)
         self.thread.start()
 
@@ -63,6 +63,9 @@ class Computer:
                 m = self.ws.receive_json()
                 if m.get("op") == "state":
                     self.states.append(m["state"])
+                    continue
+                if m.get("op") == "playing":
+                    self.played.append(m["track"])
                     continue
                 self.asked.append(m["op"])
                 rid = m["id"]
@@ -182,6 +185,7 @@ def test_its_music_comes_through_its_connection_and_hides_while_its_off(app, ser
         assert r.status_code == 200 and r.content == SONG
         assert c.get(f"/api/stream/{tid}", headers={"Range": "bytes=0-9"}).content == SONG[:10]
         assert comp.asked.count("file") == 1
+        wait(lambda: comp.played == [3])        # told once that its song plays, though asked for twice
         # its cover, through the connection
         r = c.get(f"/api/art/album/{aid}?s=160")
         assert r.status_code == 200 and Image.open(io.BytesIO(r.content)).size == (160, 160)

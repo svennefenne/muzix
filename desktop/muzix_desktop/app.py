@@ -1,18 +1,26 @@
 """The tray app: an icon in the system tray whose menu opens Fix Metadata & Artwork, starts and
 stops sharing, opens Settings and quits. The shared folders are read when it starts, when they
-change in Settings and every few minutes; the servers fetch the catalog again when it changed."""
+change in Settings and every few minutes; the servers fetch the catalog again when it changed.
 
+The icon is grey while nobody listens to the music shared from here, and in colour while someone
+does (a server says so when one of its listeners plays a song from here); hovering over it says
+what plays where and how much has been sent today. Started at login (--minimized) it opens no
+window, and waits for the tray if the desktop isn't ready yet."""
+
+import json
 import logging
 import os
 import sys
+import time
 import traceback
+from datetime import date
 
 from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtGui import QAction
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
-from . import config
+from . import autostart, config
 from .catalog import Catalog
 from .sharing import Sharing
 from .shared import use_keys
@@ -22,17 +30,59 @@ from .ui.widgets import in_background
 log = logging.getLogger(__name__)
 
 RESCAN_EVERY = 5 * 60 * 1000        # ms
+TICK = 3000                         # ms between looks at what plays and what's been sent
+PLAYS_FOR_UNKNOWN = 5 * 60          # seconds a song of unknown length counts as playing
 SOCKET = "muzix-desktop-" + (os.environ.get("USER") or os.environ.get("USERNAME") or "user")
 
 
 class _Bridge(QObject):
-    """Status from the sharing thread and how far a read of the folders is, to the window's thread."""
+    """Status from the sharing thread, a song played on a server, and how far a read of the folders
+    is, to the window's thread."""
     status = Signal(str, str)
     progress = Signal(int, int)
+    playing = Signal(str, int)
+
+
+def fmt_bytes(n: float) -> str:
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1024 or unit == "GB":
+            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
+        n /= 1024
+    return f"{n:.1f} GB"
+
+
+class Usage:
+    """The bytes sent to the servers today (kept over a restart in usage.json)."""
+
+    def __init__(self):
+        self.path = os.path.join(config.DATA_DIR, "usage.json")
+        try:
+            with open(self.path, encoding="utf-8") as f:
+                saved = json.load(f)
+        except (OSError, ValueError):
+            saved = {}
+        self.day, self.sent = saved.get("day", ""), int(saved.get("sent") or 0)
+        self.saved_at = self.sent
+
+    def add(self, n: int):
+        today = date.today().isoformat()
+        if self.day != today:
+            self.day, self.sent, self.saved_at = today, 0, -1
+        self.sent += n
+        if self.sent - self.saved_at >= 1024 ** 2 or self.saved_at < 0:
+            self.save()
+
+    def save(self):
+        try:
+            with open(self.path, "w", encoding="utf-8") as f:
+                json.dump({"day": self.day, "sent": self.sent}, f)
+            self.saved_at = self.sent
+        except OSError:
+            pass
 
 
 class App:
-    def __init__(self, qt: QApplication):
+    def __init__(self, qt: QApplication, minimized: bool = False):
         self.qt = qt
         self.cfg = config.load()
         use_keys(self.cfg.keys)
@@ -41,13 +91,19 @@ class App:
         self.bridge.status.connect(self._status)
         self.bridge.progress.connect(self._progress)
         self.reading: tuple[int, int] | None = None     # (songs read, of) while the folders are read
-        self.sharing = Sharing(self.catalog, lambda sid, st: self.bridge.status.emit(sid, st))
+        self.bridge.playing.connect(self._played)
+        self.sharing = Sharing(self.catalog, lambda sid, st: self.bridge.status.emit(sid, st),
+                               lambda sid, track: self.bridge.playing.emit(sid, track))
+        self.plays: dict[tuple[str, int], float] = {}     # (server, song) → until when it counts as playing
+        self.usage = Usage()
+        self.counted = 0                # of sharing.sent, what's in usage already
+        self.active = False
         self.scanning = False
         self.fix_window = None
         self.settings = None
         self.known_states = {s.server_id: s.state for s in self.cfg.servers}
 
-        self.tray = QSystemTrayIcon(theme.tray_icon())
+        self.tray = QSystemTrayIcon(theme.tray_icon(active=False))
         self.tray.setToolTip("Muzix Desktop")
         self.menu = QMenu()
         self.fix_action = QAction("Fix Metadata && Artwork…")
@@ -60,8 +116,12 @@ class App:
         self.settings_action.triggered.connect(self.open_settings)
         self.quit_action = QAction("Quit")
         self.quit_action.triggered.connect(self.quit)
+        self.playing_action = QAction("")
+        self.playing_action.setEnabled(False)
+        self.playing_action.setVisible(False)
         self.menu.addAction(self.fix_action)
         self.menu.addSeparator()
+        self.menu.addAction(self.playing_action)
         self.menu.addAction(self.status_action)
         self.menu.addAction(self.toggle_action)
         self.menu.addAction(self.settings_action)
@@ -71,15 +131,71 @@ class App:
         self.tray.activated.connect(self._clicked)
         self.tray.show()
         self._menu_text()
+        if minimized and not QSystemTrayIcon.isSystemTrayAvailable():
+            self._wait_for_tray()       # at login the desktop's tray may come a little after this app
 
         self.timer = QTimer()
         self.timer.timeout.connect(self.scan)
         self.timer.start(RESCAN_EVERY)
+        self.ticker = QTimer()
+        self.ticker.timeout.connect(self._tick)
+        self.ticker.start(TICK)
         self.scan()
         if self.cfg.sharing:
             self.sharing.start()
-        if not self.cfg.folders or not self.cfg.servers:
+        if not minimized and (not self.cfg.folders or not self.cfg.servers):
             QTimer.singleShot(400, self.open_settings)      # the first start: what to share, and where
+        try:
+            if autostart.enabled():
+                autostart.set_enabled(True)     # the login entry kept up to date (--minimized, where the app is)
+        except OSError:
+            pass
+
+    def _wait_for_tray(self, tries: int = 60):
+        if QSystemTrayIcon.isSystemTrayAvailable():
+            self.tray.hide()
+            self.tray.show()
+        elif tries:
+            QTimer.singleShot(2000, lambda: self._wait_for_tray(tries - 1))
+
+    # ------------------------------------------------------------ what plays, and what's sent
+
+    def _played(self, sid: str, track: int):
+        """A server says one of its listeners plays a song from here: it counts as playing for its length."""
+        song = self.catalog.song(track)
+        seconds = song[2] if song and song[2] else PLAYS_FOR_UNKNOWN
+        self.plays[(sid, track)] = time.monotonic() + seconds + 20
+        self._tick()
+
+    def _tick(self):
+        now = time.monotonic()
+        self.plays = {k: until for k, until in self.plays.items() if until > now}
+        sent = self.sharing.sent
+        if sent > self.counted:
+            self.usage.add(sent - self.counted)
+            self.counted = sent
+        active = bool(self.plays) or self.sharing.sending > 0
+        if active != self.active:
+            self.active = active
+            self._icon()
+        self._menu_text()
+
+    def _now_playing(self) -> list[str]:
+        """What plays on the servers now, the latest first: "Artist – Title on Server"."""
+        out = []
+        for (sid, track), _ in sorted(self.plays.items(), key=lambda kv: -kv[1]):
+            song = self.catalog.song(track)
+            server = self.cfg.server(sid)
+            name = f"{song[0]} – {song[1]}" if song else "a song from here"
+            out.append(f"{name} on {server.name if server else 'a server'}")
+        return out
+
+    def _icon(self):
+        progress = None
+        if self.scanning:
+            done, of = self.reading or (0, 0)
+            progress = done / of if of else 0
+        self.tray.setIcon(theme.tray_icon(progress, active=self.active))
 
     # ------------------------------------------------------------ the menu
 
@@ -104,7 +220,17 @@ class App:
                 else " · looking through the folders…"
         self.status_action.setText(text)
         self.toggle_action.setText("Stop sharing" if self.cfg.sharing else "Start sharing")
-        self.tray.setToolTip(f"Muzix Desktop\n{text}")
+        playing = self._now_playing()
+        self.playing_action.setVisible(bool(playing))
+        if playing:
+            self.playing_action.setText(f"Playing: {playing[0]}" + (f" (and {len(playing) - 1} more)" if len(playing) > 1 else ""))
+        lines = ["Muzix Desktop"]
+        lines += [f"♪ {p}" for p in playing[:4]] + ([f"and {len(playing) - 4} more"] if len(playing) > 4 else [])
+        if not playing:
+            lines.append("Nobody is listening to your music right now")
+        lines.append(text)
+        lines.append(f"Sent today: {fmt_bytes(self.usage.sent if self.usage.day == date.today().isoformat() else 0)}")
+        self.tray.setToolTip("\n".join(lines))
 
     def notify(self, title: str, text: str):
         self.tray.showMessage(title, text, theme.icon(), 6000)
@@ -142,7 +268,7 @@ class App:
     def _progress(self, done: int, of: int):
         self.reading = (done, of)
         self._menu_text()
-        self.tray.setIcon(theme.tray_icon(done / of if of else 0))
+        self._icon()
         if self.settings:
             self.settings.show_catalog(self.reading)
 
@@ -157,7 +283,7 @@ class App:
             self.scanning = False
             self.reading = None
             self._menu_text()
-            self.tray.setIcon(theme.tray_icon())
+            self._icon()
             if self.settings:
                 self.settings.show_catalog()
             if changed and self.cfg.sharing:
@@ -167,7 +293,7 @@ class App:
             self.scanning = False
             self.reading = None
             self._menu_text()
-            self.tray.setIcon(theme.tray_icon())
+            self._icon()
             if self.settings:
                 self.settings.show_catalog()
             log.warning("reading the folders failed: %s", why)
@@ -225,6 +351,9 @@ class App:
 
     def quit(self):
         self.timer.stop()
+        self.ticker.stop()
+        self._tick()
+        self.usage.save()
         self.sharing.stop()
         self.tray.hide()
         self.qt.quit()
@@ -286,18 +415,18 @@ def main():
     QApplication.setOrganizationName("Muzix")
     qt = QApplication(sys.argv)
     qt.setQuitOnLastWindowClosed(False)
+    minimized = "--minimized" in sys.argv          # started at login: no window, only the tray
     if _already_running():
         return 0
     theme.load_fonts()
     qt.setStyleSheet(theme.STYLE)
     qt.setWindowIcon(theme.icon())
-    if not QSystemTrayIcon.isSystemTrayAvailable():
-        log.warning("No system tray here: Settings stays open instead")
-    app = App(qt)
+    app = App(qt, minimized=minimized)
     server = QLocalServer()
     QLocalServer.removeServer(SOCKET)
     server.listen(SOCKET)
     server.newConnection.connect(lambda: (server.nextPendingConnection(), app.open_settings()))
-    if not QSystemTrayIcon.isSystemTrayAvailable():
+    if not minimized and not QSystemTrayIcon.isSystemTrayAvailable():
+        log.warning("No system tray here: Settings stays open instead")
         app.open_settings()
     return qt.exec()

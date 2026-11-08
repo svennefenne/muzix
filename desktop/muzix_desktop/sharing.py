@@ -129,11 +129,15 @@ def unlink(server: config.Server):
 
 class Sharing:
     """The connections to the linked servers, in a thread of their own. `on_status(server_id,
-    status)` hears how each stands: connecting, waiting, linked, offline, removed."""
+    status)` hears how each stands: connecting, waiting, linked, offline, removed; `on_playing(
+    server_id, track_id)` that someone on that server plays one of the songs shared from here.
+    `sent` counts the bytes sent to the servers, `sending` the songs on their way now."""
 
-    def __init__(self, catalog: Catalog, on_status=lambda sid, status: None):
-        self.catalog, self.on_status = catalog, on_status
+    def __init__(self, catalog: Catalog, on_status=lambda sid, status: None, on_playing=lambda sid, track: None):
+        self.catalog, self.on_status, self.on_playing = catalog, on_status, on_playing
         self.status: dict[str, str] = {}
+        self.sent = 0
+        self.sending = 0
         self.loop = asyncio.new_event_loop()
         self.tasks: dict[str, asyncio.Task] = {}
         self.live: dict[str, object] = {}       # server id → its open connection
@@ -267,6 +271,11 @@ class Sharing:
                 self._state(sid, m.get("state") or "waiting")
             elif op == "cancel":
                 self.cancelled.add((sid, m.get("id")))
+            elif op == "playing":
+                try:
+                    self.on_playing(sid, int(m.get("track") or 0))
+                except Exception:
+                    log.exception("playing callback")
             elif "id" in m:
                 asyncio.create_task(self._answer(sid, ws, m))
 
@@ -303,16 +312,22 @@ class Sharing:
             self.cancelled.discard((sid, rid))
 
     async def _send_file(self, sid: str, ws, rid: int, path: str):
-        with open(path, "rb") as f:
-            while (sid, rid) not in self.cancelled:
-                chunk = await asyncio.to_thread(f.read, CHUNK)
-                last = len(chunk) < CHUNK
-                await ws.send(HEAD.pack(rid, 1 if last else 0) + chunk)
-                if last:
-                    return
+        self.sending += 1
+        try:
+            with open(path, "rb") as f:
+                while (sid, rid) not in self.cancelled:
+                    chunk = await asyncio.to_thread(f.read, CHUNK)
+                    last = len(chunk) < CHUNK
+                    await ws.send(HEAD.pack(rid, 1 if last else 0) + chunk)
+                    self.sent += len(chunk)
+                    if last:
+                        return
+        finally:
+            self.sending -= 1
 
     async def _send_bytes(self, sid: str, ws, rid: int, data: bytes):
         for i in range(0, max(1, len(data)), CHUNK):
             if (sid, rid) in self.cancelled:
                 return
             await ws.send(HEAD.pack(rid, 1 if i + CHUNK >= len(data) else 0) + data[i:i + CHUNK])
+            self.sent += len(data[i:i + CHUNK])

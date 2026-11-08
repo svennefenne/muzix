@@ -10,15 +10,16 @@ LABEL = "se.svennefenne.muzix-desktop"
 
 
 def command() -> list[str]:
-    """How this program is started: its AppImage, the app itself when it's built, else Python with the package."""
+    """How this program is started at login, minimized (only its tray icon): its AppImage, the app
+    itself when it's built, else Python with the package."""
     if os.environ.get("APPIMAGE"):      # an AppImage runs from a new temporary folder each time
-        return [os.environ["APPIMAGE"]]
+        return [os.environ["APPIMAGE"], "--minimized"]
     if getattr(sys, "frozen", False):
         exe = sys.executable
         if sys.platform == "darwin" and ".app/Contents/MacOS/" in exe:
-            return ["/usr/bin/open", "-a", exe.split(".app/")[0] + ".app"]
-        return [exe]
-    return [sys.executable, "-m", "muzix_desktop"]
+            return ["/usr/bin/open", "-a", exe.split(".app/")[0] + ".app", "--args", "--minimized"]
+        return [exe, "--minimized"]
+    return [sys.executable, "-m", "muzix_desktop", "--minimized"]
 
 
 def _linux_file() -> str:
