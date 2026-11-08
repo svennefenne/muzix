@@ -411,6 +411,11 @@ def main():
     if "--check" in sys.argv:
         return check()
     _logging()
+    if sys.platform.startswith("linux") and os.environ.get("QT_QPA_PLATFORMTHEME") not in ("gtk3", "xdgdesktopportal"):
+        # the desktop's own folder picker through its portal (KDE's, GNOME's...): the desktop's Qt
+        # plugins don't fit the Qt bundled here, so Qt would draw its own, and on systems without
+        # the portal it still does
+        os.environ["QT_QPA_PLATFORMTHEME"] = "xdgdesktopportal"
     QApplication.setApplicationName("Muzix Desktop")
     QApplication.setOrganizationName("Muzix")
     qt = QApplication(sys.argv)
@@ -419,6 +424,7 @@ def main():
     if _already_running():
         return 0
     theme.load_fonts()
+    qt.setPalette(theme.palette())
     qt.setStyleSheet(theme.STYLE)
     qt.setWindowIcon(theme.icon())
     app = App(qt, minimized=minimized)

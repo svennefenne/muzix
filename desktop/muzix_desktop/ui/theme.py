@@ -4,7 +4,7 @@ accent, Saira for words and JetBrains Mono for codes and labels (bundled under f
 import os
 
 from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QFontDatabase, QIcon, QImage, QPainter, QPixmap
+from PySide6.QtGui import QColor, QFont, QFontDatabase, QIcon, QImage, QPainter, QPalette, QPixmap
 
 HERE = os.path.dirname(os.path.dirname(__file__))
 ASSETS = os.path.join(HERE, "assets")
@@ -72,6 +72,23 @@ def tray_icon(progress: float | None = None, active: bool = True) -> QIcon:
     p.drawRoundedRect(QRectF(4, 50, max(6.0, 56 * min(1.0, progress)), 10), 4, 4)
     p.end()
     return QIcon(pm)
+
+
+def palette() -> QPalette:
+    """The same colours for what the style sheet doesn't reach: Qt's own folder dialog where the
+    desktop has none, and anything else drawn from the palette (white lists with bone text before)."""
+    p = QPalette()
+    for role, colour in ((QPalette.Window, NAVY), (QPalette.WindowText, BONE), (QPalette.Base, DEEP),
+                         (QPalette.AlternateBase, PANEL), (QPalette.Text, BONE), (QPalette.Button, RAISED),
+                         (QPalette.ButtonText, BONE), (QPalette.ToolTipBase, RAISED), (QPalette.ToolTipText, BONE),
+                         (QPalette.PlaceholderText, FAINT), (QPalette.Highlight, ACCENT),
+                         (QPalette.HighlightedText, ON_ACCENT), (QPalette.Link, ACCENT), (QPalette.Light, HIGH),
+                         (QPalette.Midlight, RAISED), (QPalette.Mid, LINE_STRONG), (QPalette.Dark, DEEP),
+                         (QPalette.Shadow, "#000000")):
+        p.setColor(role, QColor(colour))
+    for role in (QPalette.WindowText, QPalette.Text, QPalette.ButtonText):
+        p.setColor(QPalette.Disabled, role, QColor(FAINT))
+    return p
 
 
 def ui_font(size: float = 10) -> QFont:
@@ -142,6 +159,11 @@ QTableWidget, QListWidget {{ background: {DEEP}; border: 1px solid {LINE}; borde
 QHeaderView::section {{ background: {PANEL}; color: {DIM}; border: none; border-bottom: 1px solid {LINE};
                         padding: 4px 6px; font-family: "{MONO}"; font-size: 8pt; }}
 QTableWidget::item:selected, QListWidget::item:selected {{ background: {RAISED}; color: {BONE}; }}
+
+QFileDialog QTreeView, QFileDialog QListView {{ background: {DEEP}; border: 1px solid {LINE}; border-radius: 6px;
+                                              selection-background-color: {RAISED}; selection-color: {BONE}; }}
+QFileDialog QToolButton {{ background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 3px; }}
+QFileDialog QToolButton:hover, QFileDialog QToolButton:checked {{ background: {RAISED}; border-color: {LINE_STRONG}; }}
 
 QProgressBar {{ background: {DEEP}; border: 1px solid {LINE_STRONG}; border-radius: 5px; max-height: 10px;
                 text-align: center; color: transparent; }}
