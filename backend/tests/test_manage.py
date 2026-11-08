@@ -438,3 +438,27 @@ def test_a_save_that_fails_halfway_puts_the_files_back(library, monkeypatch):
     assert {f: raw(os.path.join(album, f)) for f in os.listdir(album) if f.endswith(".wav")} == before
     assert not os.path.exists(os.path.join(top, "Metal", "Old Artist", "Old Artist - 1992 - Better Album"))
     assert manage.edit_list() == []
+
+
+def test_several_albums_go_to_the_trash_at_once(library):
+    """Admin → Albums without artwork: the albums ticked, each into the trash as its own entry."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from types import SimpleNamespace
+    from muzix.api import manage as manage_api
+    from muzix.security import admin_user
+    top, album, album_id = library
+    with db.session() as s:
+        other_id = s.scalar(select(Album.id).where(Album.title == "Next Door"))
+    app = FastAPI()
+    app.include_router(manage_api.router)
+    app.dependency_overrides[admin_user] = lambda: SimpleNamespace(id=1, is_admin=True)
+    got = TestClient(app).post("/api/manage/albums/delete", json={"ids": [album_id, other_id, 999999]}).json()
+    assert [d["id"] for d in got["deleted"]] == [album_id, other_id] and all(d["trash_id"] for d in got["deleted"])
+    assert [f["id"] for f in got["failed"]] == [999999]
+    assert not os.path.exists(album)
+    with db.session() as s:
+        assert s.scalar(select(func.count()).select_from(Album).where(Album.id.in_([album_id, other_id]))) == 0
+        assert s.scalar(select(func.count()).select_from(TrashItem)) == 2
+    manage.restore(got["deleted"][0]["trash_id"])            # each one comes back on its own
+    assert os.path.exists(album)

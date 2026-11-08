@@ -19,7 +19,7 @@ const NOUN: Record<ItemKind, string> = {
 };
 
 /** What deleting does to each kind: into the trash (files), or gone. */
-const DELETE_SAYS: Record<ItemKind, string> = {
+export const DELETE_SAYS: Record<ItemKind, string> = {
   album: "Its folder moves to the trash on the music share. You can put it back from Admin → Hidden & trash until the trash is emptied.",
   track: "The file moves to the trash on the music share (a chip file takes all its songs with it). You can put it back from Admin → Hidden & trash.",
   artist: "All of the artist's albums and songs move to the trash on the music share. You can put them back from Admin → Hidden & trash.",

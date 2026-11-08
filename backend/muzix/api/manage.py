@@ -1,7 +1,7 @@
 """Admin mode: hiding, deleting and editing library items, and looking them up elsewhere."""
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from .. import manage, providers
@@ -147,6 +147,23 @@ def unhide(kind: str, id_: int):
 @router.delete("/{kind}/{id_}")
 def delete(kind: str, id_: int):
     return _do(manage.delete_item, _kind(kind), id_)
+
+
+class Albums(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=500)
+
+
+@router.post("/albums/delete")
+def delete_albums(body: Albums):
+    """Several albums into the trash at once (each its own entry there, to put back on its own):
+    {deleted: [{id, trash_id}], failed: [{id, why}]}."""
+    deleted, failed = [], []
+    for id_ in dict.fromkeys(body.ids):
+        try:
+            deleted.append({"id": id_, **manage.delete_item("album", id_)})
+        except manage.ManageError as e:
+            failed.append({"id": id_, "why": str(e)})
+    return {"deleted": deleted, "failed": failed}
 
 
 @router.post("/{kind}/{id_}/cover")

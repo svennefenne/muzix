@@ -107,15 +107,18 @@ def hidden_items() -> list[dict]:
         for a in s.scalars(select(Album).where(Album.hidden.is_(True)).order_by(Album.artist_name, Album.title)):
             if a.artist_id not in hidden_artists:
                 out.append({"kind": "album", "id": a.id, "title": a.title, "subtitle": f"Album · {a.artist_name}",
-                            "art": serial.art_url("album", a.id) if a.art else None})
+                            "art": serial.art_url("album", a.id) if a.art else None, "theirs": a.peer_id is not None})
         for t in s.scalars(select(Track).where(Track.hidden.is_(True)).order_by(Track.artist, Track.title)):
             if t.album_id not in hidden_albums and t.artist_id not in hidden_artists:
-                out.append({"kind": "track", "id": t.id, "title": t.title, "subtitle": f"Song · {t.artist}"})
+                out.append({"kind": "track", "id": t.id, "title": t.title, "subtitle": f"Song · {t.artist}",
+                            "theirs": t.peer_id is not None})
         for kind, model, label, name in (("book", Book, "Audiobook", "title"), ("podcast", Feed, "Podcast", "title"),
                                          ("playlist", Playlist, "Playlist", "name"), ("fileplaylist", FilePlaylist, "Playlist file", "name"),
                                          ("station", Station, "Radio station", "name")):
             for r in s.scalars(select(model).where(model.hidden.is_(True))):
-                out.append({"kind": kind, "id": r.id, "title": getattr(r, name) or "", "subtitle": label})
+                out.append({"kind": kind, "id": r.id, "title": getattr(r, name) or "", "subtitle": label,
+                            "theirs": getattr(r, "peer_id", None) is not None})
+    # "theirs": another server's in the Library Network, only hidden here (its own admin deletes it)
     return out
 
 

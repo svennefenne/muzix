@@ -1,13 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Blocks, Disc3, EyeOff, FileQuestion, FolderOpen, Gamepad2, HardDrive, History, Library, Network, Plus, RefreshCw, Save, Settings2, Trash2, Upload, Users, X } from "lucide-react";
+import { Activity, Blocks, Disc3, EyeOff, FileQuestion, FolderOpen, Gamepad2, HardDrive, History, Image as ImageIcon, Library, Network, Plus, RefreshCw, Save, Settings2, Trash2, Upload, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { create } from "zustand";
 import { ago, api, fmtBytes, fmtNumber } from "../../api";
 import { queryClient } from "../../actions";
-import { Display, Empty, Kicker, Loading, Modal, Switch } from "../../components/ui";
+import { refreshAll, useAdminDialogs } from "../../components/AdminMode";
+import { Art, Display, Empty, Kicker, Loading, Modal, Switch } from "../../components/ui";
 import { useUi } from "../../store/ui";
-import type { Job } from "../../types";
+import type { Album, Job } from "../../types";
 import { Edits } from "./Edits";
 import { HiddenAndTrash } from "./HiddenTrash";
 import { FolderBrowser, SettingField, type SettingSpec } from "./fields";
@@ -15,7 +16,11 @@ import { Modules } from "./Modules";
 import { LibraryNetwork } from "./Network";
 
 interface Root { id: number; path: string; kind: string; name: string; enabled: boolean; upload_target: boolean; excludes: string[]; items: number; exists: boolean; writable: boolean; last_scan: string | null }
-interface Status { version: string; tools: Record<string, boolean>; counts: Record<string, number>; cache_bytes: number | null; art_bytes: number | null; data_dir: string; data_free_bytes: number }
+interface Status {
+  version: string; tools: Record<string, boolean>; counts: Record<string, number>; cache_bytes: number | null; art_bytes: number | null;
+  data_dir: string; data_free_bytes: number;
+  without_art: { albums: number; tracks: number };     // this server's music albums without a cover, and their songs
+}
 
 const TOOL_INFO: Record<string, string> = {
   ffmpeg: "Transcoding and FLAC encoding", ffprobe: "Chapters and lengths", libopenmpt: "Tracker modules (MOD/XM/IT/S3M/MT2)",
@@ -67,6 +72,12 @@ function Overview() {
           ["Audiobooks", s.counts.books], ["Podcasts", s.counts.feeds], ["Users", s.counts.users]].map(([k, v]) => (
           <div key={k as string} className="stat"><div className="v">{fmtNumber(v as number)}</div><div className="k">{k}</div></div>
         ))}
+        <Link to="/admin/artwork" className={`stat stat-link ${s.without_art.albums ? "warn" : ""}`}
+              data-tip="The albums without a cover, to give them one">
+          <div className="v">{fmtNumber(s.without_art.albums)}</div>
+          <div className="k">Albums without artwork</div>
+          <div className="sub">{s.without_art.albums ? `${fmtNumber(s.without_art.tracks)} songs` : "every album has one"}</div>
+        </Link>
       </div>
       <section className="panel">
         <div className="panel-head"><div className="h3">Quick actions</div></div>
@@ -596,6 +607,124 @@ function UploadArea() {
   );
 }
 
+// ---------------------------------------------------------------- albums without artwork
+
+type BareAlbum = Album & { folder: string };
+const BARE_PAGE = 100;
+
+/** Admin → Overview → Albums without artwork: each one to give a cover to with Edit metadata (saved
+ * with a cover, it leaves the list: every query is fetched again after a save), or ticked, with
+ * others, to delete: their files go to the trash, each album to put back on its own. */
+function WithoutArtwork() {
+  const setEdit = useAdminDialogs((s) => s.setEdit);
+  const notify = useUi((s) => s.notify);
+  const [shown, setShown] = useState(BARE_PAGE);
+  const [ticked, setTicked] = useState<Set<number>>(new Set());
+  const [asking, setAsking] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const q = useQuery({ queryKey: ["without-art", shown], placeholderData: (before) => before,
+                       queryFn: () => api.get<{ total: number; items: BareAlbum[] }>("/api/admin/without-art", { limit: shown }) });
+  if (!q.data) return <Loading />;
+  const { total, items } = q.data;
+  const songs = items.reduce((n, a) => n + a.track_count, 0);
+  const picked = items.filter((a) => ticked.has(a.id));       // only those still listed
+  const pickedSongs = picked.reduce((n, a) => n + a.track_count, 0);
+  const all = items.length > 0 && picked.length === items.length;
+  const tick = (id: number, on: boolean) => setTicked((t) => { const n = new Set(t); if (on) n.add(id); else n.delete(id); return n; });
+  const remove = async () => {
+    setAsking(false);
+    setDeleting(true);
+    try {
+      const r = await api.post<{ deleted: { id: number }[]; failed: { id: number; why: string }[] }>(
+        "/api/manage/albums/delete", { ids: picked.map((a) => a.id) });
+      const name = (id: number) => items.find((a) => a.id === id)?.title ?? `album ${id}`;
+      setTicked(new Set());
+      notify(`${r.deleted.length} ${r.deleted.length === 1 ? "album is" : "albums are"} in the trash`
+        + (r.failed.length ? `. Not deleted: ${r.failed.map((f) => `${name(f.id)} (${f.why})`).join("; ")}` : ""),
+        r.failed.length ? "error" : "info", { label: "Show the trash", to: "/admin/hidden" });
+      refreshAll();
+    } catch (e) {
+      notify((e as Error).message, "error");
+    } finally {
+      setDeleting(false);
+    }
+  };
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <div className="kicker"><Link to="/admin">Overview</Link> · Artwork</div>
+          <div className="h3">{total ? `${fmtNumber(total)} ${total === 1 ? "album" : "albums"} without artwork` : "Every album has artwork"}</div>
+        </div>
+      </div>
+      <p className="dim" style={{ marginTop: 0 }}>
+        Albums with no cover in their folder or their songs. <b>Edit</b> finds the album in the sources and its cover; once it's
+        saved with a cover it leaves this list. Tick albums to delete their files: they go to the trash, from where each one can be put
+        back under Hidden &amp; trash.
+      </p>
+      {items.length > 0 && (
+        <div className="bare-bar">
+          <label className="bare-all">
+            <input type="checkbox" checked={all} ref={(el) => { if (el) el.indeterminate = picked.length > 0 && !all; }}
+                   onChange={(e) => setTicked(e.target.checked ? new Set(items.map((a) => a.id)) : new Set())} />
+            {picked.length ? `${fmtNumber(picked.length)} selected (${fmtNumber(pickedSongs)} songs)` : "Select all shown"}
+          </label>
+          <div className="grow" />
+          {picked.length > 0 && (
+            <button className="btn danger" disabled={deleting} onClick={() => setAsking(true)}>
+              <Trash2 size={15} /> {deleting ? "Deleting…" : `Delete ${picked.length === 1 ? "album" : `${fmtNumber(picked.length)} albums`}`}
+            </button>
+          )}
+        </div>
+      )}
+      {items.length > 0 && (
+        <div className="list bare-albums">
+          {items.map((a) => (
+            <div key={a.id} className={`list-row ${ticked.has(a.id) ? "ticked" : ""}`}>
+              <input type="checkbox" aria-label={`Select ${a.title}`} checked={ticked.has(a.id)} onChange={(e) => tick(a.id, e.target.checked)} />
+              <Art src={null} name={a.title} size={64} className="bare-thumb" />
+              <div className="grow" style={{ minWidth: 0 }}>
+                <div className="ellipsis"><Link to={`/album/${a.id}`}><b>{a.title}</b></Link> <span className="dim">{a.artist}</span></div>
+                {/* the end of its path says which folder it is (the whole of it on hover) */}
+                <div className="faint ellipsis mono-path" data-tip={a.folder}>…/{a.folder.split("/").slice(-3).join("/")}</div>
+              </div>
+              <span className="faint bare-meta">{[a.year || null, `${a.track_count} ${a.track_count === 1 ? "song" : "songs"}`].filter(Boolean).join(" · ")}</span>
+              <button className="btn small accent" onClick={() => setEdit({ kind: "album", id: a.id, title: a.title })}>
+                <ImageIcon size={14} /> Edit
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {items.length < total && (
+        <div className="row-actions" style={{ marginTop: 12 }}>
+          <span className="dim">{fmtNumber(items.length)} of {fmtNumber(total)} shown ({fmtNumber(songs)} songs)</span>
+          <button className="btn" disabled={q.isFetching} onClick={() => setShown((n) => n + BARE_PAGE)}>Show more</button>
+        </div>
+      )}
+      {asking && (
+        <Modal onClose={() => setAsking(false)}>
+          <h2 className="h2">Delete {picked.length === 1 ? picked[0].title : `${fmtNumber(picked.length)} albums`}?</h2>
+          <p className="dim" style={{ margin: "10px 0 12px" }}>
+            {fmtNumber(pickedSongs)} {pickedSongs === 1 ? "song" : "songs"} leave the library. The files go to the trash: each album can be put
+            back under Admin → Hidden &amp; trash until the trash is emptied.
+          </p>
+          {picked.length > 1 && (
+            <ul className="bare-confirm">
+              {picked.slice(0, 8).map((a) => <li key={a.id} className="ellipsis"><b>{a.title}</b> <span className="dim">{a.artist}</span></li>)}
+              {picked.length > 8 && <li className="dim">and {fmtNumber(picked.length - 8)} more</li>}
+            </ul>
+          )}
+          <div className="row-actions" style={{ justifyContent: "flex-end", marginTop: 16 }}>
+            <button className="btn" onClick={() => setAsking(false)} autoFocus>Cancel</button>
+            <button className="btn danger solid" onClick={remove}><Trash2 size={15} /> Delete</button>
+          </div>
+        </Modal>
+      )}
+    </section>
+  );
+}
+
 // ---------------------------------------------------------------- jobs
 
 function Jobs() {
@@ -762,6 +891,7 @@ export default function Admin() {
             <Route path="jobs" element={<Jobs />} />
             <Route path="settings" element={<AdminSettings />} />
             <Route path="users" element={<AdminUsers />} />
+            <Route path="artwork" element={<WithoutArtwork />} />
           </Routes>
         </div>
       </div>

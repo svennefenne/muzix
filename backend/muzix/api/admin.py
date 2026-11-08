@@ -304,6 +304,7 @@ def status(db: Session = Depends(get_db_with_copies)):
     tools["libgme-sgc"] = gme.available("x.sgc")
     tools["libopenmpt"] = openmpt.available()
     count = lambda m, *w: db.scalar(select(func.count()).select_from(m).where(*w))
+    bare = db.execute(select(func.count(), func.coalesce(func.sum(Album.track_count), 0)).where(*_without_art())).one()
     disk = shutil.disk_usage(env.DATA_DIR)
     cache_bytes, art_bytes = _folder_sizes()
     return {
@@ -315,11 +316,27 @@ def status(db: Session = Depends(get_db_with_copies)):
                    "albums": count(Album, Album.peer_id.is_(None)), "artists": count(Artist),
                    "books": count(Book, Book.peer_id.is_(None)),
                    "feeds": count(Feed), "users": count(User)},
+        "without_art": {"albums": bare[0], "tracks": bare[1]},
         "cache_bytes": cache_bytes,       # None until the first background count is done
         "art_bytes": art_bytes,
         "data_dir": str(env.DATA_DIR),
         "data_free_bytes": disk.free,
     }
+
+
+def _without_art():
+    """This server's own music albums without a cover (none in their folder or their songs)."""
+    return Album.kind == "music", Album.peer_id.is_(None), Album.art == ""
+
+
+@router.get("/without-art")
+def without_art(limit: int = 100, offset: int = 0, db: Session = Depends(get_db_with_copies)):
+    """The albums without a cover, by artist and title, with their folder (to find them), a page at a time."""
+    q = select(Album).where(*_without_art())
+    total = db.scalar(select(func.count()).select_from(q.subquery()))
+    rows = db.scalars(q.order_by(func.lower(Album.artist_name), func.lower(Album.title), Album.id)
+                      .limit(max(1, min(limit, 500))).offset(offset))
+    return {"total": total, "items": [{**serial.album(a), "folder": a.folder} for a in rows]}
 
 
 @router.post("/cache/clear")

@@ -1,15 +1,15 @@
-/** Admin → Hidden & trash: what admin mode hid (to show again) and deleted (to put back, or
- * delete for good). */
+/** Admin → Hidden & trash: what admin mode hid (to show again, or delete as it is) and deleted (to
+ * put back, or delete for good). */
 
 import { useQuery } from "@tanstack/react-query";
 import { Eye, RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { ago, api, fmtBytes } from "../../api";
-import { refreshAll } from "../../components/AdminMode";
+import { DELETE_SAYS, refreshAll, type ItemKind } from "../../components/AdminMode";
 import { Empty, Loading, Modal } from "../../components/ui";
 import { useUi } from "../../store/ui";
 
-interface Hidden { kind: string; id: number; title: string; subtitle: string }
+interface Hidden { kind: ItemKind; id: number; title: string; subtitle: string; theirs?: boolean }
 interface Trashed { id: number; kind: string; title: string; subtitle: string; size: number; files: number; created_at: string | null; where: string }
 
 export function HiddenAndTrash() {
@@ -17,6 +17,7 @@ export function HiddenAndTrash() {
   const hidden = useQuery({ queryKey: ["manage-hidden"], queryFn: () => api.get<Hidden[]>("/api/manage/hidden") });
   const trash = useQuery({ queryKey: ["manage-trash"], queryFn: () => api.get<Trashed[]>("/api/manage/trash") });
   const [forGood, setForGood] = useState<Trashed | "all" | null>(null);
+  const [deleting, setDeleting] = useState<Hidden | null>(null);       // something hidden, to delete as it is
   const run = async (fn: () => Promise<unknown>, said: string) => {
     try {
       await fn();
@@ -31,7 +32,7 @@ export function HiddenAndTrash() {
     <>
       <section className="section">
         <h2 className="h2">Hidden</h2>
-        <p className="dim">Hidden from every page and list, for everyone. The files stay where they are.</p>
+        <p className="dim">Hidden from every page and list, for everyone. The files stay where they are, until you delete them.</p>
         {hidden.isLoading ? <Loading /> : hidden.data?.length ? (
           <ul className="admin-list">
             {hidden.data.map((h) => (
@@ -40,6 +41,7 @@ export function HiddenAndTrash() {
                 <button className="btn small" onClick={() => run(() => api.post(`/api/manage/${h.kind}/${h.id}/unhide`), `${h.title} is back`)}>
                   <Eye size={14} /> Show again
                 </button>
+                {!h.theirs && <button className="btn small danger" onClick={() => setDeleting(h)}><Trash2 size={14} /> Delete</button>}
               </li>
             ))}
           </ul>
@@ -73,6 +75,22 @@ export function HiddenAndTrash() {
           </ul>
         ) : <Empty title="The trash is empty" />}
       </section>
+
+      {deleting && (
+        <Modal onClose={() => setDeleting(null)}>
+          <h2 className="h2">Delete {deleting.title}?</h2>
+          <p className="dim" style={{ margin: "10px 0 20px" }}>{DELETE_SAYS[deleting.kind]}</p>
+          <div className="row-actions" style={{ justifyContent: "flex-end" }}>
+            <button className="btn" onClick={() => setDeleting(null)} autoFocus>Cancel</button>
+            <button className="btn danger solid" onClick={() => {
+              const h = deleting;
+              setDeleting(null);
+              run(() => api.del(`/api/manage/${h.kind}/${h.id}`),
+                  ["playlist", "station", "podcast"].includes(h.kind) ? `${h.title} is deleted` : `${h.title} is in the trash`);
+            }}><Trash2 size={15} /> Delete</button>
+          </div>
+        </Modal>
+      )}
 
       {forGood && (
         <Modal onClose={() => setForGood(null)}>
