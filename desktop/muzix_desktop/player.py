@@ -32,12 +32,16 @@ def _gstreamer_wheels():
         except ImportError:
             continue
         for key, value in getattr(mod, "environment", {}).items():
+            if isinstance(value, (list, tuple)):        # some give a list of paths
+                value = os.pathsep.join(str(v) for v in value)
             if key == "PYTHONPATH":
                 sys.path[:0] = [p for p in value.split(os.pathsep) if p not in sys.path]
             else:
                 os.environ[key] = value + (os.pathsep + os.environ[key] if os.environ.get(key) else "")
-            if key == "PATH" and hasattr(os, "add_dll_directory") and os.path.isdir(value):
-                os.add_dll_directory(value)
+            if key == "PATH" and hasattr(os, "add_dll_directory"):
+                for d in value.split(os.pathsep):
+                    if os.path.isdir(d):
+                        os.add_dll_directory(d)
 
 
 def _gstreamer_frozen():
@@ -73,8 +77,14 @@ BANDS = 256                             # as the page's analyser has them (front
 MAGNITUDES = re.compile(r"magnitude=\(float\)\{([^}]*)\}")
 
 
+def _playbin() -> str:
+    """playbin3 from GStreamer 1.22 on; before, its gapless doesn't hold (the Linux build's GStreamer is 1.20),
+    and playbin does it."""
+    return "playbin3" if Gst.version() >= (1, 22, 0, 0) else "playbin"
+
+
 def available() -> bool:
-    return Gst is not None and Gst.ElementFactory.find("playbin3") is not None
+    return Gst is not None and Gst.ElementFactory.find(_playbin()) is not None
 
 
 class Player(QObject):
@@ -87,7 +97,7 @@ class Player(QObject):
         self.cookies = cookies              # () → the cookies for the window's server ("name=value")
         self.shown = shown                  # () → whether the window shows (the visualizer's spectrum only then)
         self.for_speaker = for_speaker      # a speaker's link, on the server's own address (relay.py)
-        self.bin = Gst.ElementFactory.make("playbin3", "muzix")
+        self.bin = Gst.ElementFactory.make(_playbin(), "muzix")
         self.bin.set_property("flags", AUDIO | SOFT_VOLUME)
         if sink := os.environ.get("MUZIX_AUDIO_SINK"):      # another output (the tests: "fakesink sync=true")
             self.bin.set_property("audio-sink", Gst.parse_bin_from_description(sink, True))

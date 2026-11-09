@@ -45,7 +45,10 @@ a = Analysis(
                   + collect_submodules("pychromecast"),
     # the server's own web side isn't needed here
     excludes=["uvloop", "tkinter", "matplotlib", "IPython", "PySide6.Qt3DCore", "PySide6.QtQuick3D",
-              "PySide6.QtMultimedia", "PySide6.QtCharts", "PySide6.QtDataVisualization"],
+              "PySide6.QtMultimedia", "PySide6.QtCharts", "PySide6.QtDataVisualization"]
+             # Windows, macOS: PyGObject comes inside GStreamer's own packages (taken whole, above), not
+             # through PyInstaller's GStreamer hooks, which look for a system's
+             + (["gi"] if sys.platform != "linux" else []),
     noarchive=False,
     # GStreamer from the system (Linux): only what plays sound, not its video, Qt or GTK parts
     hooksconfig={"gstreamer": {"include_plugins": [
