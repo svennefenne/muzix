@@ -33,6 +33,7 @@ class AuthSession(Base):
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     user_agent: Mapped[str] = mapped_column(String(255), default="")
     name: Mapped[str] = mapped_column(String(120), default="", server_default="")   # an app's name for its device
+    prefs: Mapped[dict | None] = mapped_column(JSON, nullable=True)   # the device's own settings (api/me.py)
     user: Mapped[User] = relationship()
 
 

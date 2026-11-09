@@ -66,7 +66,12 @@ class PlayerBridge(
         }
     }
 
+    /** Everything downloaded, and whether the server can't be reached, for the page. */
+    fun sendDownloads() = send(JSONObject().put("t", "downloads").put("list", Downloads.list()).put("offline", Downloads.offline))
+
     fun connect() {
+        Downloads.init(context)
+        Downloads.onChange = ::sendDownloads
         val token = SessionToken(context, ComponentName(context, PlaybackService::class.java))
         val future = MediaController.Builder(context, token).buildAsync()
         future.addListener({
@@ -85,6 +90,7 @@ class PlayerBridge(
     }
 
     fun release() {
+        Downloads.onChange = null
         link.stop()
         Progress.onSaved = null
         runCatching { context.unregisterReceiver(volumeSeen) }
@@ -106,9 +112,14 @@ class PlayerBridge(
 
     /** The page out of view (it freezes after a while) or back: the device's connection is the app's meanwhile. */
     fun visible(on: Boolean) {
+        shown = on
         if (on) link.stop() else link.start()
         autoplay.away(!on)
     }
+
+    /** Whether the app is on screen (started), so its page can be reloaded now. */
+    var shown = false
+        private set
 
     fun inView(visible: Boolean) {
         inView = visible
@@ -135,6 +146,7 @@ class PlayerBridge(
         val c = player ?: return
         when (val t = m.optString("t")) {
             "hello" -> send(JSONObject().put("t", "hello").put("version", PlaybackService.USER_AGENT).put("saves", true).put("updates", true)
+                .put("downloads", Downloads.list()).put("offline", Downloads.offline)
                 .put("device", deviceName()).put("volume", mediaVolume())
                 .put("queue", JSONArray((0 until c.mediaItemCount).map { c.getMediaItemAt(it).carried() }))
                 .put("index", c.currentMediaItemIndex).put("state", state(c))).also { onHello() }
@@ -150,6 +162,7 @@ class PlayerBridge(
                 link.radioBuffer = m.optInt("radioBuffer")
                 autoplay.on = m.optBoolean("autoplay")
                 autoplay.oldest = m.optJSONArray("oldest")?.let { a -> (0 until a.length()).map { a.optInt(it) }.toSet() } ?: emptySet()
+                if (m.has("downloadWifi")) Downloads.wifiOnly(context, m.optBoolean("downloadWifi"))
             }
             "upcoming" -> {
                 // everything after the current song, replaced
@@ -197,6 +210,11 @@ class PlayerBridge(
                 c.stop()
                 c.clearMediaItems()
             }
+            // downloads (Downloads.kt): a collection to have on the phone, or not any more; the page's
+            // sign-in state, for opening offline
+            "download" -> m.optJSONObject("collection")?.let { Downloads.add(context, it, m.optBoolean("wifiOnly")) }
+            "undownload" -> Downloads.remove(context, m.optString("id"))
+            "signedIn" -> m.optJSONObject("state")?.let { runCatching { Downloads.keepState(it) } }
             else -> onCommand(t, m)
         }
     }

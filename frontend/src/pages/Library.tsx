@@ -9,6 +9,9 @@ import {
   useBrowse, type Choice,
 } from "../components/Browse";
 import { AdminCog } from "../components/AdminMode";
+import { DownloadButton } from "../components/DownloadButton";
+import { likedCollection } from "../downloads";
+import { fromTrack } from "../store/player";
 import { AlbumCard, ArtistCard, MosaicCard, PlaylistCard } from "../components/Cards";
 import { RecentSearches, rememberSearch } from "../components/RecentSearches";
 import { TrackList } from "../components/TrackList";
@@ -393,6 +396,7 @@ export function Liked() {
           <div className="row-actions" style={{ marginBottom: 18 }}>
             <button className="btn accent" onClick={() => playTracks(q.data!, 0)}><Play size={15} fill="currentColor" /> Play</button>
             <button className="btn" onClick={() => playTracks(q.data!, 0, true)}><Shuffle size={15} /> Shuffle</button>
+            <DownloadButton id="liked" title="Liked songs" make={() => likedCollection(q.data!)} />
           </div>
           <TrackList tracks={q.data} showArt />
         </>
@@ -482,6 +486,11 @@ export function AlbumPage() {
               <Heart size={15} fill={isLiked ? "currentColor" : "none"} /> {isLiked ? "Saved" : "Save"}
             </button>
             <button className="btn" onClick={() => pick(a.tracks.map((t) => t.id))}><ListPlus size={15} /> Add to playlist</button>
+            <DownloadButton id={`album:${a.id}`} title={a.title} make={async () => {
+              const full = a.track_count > a.tracks.length ? await api.get<AlbumDetail>(`/api/albums/${a.id}`, { limit: 5000 }) : a;
+              return { id: `album:${a.id}`, kind: "album", title: a.title, subtitle: a.artist, art: a.art, path: `/album/${a.id}`,
+                       pages: { [`/api/albums/${a.id}`]: full }, items: full.tracks.map(fromTrack) };
+            }} />
             <AdminCog kind="album" id={a.id} title={a.title} className="inline" peer={a.peer} />
           </div>
         </div>
@@ -648,6 +657,11 @@ export function PlaylistPage() {
           <div className="row-actions">
             <button className="btn accent" disabled={!p.tracks?.length} onClick={() => playTracks(p.tracks!, 0)}><Play size={15} fill="currentColor" /> Play</button>
             <button className="btn" disabled={!p.tracks?.length} onClick={() => playTracks(p.tracks!, 0, true)}><Shuffle size={15} /> Shuffle</button>
+            {!!p.tracks?.length && (
+              <DownloadButton id={`playlist:${p.id}`} title={p.name} make={() => ({
+                id: `playlist:${p.id}`, kind: "playlist", title: p.name, subtitle: `${p.track_count} songs`, art: p.art[0], path: `/playlist/${p.id}`,
+                pages: { [`/api/playlists/${p.id}`]: p }, items: p.tracks!.map(fromTrack) })} />
+            )}
             {mine && <button className="btn" onClick={() => { setName(p.name); setEditing(true); }}>Rename</button>}
             <AdminCog kind="playlist" id={p.id} title={p.name} className="inline" />
             {mine && <button className="btn danger" onClick={async () => {

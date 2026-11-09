@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- downloading albums, playlists, books and episodes to the phone (Downloads.kt) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!-- installing a new version of itself (Update in the user menu) -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
@@ -44,6 +46,11 @@
                 <action android:name="androidx.media3.session.MediaSessionService" />
             </intent-filter>
         </service>
+
+        <service
+            android:name=".DownloadsService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <!-- a downloaded update, handed to Android's installer -->
         <provider

@@ -64,9 +64,10 @@ def _add_new_columns():
                 conn.execute(text(ddl))
 
 
-# what Muzix had and doesn't any more (Spotify, gone in 2026-11): out of databases made before
+# what Muzix had and doesn't any more, out of databases made before: Spotify, and the server's Appearance
+# settings, which are each device's own now (both 2026-11)
 GONE_TABLES = ("spotify_links",)
-GONE_SETTINGS = ("spotify_client_id", "module_spotify")
+GONE_SETTINGS = ("spotify_client_id", "module_spotify", "default_scheme", "default_mode", "genre_skins", "skin_map")
 
 
 def _drop_gone():

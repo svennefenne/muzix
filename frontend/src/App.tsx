@@ -21,11 +21,13 @@ import {
   AlbumPage, ArtistPage, FilePlaylistPage, GenrePage, TagPage, LibraryAlbums, LibraryArtistAlbums, LibraryArtists, LibraryGenreArtists, LibraryGenres,
   LibraryHome, Liked, PlaylistPage, Playlists, SearchPage,
 } from "./pages/Library";
+import { appPlayer } from "./player/app";
 import { engine } from "./player/engine";
 import { usePlayer } from "./store/player";
 import { useUi } from "./store/ui";
 import { ThemeApplier } from "./theme/ThemeApplier";
-import type { AuthState, ModuleKey } from "./types";
+import { likedCollection, useDownloads } from "./downloads";
+import type { AuthState, ModuleKey, Track } from "./types";
 
 const Vgm = lazy(() => import("./pages/Vgm"));
 const Books = lazy(() => import("./pages/Books"));
@@ -37,6 +39,7 @@ const Radio = lazy(() => import("./pages/Radio"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Admin = lazy(() => import("./pages/admin/Admin"));
 const Setup = lazy(() => import("./pages/Setup"));
+const Downloads = lazy(() => import("./pages/Downloads"));
 
 const MODULE_NAMES: Record<ModuleKey, string> = {
   vgm: "VGM", audiobooks: "Audiobooks", podcasts: "Podcasts", radio: "Radio", network: "Library Network",
@@ -166,9 +169,35 @@ function useScrollMemory(scroll: RefObject<HTMLDivElement | null>) {
   }, [loc.key, loc.pathname, how, scroll]);
 }
 
+/** Offline, in the app: the page needs the server, which can't be reached. */
+function NeedsServer() {
+  return (
+    <div className="page">
+      <Display l1="Needs" l2="the server" small />
+      <p className="lede">The server can't be reached, so only what's downloaded is here.</p>
+      <Link className="btn accent" to="/downloads">Your downloads</Link>
+    </div>
+  );
+}
+
+/** The liked songs, while they're downloaded: the phone gets each song liked, and lets go of each unliked. */
+function useLikedKept() {
+  const kept = useDownloads((s) => !s.offline && s.list.some((d) => d.id === "liked"));
+  const q = useQuery({ queryKey: ["liked"], queryFn: () => api.get<Track[]>("/api/likes/tracks"), enabled: kept });
+  useEffect(() => {
+    if (kept && q.data) appPlayer.download(likedCollection(q.data));
+  }, [kept, q.data]);
+}
+
 function Shell() {
   const loc = useLocation();
   const npPanel = useUi((s) => s.npPanel);
+  const offline = useDownloads((s) => s.offline);
+  const downloaded = useDownloads((s) => s.list);
+  // offline, only the downloads, their pages and the settings
+  const away = offline && loc.pathname !== "/" && loc.pathname !== "/downloads" && loc.pathname !== "/settings"
+    && !downloaded.some((d) => d.path === loc.pathname);
+  useLikedKept();
   const scroll = useRef<HTMLDivElement>(null);
   const [drawn, setDrawn] = useState(0);
   useScrollMemory(scroll);
@@ -184,8 +213,9 @@ function Shell() {
         <div className="frame-scroll" ref={scroll}>
           <ErrorBoundary resetKey={loc.pathname} key={drawn}>
           <Suspense fallback={<div className="page"><Loading /></div>}>
-            <Routes>
-              <Route path="/" element={<Home />} />
+            {away ? <NeedsServer /> : <Routes>
+              <Route path="/" element={offline ? <Downloads /> : <Home />} />
+              <Route path="/downloads" element={<Downloads />} />
               <Route path="/library" element={<LibraryHome />} />
               <Route path="/library/genres" element={<LibraryGenres />} />
               <Route path="/library/genres/:genre" element={<LibraryGenreArtists />} />
@@ -212,7 +242,7 @@ function Shell() {
               <Route path="/settings" element={<Settings />} />
               <Route path="/admin/*" element={<Admin />} />
               <Route path="*" element={<div className="page"><Display l1="Lost" l2="in space" /><p className="lede">That page doesn't exist.</p></div>} />
-            </Routes>
+            </Routes>}
           </Suspense>
           </ErrorBoundary>
         </div>
@@ -236,6 +266,26 @@ function Shell() {
   );
 }
 
+/** The server doesn't answer. In the app, whose pages come with it, that's said here (a browser has no
+ * page without the server). */
+function Unreachable({ retry }: { retry: () => void }) {
+  return (
+    <div className="auth">
+      <ThemeApplier />
+      <div className="auth-card">
+        <div className="logo" style={{ marginBottom: 26 }}><Logo name="Muzix" /></div>
+        <Kicker parts={["No answer", location.host]} />
+        <Display l1="Can't reach" l2="the server" small />
+        <p className="lede">Muzix at {location.host} doesn't answer. Check the phone's connection, or that the server is up.</p>
+        <div className="row-actions">
+          <button className="btn primary" onClick={retry}>Try again</button>
+          {appPlayer.available && <button className="btn ghost" onClick={() => appPlayer.changeServer()}>Another server</button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AuthScreen({ state, onDone }: { state: AuthState; onDone: () => void }) {
   const setup = state.needs_setup;
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -246,7 +296,9 @@ function AuthScreen({ state, onDone }: { state: AuthState; onDone: () => void })
     e.preventDefault();
     setError("");
     try {
-      await api.post(setup ? "/api/auth/setup" : mode === "signup" ? "/api/auth/signup" : "/api/auth/login", { username, password });
+      // the app names its phone, for the account's list of devices
+      const device = appPlayer.available ? appPlayer.deviceName : "";
+      await api.post(setup ? "/api/auth/setup" : mode === "signup" ? "/api/auth/signup" : "/api/auth/login", { username, password, device });
       onDone();
     } catch (err) {
       setError((err as Error).message);
@@ -288,14 +340,24 @@ export default function App() {
     if (!s) return;
     useUi.setState({ siteName: s.site_name, modules: s.modules });
     if (s.user) setUser(s.user);
-    api.get<{ skin_map: Record<string, string> }>("/api/themes/rules").then((r) => useUi.setState({ skinRules: r.skin_map || {} })).catch(() => {});
+    // the app keeps it, to open offline (downloads.ts)
+    if (s.user && !s.offline && appPlayer.available) appPlayer.signedIn(s);
   }, [state.data, setUser]);
+  useEffect(() => {
+    // the app lost the server, or found it again: everything from what it can reach now
+    const on = () => {
+      state.refetch();
+      queryClient.invalidateQueries();
+    };
+    window.addEventListener("muzix:reachable", on);
+    return () => window.removeEventListener("muzix:reachable", on);
+  }, [state]);
   useEffect(() => {
     const on = () => state.refetch();
     window.addEventListener("muzix:unauthorized", on);
     return () => window.removeEventListener("muzix:unauthorized", on);
   }, [state]);
-  if (!state.data) return <div className="auth"><Loading /></div>;
+  if (!state.data) return state.isError ? <Unreachable retry={() => state.refetch()} /> : <div className="auth"><Loading /></div>;
   if (!state.data.user) return <AuthScreen state={state.data} onDone={() => state.refetch()} />;
   if (state.data.setup) {
     return <Suspense fallback={<div className="auth"><Loading /></div>}><Setup onDone={() => state.refetch()} /></Suspense>;

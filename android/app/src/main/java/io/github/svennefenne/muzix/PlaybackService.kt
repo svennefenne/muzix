@@ -28,7 +28,8 @@ import com.google.common.util.concurrent.ListenableFuture
  * Plays the queue the web interface hands over, in a foreground service: it goes on with the
  * screen off, moves on to the next song by itself, and shows the lock screen and notification
  * player that headsets, Bluetooth and cars talk to, and it hands the queue to a Cast speaker
- * when one is chosen. Requests to the Muzix server carry the login cookie; requests elsewhere
+ * when one is chosen. Requests to the Muzix server go to its address in use (at home, or outside)
+ * and carry the login cookie; requests elsewhere
  * (a radio station's logo) don't, and a speaker gets signed links instead. Away from wifi the
  * next songs are downloaded ahead, and a dropped connection is waited out (Buffering.kt).
  * Episodes and audiobooks have their places saved from here (Progress.kt).
@@ -46,9 +47,10 @@ class PlaybackService : MediaSessionService() {
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(120_000)          // a chip tune is rendered before its first byte
             .setAllowCrossProtocolRedirects(true)
+        // on the server's address in use (a song queued at home plays on outside), with the login
         val signedIn = ResolvingDataSource.Factory(http) { spec ->
-            if (Server.cookie.isNotEmpty() && Server.owns(spec.uri)) spec.withAdditionalHeaders(mapOf("Cookie" to Server.cookie))
-            else spec
+            if (!Server.owns(spec.uri)) spec
+            else spec.withUri(Server.current(spec.uri)).let { if (Server.cookie.isEmpty()) it else it.withAdditionalHeaders(mapOf("Cookie" to Server.cookie)) }
         }
         val data = DefaultDataSource.Factory(this, signedIn)
         // the player reads what was downloaded ahead, and streams the rest
@@ -56,8 +58,11 @@ class PlaybackService : MediaSessionService() {
         val reading = CacheDataSource.Factory().setCache(cache).setUpstreamDataSourceFactory(signedIn)
             .setCacheWriteDataSinkFactory(null).setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
         val writing = CacheDataSource.Factory().setCache(cache).setUpstreamDataSourceFactory(signedIn)
+        // what's downloaded comes first (Downloads.kt), found by the song's address on the server
+        val downloaded = CacheDataSource.Factory().setCache(Downloads.cache(this)).setCacheKeyFactory(Downloads.keys)
+            .setUpstreamDataSourceFactory(reading).setCacheWriteDataSinkFactory(null).setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
         val local = ExoPlayer.Builder(this)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this, reading))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this, downloaded))
                 .setLoadErrorHandlingPolicy(PatientLoading()))
             // a long buffer rides out a weak mobile connection (an audiobook, which isn't downloaded ahead)
             .setLoadControl(DefaultLoadControl.Builder().setBufferDurationsMs(30_000, 300_000, 1_500, 3_000)

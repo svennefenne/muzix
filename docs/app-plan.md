@@ -140,5 +140,56 @@ carry the lowest and highest they work with.
 - Settings → Devices: each signed-in device with when it was last seen, and Sign out for each.
 
 Moved to step 2, where the app needs them: settings per device (Appearance among them), and how the UI
-inside the app reaches a server (it isn't the server's own page any more, so: allowed origins, and covers
-and streams without the cookie).
+inside the app reaches a server.
+
+## Step 2 in detail
+
+### 2.1 Settings per device
+
+Server and web only, so it ships on its own.
+
+- Each login keeps its own settings (`sessions.prefs`): colour scheme, light/dark, skins, sound quality,
+  autoplay, views. "Music from linked servers" stays on the account.
+- A login without settings of its own starts from the account's, once: the first sign-in after the
+  upgrade looks as before, on every device.
+- Appearance leaves Admin: the server's default colour scheme, light/dark and genre skins settings go, and
+  the skin map (extra genre → skin rules) becomes a setting of the device's own, in Settings → Appearance.
+
+### 2.2 The UI inside the app
+
+- The app carries the web UI (the same build as the server's) and serves it itself, on the server's own
+  address: the web view's requests there that aren't `/api/…` get the app's files. So the page keeps its
+  links as they are, its login cookie and the Connect socket, and needs no cross-origin rules. A later
+  local library is served the same way, from inside the app.
+- The app knows the API versions its UI works with. On connecting and at each start it reads the
+  server's (`/api/health`). A server too old or too new for it shows its own web interface, as the app
+  did before, and the app says which one to update (the server's own interface has the app's update
+  button).
+- A server that doesn't answer: the app's interface says so, with Try again and Another server.
+- In the app there's no admin mode and no Admin page; admins get "Edit on the server", which opens that
+  item in the web version.
+- The sign-in tells the server the phone's name, so Settings → Devices tells two phones apart.
+
+### 2.3 At home and away
+
+- The server tells its outside address (Admin → the public address). The app keeps both: the one typed
+  in, if it's on the local network, and the outside one.
+- On starting and when the network changes, the app tries the home address first (a short wait) and
+  otherwise uses the outside one; the login goes with it to either.
+- The player's links follow: a song queued at home plays on from the outside address after leaving.
+
+### 2.4 Downloads and offline
+
+- A Download button on albums, playlists, audiobooks, episodes and the liked songs (which then stay in
+  step: a song liked is downloaded, one unliked goes); Settings: the format (Original, or Smaller: Opus
+  at the server's bitrate, the default on the phone) and only on wifi.
+- The app downloads (Media3's downloader: in the background, with a notification, picking up where it
+  stopped) and keeps what the pages need to show them: the page's data and the covers.
+- Offline, the app shows a Downloads page: what's downloaded, opened and played from the phone. Library
+  pages that aren't downloaded say they need the server.
+- Settings → Downloads: what's on the phone, its size, and removing it.
+
+### 2.5 The rest, and the release
+
+- The app's own connection to the other devices (ConnectLink) loses its Spotify filter.
+- The app becomes 0.9.0 and upgrades the old one in place.

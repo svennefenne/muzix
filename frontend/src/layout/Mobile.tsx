@@ -12,6 +12,7 @@ import { api } from "../api";
 import { appVersion, useAppUpdate } from "../appUpdate";
 import { CastButton, CastNote, usePlaysElsewhere } from "../components/CastButton";
 import { Art, NewDot } from "../components/ui";
+import { useDownloads } from "../downloads";
 import { appPlayer } from "../player/app";
 import { engine } from "../player/engine";
 import { usePlayer } from "../store/player";
@@ -115,11 +116,13 @@ function MoreSheet({ onClose }: { onClose: () => void }) {
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, [onClose]);
-  const go = (to: string) => { nav(to); onClose(); };
+  // the app (0.9 on) has no admin pages: its Admin is the server's web version, in the browser
+  const inApp = useDownloads((s) => s.available);
+  const go = (to: string) => { if (to === "/admin" && inApp) appPlayer.openOnServer(to); else nav(to); onClose(); };
   const items = [
     ...more,
     { to: "/settings", label: "Settings", sub: "Colours, playback and your account", icon: Settings },
-    ...(user?.is_admin ? [{ to: "/admin", label: "Admin", sub: "Library folders, uploads, users", icon: Shield }] : []),
+    ...(user?.is_admin ? [{ to: "/admin", label: inApp ? "Admin on the server" : "Admin", sub: "Library folders, uploads, users", icon: Shield }] : []),
   ];
   return (
     <div className="sheet-bg" onClick={onClose}>

@@ -12,7 +12,7 @@ interface UiState {
   mode: Mode;
   genreSkins: boolean;
   skinLock: string;              // "" follows the music
-  skinRules: Record<string, string>;
+  skinRules: Record<string, string>;     // the device's own tag → skin rules
   visualizer: boolean;
   quality: NonNullable<Prefs["quality"]>;
   libraryView: LibraryView;
@@ -22,6 +22,8 @@ interface UiState {
   searchEngine: string;
   radioBuffer: number;           // seconds of a station gathered before it starts
   autoplay: boolean;             // similar songs once the queue runs out
+  downloadFormat: NonNullable<Prefs["download_format"]>;
+  downloadWifi: boolean;
   queueOpen: boolean;
   nowPlayingOpen: boolean;
   lyricsPanel: boolean;          // the now playing panel shows the lyrics
@@ -80,7 +82,7 @@ export const useUi = create<UiState>((set, get) => ({
   mode: initial.mode || "system",
   genreSkins: initial.genre_skins ?? true,
   skinLock: initial.skin_lock || "",
-  skinRules: {},
+  skinRules: initial.skin_map || {},
   visualizer: initial.visualizer ?? true,
   quality: initial.quality || "original",
   libraryView: initial.library_view || "albums",
@@ -90,12 +92,21 @@ export const useUi = create<UiState>((set, get) => ({
   searchEngine: initial.search_engine || "https://www.google.com/search?q=%s",
   radioBuffer: initial.radio_buffer ?? 0,
   autoplay: initial.autoplay ?? true,
+  downloadFormat: initial.download_format || "smaller",
+  downloadWifi: initial.download_wifi ?? false,
   queueOpen: false,
   nowPlayingOpen: false,
   lyricsPanel: false,
   lyricsSheet: false,
   adminMode: (() => {
     try {
+      // "Edit on the server" in the app opens a page here with ?admin: admin mode on
+      const url = new URL(location.href);
+      if (url.searchParams.has("admin")) {
+        localStorage.setItem("muzix.admin", "1");
+        url.searchParams.delete("admin");
+        history.replaceState(history.state, "", url);
+      }
       return localStorage.getItem("muzix.admin") === "1";
     } catch {
       return false;
@@ -110,6 +121,7 @@ export const useUi = create<UiState>((set, get) => ({
       mode: p.mode ?? get().mode,
       genreSkins: p.genre_skins ?? get().genreSkins,
       skinLock: p.skin_lock ?? get().skinLock,
+      skinRules: p.skin_map ?? get().skinRules,
       visualizer: p.visualizer ?? get().visualizer,
       quality: p.quality ?? get().quality,
       libraryView: p.library_view ?? get().libraryView,
@@ -119,14 +131,16 @@ export const useUi = create<UiState>((set, get) => ({
       searchEngine: p.search_engine ?? get().searchEngine,
       radioBuffer: p.radio_buffer ?? get().radioBuffer,
       autoplay: p.autoplay ?? get().autoplay,
+      downloadFormat: p.download_format ?? get().downloadFormat,
+      downloadWifi: p.download_wifi ?? get().downloadWifi,
     });
   },
   setPref: (key, value) => {
     const map: Partial<Record<keyof Prefs, keyof UiState>> = {
-      scheme: "scheme", mode: "mode", genre_skins: "genreSkins", skin_lock: "skinLock",
+      scheme: "scheme", mode: "mode", genre_skins: "genreSkins", skin_lock: "skinLock", skin_map: "skinRules",
       visualizer: "visualizer", quality: "quality", library_view: "libraryView",
       sidebar_collapsed: "sidebarCollapsed", np_panel: "npPanel", search_engine: "searchEngine",
-      radio_buffer: "radioBuffer", autoplay: "autoplay",
+      radio_buffer: "radioBuffer", autoplay: "autoplay", download_format: "downloadFormat", download_wifi: "downloadWifi",
     };
     const field = map[key];
     if (field) set({ [field]: value } as Partial<UiState>);

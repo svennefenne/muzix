@@ -9,6 +9,7 @@ import { useAppUpdate } from "../appUpdate";
 import { Logo } from "../components/Logo";
 import { useShown } from "../modules";
 import { NewDot, useMenu } from "../components/ui";
+import { useDownloads } from "../downloads";
 import { appPlayer } from "../player/app";
 import { usePlayer } from "../store/player";
 import { useUi } from "../store/ui";
@@ -67,7 +68,9 @@ export function TopBar() {
   const showMenu = useMenu((s) => s.show);
   const update = useAppUpdate();
   const shown = useShown(TABS);
-  const tabs = user?.is_admin ? [...shown, { to: "/admin", label: "Admin" }] : shown;
+  // the app (0.9 on) has no admin pages: its Admin is the server's web version
+  const inApp = useDownloads((s) => s.available);
+  const tabs = user?.is_admin && !inApp ? [...shown, { to: "/admin", label: "Admin" }] : shown;
 
   // Q / E step through the sections, like a console's shoulder buttons
   useEffect(() => {
@@ -88,7 +91,8 @@ export function TopBar() {
   const userMenu = (e: React.MouseEvent) => showMenu(e, [
     { heading: user?.username || "" },
     { label: "Settings", icon: <Settings size={16} />, onClick: () => nav("/settings") },
-    ...(user?.is_admin ? [{ label: "Admin", icon: <Shield size={16} />, onClick: () => nav("/admin") }] : []),
+    ...(user?.is_admin ? [{ label: inApp ? "Admin on the server" : "Admin", icon: <Shield size={16} />,
+                            onClick: () => (inApp ? appPlayer.openOnServer("/admin") : nav("/admin")) }] : []),
     ...(update ? [{ label: `Update the app to ${update.version}`, icon: <Download size={16} />, onClick: () => appPlayer.update(update.url) }] : []),
     { sep: true },
     { label: "Sign out", icon: <LogOut size={16} />, onClick: () => api.post("/api/auth/logout").then(() => location.assign("/")) },
@@ -124,12 +128,24 @@ export function TopBar() {
   );
 }
 
-/** Admin mode on and off (admins only): a cog on every item, to edit, hide or delete it. */
+/** Admin mode on and off (admins only): a cog on every item, to edit, hide or delete it. In the app,
+ * which has no admin mode, the page in the server's web version, with admin mode on there. */
 function AdminSwitch() {
   const admin = useUi((s) => !!s.user?.is_admin);
   const on = useUi((s) => s.adminMode);
   const setAdminMode = useUi((s) => s.setAdminMode);
+  const loc = useLocation();
+  const inApp = useDownloads((s) => s.available);
   if (!admin) return null;
+  if (inApp) {
+    const sep = loc.search ? "&" : "?";
+    return (
+      <button className="iconbtn admin-switch" aria-label="Edit on the server" data-tip="Edit on the server: this page in the web version, in admin mode"
+              onClick={() => appPlayer.openOnServer(`${loc.pathname}${loc.search}${sep}admin`)}>
+        <Wrench size={15} />
+      </button>
+    );
+  }
   return (
     <button className={`iconbtn admin-switch ${on ? "on" : ""}`} aria-pressed={on} aria-label="Admin mode"
             data-tip={on ? "Admin mode is on: click to leave it" : "Admin mode: edit, hide or delete items"}

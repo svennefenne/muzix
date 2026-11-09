@@ -1,4 +1,5 @@
 import java.util.Properties
+import javax.inject.Inject
 
 plugins {
     id("com.android.application")
@@ -18,6 +19,28 @@ val commits = providers.exec {
     isIgnoreExitValue = true
 }.standardOutput.asText.map { it.trim().toIntOrNull() ?: 1 }
 
+// the web interface that comes with the app (WebUi.kt): the frontend's build (frontend/ → npm run build),
+// without its source maps and the older font files (the web view takes woff2)
+abstract class CopyWebUi : DefaultTask() {
+    @get:InputDirectory abstract val dist: DirectoryProperty
+    @get:OutputDirectory abstract val outputDir: DirectoryProperty
+    @get:Inject abstract val files: FileSystemOperations
+
+    @TaskAction
+    fun copy() {
+        files.sync {
+            from(dist) { exclude("**/*.map", "**/*.woff") }
+            into(outputDir.dir("web"))
+        }
+    }
+}
+val copyWebUi = tasks.register<CopyWebUi>("copyWebUi") {
+    dist.set(rootProject.layout.projectDirectory.dir("../frontend/dist"))
+}
+androidComponents {
+    onVariants { it.sources.assets?.addGeneratedSourceDirectory(copyWebUi, CopyWebUi::outputDir) }
+}
+
 android {
     namespace = "io.github.svennefenne.muzix"
     compileSdk {
@@ -29,7 +52,7 @@ android {
         minSdk = 29
         targetSdk = 35
         versionCode = commits.get()
-        versionName = "0.8.2"
+        versionName = "0.9.0"
     }
 
     buildFeatures {

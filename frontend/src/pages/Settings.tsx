@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { LogOut, Network, Server } from "lucide-react";
+import { LogOut, Network, Plus, Server, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { queryClient } from "../actions";
 import { ago, api } from "../api";
@@ -12,6 +12,8 @@ import { usePlayer } from "../store/player";
 import { useUi } from "../store/ui";
 import { PALETTES, type Palette } from "../theme/palettes";
 import { SKINS } from "../theme/skins";
+import { Link } from "react-router-dom";
+import { fmtBytes, useDownloads } from "../downloads";
 import type { Prefs } from "../types";
 
 const GROUPS: [Palette["category"], string][] = [["muzix", "Muzix"], ["builtin", "Built-in"], ["gaming", "Gaming"], ["community", "Community"]];
@@ -56,6 +58,41 @@ function NetworkMusic() {
 
 interface Device { id: string; name: string; app: boolean; since: string | null; seen: string | null; current: boolean }
 
+/** Downloads in the app: their format, whether they wait for wifi, and what's on the phone. */
+function DownloadSettings() {
+  const ui = useUi();
+  const { available, list } = useDownloads();
+  if (!available) return null;
+  const total = list.reduce((n, d) => n + d.bytes, 0);
+  return (
+    <section className="panel">
+      <div className="panel-head"><div><div className="kicker">This device</div><div className="h2">Downloads</div></div></div>
+      <div className="field">
+        <label>Format</label>
+        <select className="select" style={{ maxWidth: 360 }} aria-label="Download format" value={ui.downloadFormat}
+                onChange={(e) => ui.setPref("download_format", e.target.value as typeof ui.downloadFormat)}>
+          <option value="smaller">Smaller (Opus at the server's bitrate)</option>
+          <option value="original">Original (the files as they are)</option>
+        </select>
+        <div className="help">For what's downloaded from now on.</div>
+      </div>
+      <div className="field">
+        <label>Only on wifi</label>
+        <div className="row-actions"><Switch checked={ui.downloadWifi} onChange={(v) => ui.setPref("download_wifi", v)} label="Only on wifi" />
+          <span className="dim">Downloads wait for wifi instead of using mobile data.</span></div>
+      </div>
+      <div className="field">
+        <label>On the phone</label>
+        <div className="row-actions">
+          <span className="dim">{list.length ? `${list.length} downloaded, ${fmtBytes(total)}` : "Nothing yet"}</span>
+          <Link className="btn small" to="/downloads">Your downloads</Link>
+        </div>
+        <div className="help">Liked songs download by themselves once the Liked songs page's Download is on.</div>
+      </div>
+    </section>
+  );
+}
+
 /** Where the account is signed in (each browser, each app), and each signed out from here. */
 function Devices() {
   const list = useQuery({ queryKey: ["devices"], queryFn: () => api.get<Device[]>("/api/me/devices") });
@@ -85,6 +122,38 @@ function Devices() {
         ))}
       </ul>
     </section>
+  );
+}
+
+/** The device's own tag → skin rules: a tag in a song's genre or its artist's tags picks that skin, before
+ * the built-in rules. */
+function SkinRules() {
+  const rules = useUi((s) => s.skinRules);
+  const setPref = useUi((s) => s.setPref);
+  const [rows, setRows] = useState<[string, string][]>(() => Object.entries(rules));
+  const save = (next: [string, string][]) => {
+    setRows(next);
+    setPref("skin_map", Object.fromEntries(next.filter(([tag]) => tag.trim()).map(([tag, skin]) => [tag.trim().toLowerCase(), skin])));
+  };
+  return (
+    <div className="field">
+      <label>Your skin rules</label>
+      <div style={{ display: "grid", gap: 8 }}>
+        {rows.map(([tag, skin], i) => (
+          <div key={i} className="row-actions">
+            <input className="input" style={{ maxWidth: 200 }} aria-label="Tag" placeholder="melodeath" value={tag}
+                   onChange={(e) => save(rows.map((r, j) => (j === i ? [e.target.value, r[1]] : r)))} />
+            <select className="select" style={{ maxWidth: 240 }} aria-label="Skin" value={skin}
+                    onChange={(e) => save(rows.map((r, j) => (j === i ? [r[0], e.target.value] : r)))}>
+              {SKINS.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            <button className="btn small" onClick={() => save(rows.filter((_, j) => j !== i))}><X size={14} /> Remove</button>
+          </div>
+        ))}
+        <div><button className="btn small" onClick={() => setRows([...rows, ["", SKINS[0].id]])}><Plus size={14} /> Add a rule</button></div>
+      </div>
+      <div className="help">A tag in a song's genre or its artist's tags picks that skin before the built-in rules do (melodeath → Death metal).</div>
+    </div>
   );
 }
 
@@ -160,6 +229,7 @@ export default function Settings() {
           </select>
           <div className="help">Pick one to keep it on regardless of what plays (handy for trying them all).</div>
         </div>
+        <SkinRules />
         <div className="field">
           <label>Color scheme (when no genre skin is showing)</label>
           <SchemePicker value={ui.scheme} onChange={(s) => ui.setPref("scheme", s)} dark={dark} />
@@ -215,6 +285,8 @@ export default function Settings() {
           <span className="dim">{cast}</span>
         </div>
       </section>
+
+      <DownloadSettings />
 
       <NetworkMusic />
 

@@ -5,7 +5,11 @@ import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.graphics.Color
 import android.net.Uri
+import android.net.ConnectivityManager
+import android.net.Network
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.text.InputType
 import android.view.Gravity
@@ -51,10 +55,11 @@ import java.net.URL
 import kotlin.concurrent.thread
 
 /**
- * The Muzix app: the server's own web interface in a web view, as it looks in a browser, with
- * the app's player behind it (PlaybackService, through PlayerBridge). The first time, and
- * whenever the server can't be reached, it asks for the server's address. It installs a newer
- * version of itself when the page's user menu offers one.
+ * The Muzix app: the web interface in a web view, as it looks in a browser, with the app's player
+ * behind it (PlaybackService, through PlayerBridge). The interface is the app's own (WebUi.kt),
+ * served on the server's address; a server whose API it doesn't know shows its own. The first time
+ * it asks for the server's address. It installs a newer version of itself when the page's user menu
+ * offers one.
  */
 class MainActivity : ComponentActivity() {
     private lateinit var root: FrameLayout
@@ -65,6 +70,13 @@ class MainActivity : ComponentActivity() {
     private val pickFiles = registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         picked?.onReceiveValue(uris.toTypedArray())
         picked = null
+    }
+    private val main = Handler(Looper.getMainLooper())
+    // the page is on an address the server isn't at any more (it moved while the app was out of view): the page it was on
+    private var stale: String? = null
+    private val networks = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) = soon()
+        override fun onLost(network: Network) = soon()
     }
     // an update downloaded while Android still had to allow installing from this app
     private var waiting: File? = null
@@ -93,11 +105,15 @@ class MainActivity : ComponentActivity() {
         }
         val saved = Server.saved(this)
         if (saved == null) showConnect("", null) else showWeb(saved)
+        soon()          // with no network at all, nothing below calls
+        // the network changes (wifi at home, mobile data outside): the address that answers (it runs once at the start, too)
+        getSystemService(ConnectivityManager::class.java).registerDefaultNetworkCallback(networks)
     }
 
     override fun onStart() {
         super.onStart()
         bridge.visible(true)
+        stale?.let { showWeb(Server.address, it) }
     }
 
     override fun onStop() {
@@ -119,6 +135,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(networks) }
+        main.removeCallbacks(choose)
         bridge.release()
         web?.destroy()
         super.onDestroy()
@@ -131,6 +149,10 @@ class MainActivity : ComponentActivity() {
             "cast" -> chooseSpeaker()
             "bars" -> runCatching { Color.parseColor(m.optString("color")) }.getOrNull()?.let(::bars)
             "update" -> update(m.optString("url"))
+            // the server's web version in the browser (its admin pages: the app has none)
+            "open" -> Uri.parse(m.optString("url")).takeIf { it.scheme in setOf("http", "https") }?.let {
+                runCatching { startActivity(Intent(Intent.ACTION_VIEW, it)) }
+            }
         }
     }
 
@@ -232,6 +254,7 @@ class MainActivity : ComponentActivity() {
 
     private fun showConnect(current: String, problem: String?) {
         dropWeb()
+        server = ""
         bars(BG)
         val pad = dp(24)
         val box = LinearLayout(this).apply {
@@ -291,16 +314,16 @@ class MainActivity : ComponentActivity() {
                 go.isEnabled = false
                 connecting = true
                 thread {
-                    val failed = check(address)
+                    val answer = check(address)
                     runOnUiThread {
                         go.isEnabled = true
                         connecting = false
-                        if (failed == null) {
-                            Server.save(this, address)
+                        answer.onSuccess { (api, outside) ->
+                            if (address !in Server.addresses()) bridge.clear()     // another server: the queue's links are gone
+                            Server.connected(this, address, outside)
+                            Server.save(this, address, api)
                             showWeb(address)
-                        } else {
-                            note.text = failed
-                        }
+                        }.onFailure { note.text = it.message }
                     }
                 }
             }
@@ -315,30 +338,85 @@ class MainActivity : ComponentActivity() {
             FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
     }
 
-    /** Null when `address` answers like a Muzix server, otherwise what went wrong. */
-    private fun check(address: String): String? = try {
+    /** The version of the API `address` answers with as a Muzix server (0: from before versions) and the
+     * server's outside address, or what went wrong. */
+    private fun check(address: String, wait: Int = 8_000): Result<Pair<Int, String>> = try {
         val conn = URL("$address/api/health").openConnection() as HttpURLConnection
-        conn.connectTimeout = 8_000
-        conn.readTimeout = 8_000
+        conn.connectTimeout = wait
+        conn.readTimeout = wait
         conn.setRequestProperty("User-Agent", PlaybackService.USER_AGENT)
         try {
-            val body = conn.inputStream.bufferedReader().readText()
-            if (conn.responseCode == 200 && JSONObject(body).optBoolean("ok")) null
-            else "That address answers, but not as a Muzix server"
+            val body = runCatching { JSONObject(conn.inputStream.bufferedReader().readText()) }.getOrNull()
+            if (conn.responseCode == 200 && body?.optBoolean("ok") == true) Result.success(body.optInt("api", 0) to body.optString("address"))
+            else Result.failure(Exception("That address answers, but not as a Muzix server"))
         } finally {
             conn.disconnect()
         }
     } catch (e: Exception) {
-        "Couldn't reach $address (${e.javaClass.simpleName}: ${e.message})"
+        Result.failure(Exception("Couldn't reach $address (${e.javaClass.simpleName}: ${e.message})"))
+    }
+
+    // ------------------------------------------------------------ at home and away
+
+    private fun soon() {
+        main.removeCallbacks(choose)
+        main.postDelayed(choose, 1_500)      // a new network settles first
+    }
+
+    /** The server's address that answers, the one at home first (it answers quickly, or not at all), and
+     * its API's version (the server may have been updated): the page moves there, or to the interface that fits. */
+    private val choose = Runnable {
+        if (server.isEmpty()) return@Runnable
+        thread {
+            val found = Server.addresses().firstNotNullOfOrNull { a ->
+                check(a, if (a == Server.home && Server.away.isNotEmpty()) 2_500 else 8_000).getOrNull()?.let { a to it.first }
+            }
+            runOnUiThread {
+                offline(found == null)
+                if (found != null) use(found.first, found.second)
+            }
+        }
+    }
+
+    /** The server can't be reached (or can again): offline, the page shows what's downloaded. */
+    private fun offline(on: Boolean) {
+        if (Downloads.offline == on) return
+        Downloads.offline = on
+        bridge.sendDownloads()
+    }
+
+    private fun use(address: String, api: Int) {
+        if (server.isEmpty()) return            // the address screen is showing
+        val moved = address != server
+        val refit = WebUi.fits(api) != WebUi.fits(Server.api)
+        if (moved) carryLogin(server, address)
+        Server.save(this, address, api)        // the player's next requests go there at once
+        if (!moved && !refit) return
+        // the same page, at the new address
+        val page = web?.url?.let(Uri::parse)?.takeIf { Server.origin(it) == server }
+            ?.let { (it.encodedPath ?: "") + (it.encodedQuery?.let { q -> "?$q" } ?: "") } ?: ""
+        if (bridge.shown) showWeb(address, page) else stale = page
+    }
+
+    /** The login, from one of the server's addresses to the other: the same device, signed in at both. */
+    private fun carryLogin(from: String, to: String) {
+        val cookies = CookieManager.getInstance()
+        val token = cookies.getCookie(from)?.split(';')?.map { it.trim() }?.firstOrNull { it.startsWith("muzix_session=") } ?: return
+        if (cookies.getCookie(to)?.contains(token) == true) return
+        val secure = if (to.startsWith("https:")) "; Secure" else ""
+        cookies.setCookie(to, "$token; Path=/; Max-Age=${60 * 86400}; HttpOnly; SameSite=Lax$secure")
+        cookies.flush()
     }
 
     // ------------------------------------------------------------ the web interface
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun showWeb(address: String) {
-        if (Server.address.isNotEmpty() && Server.address != address) bridge.clear()
+    private fun showWeb(address: String, page: String = "") {
+        stale = null
         server = address
         Server.address = address
+        val own = WebUi.fits(Server.api)       // the app's web interface, or the server's own
+        WebUi.why(Server.api)?.let { Toast.makeText(this, it, Toast.LENGTH_LONG).show() }
         dropWeb()
         val w = WebView(this)
         w.setBackgroundColor(BG)
@@ -363,6 +441,18 @@ class MainActivity : ComponentActivity() {
             }
         }
         w.webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                if (!own || request.method != "GET" || Server.origin(request.url) != address) return null
+                // offline, what's downloaded answers for the server (Downloads.kt)
+                if (Downloads.offline && request.url.path?.startsWith("/api/") == true) {
+                    return Downloads.answer(request.url.encodedPath + (request.url.encodedQuery?.let { "?$it" } ?: ""))
+                        ?.let { (type, body) -> WebResourceResponse(type, "utf-8", body.inputStream()) }
+                        ?: WebResourceResponse("application/json", "utf-8", 503, "Offline", emptyMap(),
+                            """{"detail":"Not downloaded: this needs the server"}""".byteInputStream())
+                }
+                return runCatching { WebUi.response(this@MainActivity, request.url) }.getOrNull()
+            }
+
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val url = request.url
                 if (url.scheme in setOf("http", "https") && Server.origin(url) == server) return false
@@ -403,7 +493,7 @@ class MainActivity : ComponentActivity() {
         }
         root.addView(w, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         web = w
-        w.loadUrl(address)
+        w.loadUrl(address + page)
     }
 
     /** The web view and whatever else is on screen, gone (the web view destroyed, not just hidden). */

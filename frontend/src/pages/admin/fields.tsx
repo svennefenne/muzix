@@ -7,7 +7,6 @@ import { useState } from "react";
 import { api } from "../../api";
 import { Modal, Switch } from "../../components/ui";
 import type { ModuleKey } from "../../types";
-import { SchemePicker } from "../Settings";
 
 export interface SettingSpec {
   key: string; type: string; default: unknown; group: string; label: string; help: string; choices: string[];
@@ -42,8 +41,6 @@ export function FolderBrowser({ onPick, onClose }: { onPick: (p: string) => void
 }
 
 export function SettingField({ s, value, onChange }: { s: SettingSpec; value: unknown; onChange: (v: unknown) => void }) {
-  const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-  if (s.key === "default_scheme") return <SchemePicker value={String(value)} onChange={onChange} dark={dark} />;
   switch (s.type) {
     case "bool":
       return <Switch checked={!!value} onChange={onChange} label={s.label} />;

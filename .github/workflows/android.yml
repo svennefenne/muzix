@@ -3,7 +3,7 @@ name: Android app
 on:
   push:
     branches: [main]
-    paths: ["android/**", ".github/workflows/android.yml"]
+    paths: ["android/**", ".github/workflows/android.yml"]   # the web interface it carries goes with each new version
   workflow_dispatch:
 
 permissions:
@@ -21,6 +21,11 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v6
+      # the web interface the app carries (android/app/build.gradle.kts, WebUi.kt)
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: cd frontend && npm ci && npm run build
 
       - name: Build the signed APK
         env:

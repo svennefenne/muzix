@@ -3,7 +3,7 @@ anywhere; an app signs in with a token (`Authorization: Bearer`) instead of the 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import delete
+from sqlalchemy import delete, update
 
 from muzix import API_VERSION, db
 from muzix.api import auth, connect, me
@@ -84,6 +84,32 @@ def test_an_app_signs_itself_out(app):
     assert c.get("/api/me").status_code == 401
 
 
+def test_each_device_keeps_its_own_settings(app):
+    with db.session() as s:     # the account's settings from before devices had their own
+        s.execute(update(User).where(User.username == "devices-owner").values(prefs={"scheme": "nord", "network": False}))
+        s.commit()
+    desk = browser(app)
+    phone = browser(app, PHONE)
+    # each starts from the account's, the first time
+    assert desk.get("/api/me").json()["prefs"] == {"scheme": "nord", "network": False}
+    assert desk.patch("/api/me/prefs", json={"scheme": "dracula", "skin_map": {"melodeath": "death-metal"}}).json() == \
+        {"scheme": "dracula", "skin_map": {"melodeath": "death-metal"}, "network": False}
+    assert phone.get("/api/me").json()["prefs"] == {"scheme": "nord", "network": False}
+    # music from linked servers is the account's: changed on the phone, the desk has it too
+    phone.patch("/api/me/prefs", json={"mode": "light", "network": None})
+    assert desk.get("/api/me").json()["prefs"] == {"scheme": "dracula", "skin_map": {"melodeath": "death-metal"}}
+    assert phone.get("/api/me").json()["prefs"] == {"scheme": "nord", "mode": "light"}
+    # signing in again is another device: it starts from the account's again, not the desk's
+    again = TestClient(app).post("/api/auth/login", json={"username": "devices-owner", "password": "secret1"})
+    assert again.json()["user"]["prefs"] == {"scheme": "nord"}
+
+
+def test_the_app_names_its_device_when_signing_in(app):
+    c = TestClient(app, headers={"user-agent": PHONE})
+    c.post("/api/auth/login", json={"username": "devices-owner", "password": "secret1", "device": "Pixel 8"})
+    assert [d["name"] for d in c.get("/api/me/devices").json() if d["current"]] == ["Pixel 8"]
+
+
 def test_device_names_from_the_browser():
     assert device_name(FIREFOX) == "Firefox on Linux"
     assert device_name(PHONE) == "Muzix for Android 0.8.2"
@@ -96,4 +122,5 @@ def test_device_names_from_the_browser():
 
 def test_the_api_version_is_told():
     from muzix.app import create_app
-    assert TestClient(create_app()).get("/api/health").json()["api"] == API_VERSION
+    health = TestClient(create_app()).get("/api/health").json()
+    assert health["api"] == API_VERSION and health["address"] == ""      # no outside address set

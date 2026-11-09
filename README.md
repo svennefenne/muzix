@@ -288,11 +288,12 @@ Builds for each system are on the
 [releases page](https://github.com/svennefenne/muzix/releases) as
 `desktop-v…`; `desktop/README.md` has the details.
 
-### Android app (prototype)
+### Android app
 
-`android/` holds a small Android app: Muzix's own web interface from your
-server, as it looks in a browser, with Android's media player (Media3) behind
-it. The page hands the queue to that player the way it does to a Cast speaker,
+`android/` holds the Android app: Muzix's web interface, as it looks in a
+browser, with Android's media player (Media3) behind it. From 0.9.0 the
+interface comes with the app (a server whose API it doesn't know shows its own,
+and the app says which to update), so the app opens without the server. The page hands the queue to that player the way it does to a Cast speaker,
 so songs go on with the screen off, the lock screen and notification show the
 player, and headsets, Bluetooth and cars can skip and pause. The first start
 asks for the server's address (http on the local network works too); "Change
@@ -307,6 +308,15 @@ on pause, and when its card is closed), as the page sleeps with the screen off.
 When it crashes, it tells the server the next time it starts: the crash shows
 in the server's log next to the web interface's own errors.
 
+The app uses the server's address at home while it answers and its public
+address (Admin → General → Public URL) otherwise, and moves between them as the
+phone changes networks, the music playing on. Albums, playlists, audiobooks,
+episodes and the liked songs download to the phone (Download on their pages;
+Settings → Downloads for the format, Smaller or Original, and wifi only).
+Offline, the app shows what's downloaded and plays it from the phone. Admin
+pages are the web version's: the app's Admin and the wrench open them in the
+browser. Each phone is its own login, with settings of its own.
+
 Install it from <https://github.com/svennefenne/muzix/releases/latest/download/muzix-android.apk>
 (the phone asks once to allow installs from the browser); later versions install
 over it. From 0.8.0 the app updates itself: when a newer release is out (the
@@ -320,7 +330,8 @@ Android only updates an app signed with the same key, so keep a copy of it. To
 build it yourself:
 
 ```sh
-cd android && ./gradlew assembleRelease    # JDK 17+ and the Android SDK (platform 36.1)
+cd frontend && npm ci && npm run build      # the web interface the app carries
+cd ../android && ./gradlew assembleRelease # JDK 17+ and the Android SDK (platform 36.1)
 # app/build/outputs/apk/release/app-release.apk, signed with the key that
 # ~/.config/muzix-android/keystore.properties names (or the debug key without it)
 ```

@@ -44,13 +44,13 @@ def create_app() -> FastAPI:
     from .organize import importer  # noqa: F401
     from .api import admin, android, auth, books as books_api, library, me, podcasts as podcasts_api
     from .api import connect, manage as manage_api, network as network_api, online, radio, setup
-    from .api import stream, tags, themes, upload
+    from .api import stream, tags, upload
 
     app = FastAPI(title="Muzix", version=__version__, docs_url="/api/docs", openapi_url="/api/openapi.json")
     app.add_middleware(NoProxyBuffering)
     # the requests of a module answer only while it's on
     module_of = {books_api: "audiobooks", podcasts_api: "podcasts", radio: "radio", online: "vgm", network_api: "network"}
-    for mod in (auth, setup, library, stream, me, admin, books_api, podcasts_api, radio, themes, upload,
+    for mod in (auth, setup, library, stream, me, admin, books_api, podcasts_api, radio, upload,
                 online, manage_api, connect, android, network_api, tags):
         needs = [Depends(modules.needed(module_of[mod]))] if mod in module_of else []
         app.include_router(mod.router, dependencies=needs)
@@ -59,7 +59,8 @@ def create_app() -> FastAPI:
 
     @app.get("/api/health")
     def health():
-        return {"ok": True, "version": __version__, "api": API_VERSION}
+        # the outside address: the app goes there when the one at home doesn't answer (docs/app-plan.md)
+        return {"ok": True, "version": __version__, "api": API_VERSION, "address": settings.get("public_url") or ""}
 
     @app.get("/manifest.webmanifest", include_in_schema=False)
     def manifest(request: Request):

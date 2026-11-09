@@ -5,6 +5,7 @@ import { Link, useParams } from "react-router-dom";
 import { api, ago, fmtLong, fmtNumber, fmtTime } from "../api";
 import { queryClient } from "../actions";
 import { AdminCog } from "../components/AdminMode";
+import { DownloadButton } from "../components/DownloadButton";
 import { DisplaySwitch, Rows, SortMenu, useBrowse } from "../components/Browse";
 import { Art, Display, Empty, FromPeer, Kicker, Loading, Section } from "../components/ui";
 import { rowTap } from "../components/TrackList";
@@ -125,6 +126,9 @@ export function BookPage() {
             </button>
             <button className="btn" onClick={() => start(0)}><RotateCcw size={15} /> From the start</button>
             <button className="btn" onClick={() => mark(!b.finished)}><Check size={15} /> {b.finished ? "Mark unfinished" : "Mark finished"}</button>
+            <DownloadButton id={`book:${b.id}`} title={b.title} make={() => ({
+              id: `book:${b.id}`, kind: "book", title: b.title, subtitle: b.author, art: b.art, path: `/audiobooks/${b.id}`,
+              pages: { [`/api/books/${b.id}`]: b }, items: fromBook(b, 0) })} />
             <AdminCog kind="book" id={b.id} title={b.title} className="inline" peer={b.peer} />
           </div>
         </div>

@@ -5,6 +5,7 @@
  * The app casts by itself too: every entry carries the signed link a speaker would play. */
 
 import { sized } from "../api";
+import { type Collection, type Downloaded, useDownloads } from "../downloads";
 import { report } from "../components/ErrorBoundary";
 import { usePlayer, type PlayItem } from "../store/player";
 import { useUi } from "../store/ui";
@@ -66,7 +67,8 @@ class AppPlayer {
     app.addEventListener("message", (e) => this.onMessage(e.data));
     this.send({ t: "hello" });
     useUi.subscribe((u, prev) => {
-      if (this.connected && (u.quality !== prev.quality || u.radioBuffer !== prev.radioBuffer || u.autoplay !== prev.autoplay || u.browse !== prev.browse)) this.prefs();
+      if (this.connected && (u.quality !== prev.quality || u.radioBuffer !== prev.radioBuffer || u.autoplay !== prev.autoplay || u.browse !== prev.browse
+        || u.downloadWifi !== prev.downloadWifi)) this.prefs();
     });
     usePlayer.subscribe((s, prev) => {
       if (!this.connected) return;
@@ -97,12 +99,49 @@ class AppPlayer {
     // autoplay: the app carries it on itself while the page is frozen (android/…/Autoplay.kt), a podcast's
     // next episode too, in the order its page is sorted: `oldest` are the podcasts sorted oldest first
     const oldest = Object.entries(ui.browse).filter(([k, b]) => k.startsWith("podcast:") && b?.sort === "oldest").map(([k]) => Number(k.slice(8)));
-    this.send({ t: "prefs", quality: ui.quality, radioBuffer: ui.radioBuffer, autoplay: ui.autoplay, oldest });
+    this.send({ t: "prefs", quality: ui.quality, radioBuffer: ui.radioBuffer, autoplay: ui.autoplay, oldest, downloadWifi: ui.downloadWifi });
   }
 
   /** Back to the app's screen for the server's address. */
   changeServer() {
     this.send({ t: "server" });
+  }
+
+  /** A page of the server's web version, in the phone's browser: the app has no admin pages of its own. */
+  openOnServer(path: string) {
+    const url = location.origin + path;
+    if (this.available) this.send({ t: "open", url });
+    else window.open(url, "_blank", "noopener");
+  }
+
+  // ------------------------------------------------------------ downloads (downloads.ts)
+
+  private onDownloads(list: Downloaded[], offline: boolean) {
+    const was = useDownloads.getState();
+    useDownloads.getState().set({ available: true, list, offline });
+    // the server gone, or back: the page starts again from what it can reach
+    if (was.available && was.offline !== offline) window.dispatchEvent(new Event("muzix:reachable"));
+  }
+
+  /** A collection onto the phone, in the format the device's settings ask for. */
+  download(c: Collection) {
+    const ui = useUi.getState();
+    const items = c.items.map((it) => {
+      const u = new URL(it.src, location.origin);
+      if (ui.downloadFormat !== "original") u.searchParams.set("q", "high");
+      return { key: it.key, url: u.toString(), title: it.title, artist: it.artist, album: it.album || "",
+               duration: it.duration, muzix: JSON.stringify(slim(it)) };
+    });
+    this.send({ t: "download", collection: { ...c, items }, wifiOnly: ui.downloadWifi });
+  }
+
+  undownload(id: string) {
+    this.send({ t: "undownload", id });
+  }
+
+  /** The page's sign-in state, which the app keeps to open offline. */
+  signedIn(state: object) {
+    this.send({ t: "signedIn", state });
   }
 
   /** A newer version of the app (appUpdate.ts): the app downloads it and opens Android's installer;
@@ -276,6 +315,7 @@ class AppPlayer {
     else if (m.t === "saved") this.hooks?.onSaved(m.key as string);
     else if (m.t === "volume") usePlayer.getState().set({ volume: m.value as number, muted: !!m.muted });
     else if (m.t === "queue") this.onQueue(m.queue as string[], m.index as number);
+    else if (m.t === "downloads") this.onDownloads(m.list as Downloaded[], !!m.offline);
     else if (m.t === "cast") usePlayer.getState().set({ castState: m.state as CastState, castDevice: (m.device as string) || "" });
     else if (m.t === "error") {
       const msg = `Couldn't play ${(m.title as string) || "this"}`;
@@ -286,7 +326,10 @@ class AppPlayer {
 
   /** The app answered: it plays from now on. If it already plays something (the page was
    * reloaded), its queue becomes ours. */
-  private onHello(m: { queue: string[]; index: number; state: AppState; saves?: boolean; device?: string; volume?: number; updates?: boolean }) {
+  private onHello(m: { queue: string[]; index: number; state: AppState; saves?: boolean; device?: string; volume?: number; updates?: boolean;
+                       downloads?: Downloaded[]; offline?: boolean }) {
+    // an app that downloads (0.9 on) says what it has
+    if (m.downloads) this.onDownloads(m.downloads, !!m.offline);
     // the phone's media volume is the volume here, before anything is sent to the app
     if (typeof m.volume === "number") usePlayer.getState().set({ volume: m.volume });
     this.connected = true;

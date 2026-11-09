@@ -30,7 +30,7 @@ SCHEMA: list[Spec] = [
     Spec("site_name", "str", "Muzix", "General", "Site name"),
     Spec("public_url", "str", "", "General", "Public URL",
          "The HTTPS address Muzix is reached at through your reverse proxy, e.g. "
-         "https://muzix.example.com. Needed for podcast links."),
+         "https://muzix.example.com. Needed for podcast links, and the app uses it away from home."),
     Spec("allow_signup", "bool", False, "General", "Allow sign-up",
          "Let new people create an account from the login page."),
     # library
@@ -72,14 +72,6 @@ SCHEMA: list[Spec] = [
          "Path to the HVSC song length database for exact SID durations."),
     Spec("soundfont", "str", "", "Chiptunes", "MIDI soundfont (.sf2)",
          "Leave empty for the built-in General MIDI soundfont."),
-    # appearance
-    Spec("default_scheme", "str", "catppuccin-mocha", "Appearance", "Default color scheme"),
-    Spec("default_mode", "choice", "system", "Appearance", "Default light/dark",
-         choices=["system", "light", "dark"]),
-    Spec("genre_skins", "bool", True, "Appearance", "Genre skins",
-         "Restyle the whole app after the genre of what's playing."),
-    Spec("skin_map", "json", {}, "Appearance", "Extra genre → skin rules",
-         "Tag → skin pairs that win over the built-in rules, e.g. {\"melodeath\": \"death-metal\"}."),
     # podcasts & radio
     Spec("podcast_refresh_hours", "int", 3, "Podcasts & radio", "Refresh feeds every (hours)", min=1, max=72),
     Spec("podcast_keep_days", "int", 30, "Podcasts & radio", "Keep downloaded episodes (days)",

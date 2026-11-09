@@ -39,19 +39,44 @@ LIKE_TYPES = {"track": Track, "album": Album, "artist": Artist}
 
 
 # ---------------------------------------------------------------- preferences
+# Each device (each login) keeps its own settings; these are the account's, the same everywhere.
+ACCOUNT_PREFS = ("network",)
+
+
+def _merged(prefs: dict, changes: dict) -> dict:
+    return {k: v for k, v in {**prefs, **changes}.items() if v is not None}     # None takes a setting out
+
+
+def device_prefs(db: Session, user: User, token: str | None) -> dict:
+    """The settings a device shows: its own, and the account's. A login without settings of its own (new,
+    or from before devices had them) starts from the account's, once."""
+    account = user.prefs or {}
+    row = db.get(AuthSession, token) if token else None
+    if row is not None and row.prefs is None:
+        row.prefs = {k: v for k, v in account.items() if k not in ACCOUNT_PREFS}
+        db.commit()
+    own = account if row is None else row.prefs
+    return {**{k: v for k, v in own.items() if k not in ACCOUNT_PREFS}, **{k: account[k] for k in ACCOUNT_PREFS if k in account}}
+
 
 @router.get("/me")
-def me(user: User = Depends(current_user)):
-    return {"id": user.id, "username": user.username, "is_admin": user.is_admin, "prefs": user.prefs or {}}
+def me(request: Request, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+    return {"id": user.id, "username": user.username, "is_admin": user.is_admin,
+            "prefs": device_prefs(db, user, login_token(request))}
 
 
 @router.patch("/me/prefs")
-def set_prefs(prefs: dict, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def set_prefs(prefs: dict, request: Request, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
     u = db.get(User, user.id)
-    merged = {**(u.prefs or {}), **prefs}
-    u.prefs = {k: v for k, v in merged.items() if v is not None}
+    token = login_token(request)
+    device_prefs(db, u, token)
+    if account := {k: v for k, v in prefs.items() if k in ACCOUNT_PREFS}:
+        u.prefs = _merged(u.prefs or {}, account)
+    row = db.get(AuthSession, token) if token else None
+    if row is not None:
+        row.prefs = _merged(row.prefs or {}, {k: v for k, v in prefs.items() if k not in ACCOUNT_PREFS})
     db.commit()
-    return u.prefs
+    return device_prefs(db, u, token)
 
 
 class PasswordChange(BaseModel):

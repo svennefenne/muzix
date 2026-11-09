@@ -195,15 +195,16 @@ def test_skipping_the_setup_takes_the_mounted_folders(client, submitted, monkeyp
             s.execute(delete(Root).where(Root.path.like(f"{tmp_path}%")))
 
 
-def test_spotify_is_gone_from_a_database_made_before():
+def test_spotify_and_the_servers_appearance_are_gone_from_a_database_made_before():
     with db.engine.begin() as conn:
         conn.execute(text('CREATE TABLE IF NOT EXISTS spotify_links (user_id INTEGER PRIMARY KEY, access_token TEXT)'))
         conn.execute(text("INSERT OR REPLACE INTO spotify_links VALUES (1, 'old')"))
     settings.set_many({"site_name": "Before"})
     with db.engine.begin() as conn:
-        conn.execute(text("""INSERT OR REPLACE INTO settings (key, value) VALUES ('spotify_client_id', '"abc"'), ('module_spotify', 'false')"""))
+        conn.execute(text("""INSERT OR REPLACE INTO settings (key, value) VALUES ('spotify_client_id', '"abc"'), ('module_spotify', 'false'),
+                             ('skin_map', '{"melodeath": "death-metal"}'), ('default_scheme', '"nord"')"""))
     db._drop_gone()
     with db.engine.begin() as conn:
         assert conn.execute(text("SELECT name FROM sqlite_master WHERE name = 'spotify_links'")).first() is None
         keys = {r[0] for r in conn.execute(text("SELECT key FROM settings"))}
-    assert "spotify_client_id" not in keys and "module_spotify" not in keys and "site_name" in keys
+    assert not keys & {"spotify_client_id", "module_spotify", "skin_map", "default_scheme"} and "site_name" in keys

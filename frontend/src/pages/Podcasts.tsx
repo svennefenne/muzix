@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { ago, api, fmtLong, fmtTime } from "../api";
 import { podcastsChanged, queryClient } from "../actions";
 import { AdminCog } from "../components/AdminMode";
+import { DownloadButton } from "../components/DownloadButton";
 import { Segmented } from "../components/Browse";
 import { Art, Display, Empty, Kicker, Loading, Modal, NewDot, Section, Switch, useMenu } from "../components/ui";
 import { engine } from "../player/engine";
@@ -400,6 +401,11 @@ function EpisodeView({ e }: { e: EpisodeDetail }) {
               {here && playing ? <><Pause size={15} fill="currentColor" /> Pause</>
                 : <><Play size={15} fill="currentColor" /> {here ? "Continue" : e.finished ? "Play again" : pct > 0 ? "Resume" : "Play"}</>}
             </button>
+            <DownloadButton id={`episode:${e.id}`} title={e.title} make={() => {
+              const it = fromEpisode(e, f.title, f.image);
+              return { id: `episode:${e.id}`, kind: "episode", title: e.title, subtitle: f.title, art: it.art, path: `/podcasts/episode/${e.id}`,
+                       pages: { [`/api/podcasts/episodes/${e.id}`]: e }, items: [it] };
+            }} />
             {e.downloaded ? <span className="badge" data-tip="Downloaded to the server">Saved</span> : (
               <button className="btn" onClick={async () => {
                 await api.post(`/api/podcasts/episodes/${e.id}/download`);

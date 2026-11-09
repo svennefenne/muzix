@@ -44,11 +44,12 @@ def new_login(db: Session, user: User, request: Request, name: str = "") -> str:
     return token
 
 
-def start_session(db: Session, user: User, request: Request, response: Response):
-    token = new_login(db, user, request)
+def start_session(db: Session, user: User, request: Request, response: Response, name: str = "") -> str:
+    token = new_login(db, user, request, name)
     secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
     response.set_cookie(COOKIE, token, max_age=SESSION_DAYS * 86400, httponly=True,
                         samesite="lax", secure=secure, path="/")
+    return token
 
 
 def end_session(db: Session, request: Request, response: Response):

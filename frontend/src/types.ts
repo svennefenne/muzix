@@ -10,6 +10,7 @@ export interface Prefs {
   mode?: "system" | "light" | "dark";
   genre_skins?: boolean;
   skin_lock?: string;          // a skin pinned by hand ("" = follow the music)
+  skin_map?: Record<string, string>;     // tag → skin rules of the device's own, before the built-in ones
   volume?: number;
   quality?: "original" | "lossless" | "high" | "low";
   visualizer?: boolean;
@@ -20,6 +21,8 @@ export interface Prefs {
   search_engine?: string;                // web search for a song: a URL with %s for the words
   radio_buffer?: number;                 // seconds of a station gathered before it starts playing
   autoplay?: boolean;                    // similar songs once the queue runs out
+  download_format?: "smaller" | "original";   // downloads in the app: Opus at the server's bitrate, or the files as they are
+  download_wifi?: boolean;               // downloads wait for wifi
   network?: boolean;                     // false: the Library Network's music left out (only this server's)
   browse?: Record<string, BrowsePref>;   // sort and display mode per page
 }
@@ -49,7 +52,7 @@ export interface AuthState {
   site_name: string;
   allow_signup: boolean;
   version: string;
-  defaults: { scheme: string; mode: "system" | "light" | "dark"; genre_skins: boolean };
+  offline?: boolean;          // the app's kept copy, while the server can't be reached (downloads.ts)
 }
 
 export interface Track {

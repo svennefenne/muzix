@@ -225,7 +225,7 @@ class ConnectLink(private val audio: AudioManager, private val player: () -> Pla
 
     /** The playable entries from `from` on, as the page would hand them over (frontend/src/player/app.ts). */
     private fun items(queue: JSONArray, from: Int, startAt: Double): List<MediaItem> =
-        (from until queue.length()).mapNotNull { queue.optJSONObject(it) }.filter { it.optString("kind") != "spotify" }.take(WINDOW)
+        (from until queue.length()).mapNotNull { queue.optJSONObject(it) }.take(WINDOW)
             .mapIndexed { i, it -> Items.fromJson(entry(it, if (i == 0) startAt else 0.0)) }
 
     /** An entry from another device (or autoplay) as the page would hand it over, in this phone's sound quality. */
