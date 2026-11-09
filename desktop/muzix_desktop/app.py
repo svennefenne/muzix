@@ -103,9 +103,18 @@ class App:
         self.settings = None
         self.known_states = {s.server_id: s.state for s in self.cfg.servers}
 
+        from .window import Window
+        self.window = Window(self.cfg)
+        if not minimized:
+            self.window.bring()
+
         self.tray = QSystemTrayIcon(theme.tray_icon(active=False))
         self.tray.setToolTip("Muzix Desktop")
         self.menu = QMenu()
+        self.open_action = QAction("Open Muzix")
+        self.open_action.triggered.connect(self.window.bring)
+        self.server_action = QAction("Muzix server…")
+        self.server_action.triggered.connect(lambda: (self.window.ask(), self.window.bring()))
         self.fix_action = QAction("Fix Metadata && Artwork…")
         self.fix_action.triggered.connect(self.open_fix)
         self.status_action = QAction("")
@@ -119,12 +128,14 @@ class App:
         self.playing_action = QAction("")
         self.playing_action.setEnabled(False)
         self.playing_action.setVisible(False)
+        self.menu.addAction(self.open_action)
         self.menu.addAction(self.fix_action)
         self.menu.addSeparator()
         self.menu.addAction(self.playing_action)
         self.menu.addAction(self.status_action)
         self.menu.addAction(self.toggle_action)
         self.menu.addAction(self.settings_action)
+        self.menu.addAction(self.server_action)
         self.menu.addSeparator()
         self.menu.addAction(self.quit_action)
         self.tray.setContextMenu(self.menu)
@@ -201,7 +212,7 @@ class App:
 
     def _clicked(self, reason):
         if reason == QSystemTrayIcon.ActivationReason.Trigger and sys.platform != "darwin":
-            self.open_fix()
+            self.window.bring()
 
     def _menu_text(self):
         c = self.catalog.counts()
@@ -355,12 +366,13 @@ class App:
         self._tick()
         self.usage.save()
         self.sharing.stop()
+        self.window.shutdown()
         self.tray.hide()
         self.qt.quit()
 
 
 def _already_running() -> bool:
-    """Another Muzix Desktop of this user is running: it's asked to show Settings instead."""
+    """Another Muzix Desktop of this user is running: it's asked to show its window instead."""
     s = QLocalSocket()
     s.connectToServer(SOCKET)
     if s.waitForConnected(300):
@@ -380,6 +392,23 @@ def check() -> int:
         from .shared import formats, manage, tags, tagwrite  # noqa: F401
         assert manage.broad_genre("Doom Metal") == "Metal", "the genre rules aren't there"
         assert formats.is_audio("song.flac") and not formats.is_audio("notes.txt")
+        # the Muzix window: its web interface, its browser, its own server, its player and its speakers
+        from PySide6 import QtWebChannel, QtWebEngineWidgets  # noqa: F401
+        import pychromecast  # noqa: F401
+        import uvicorn  # noqa: F401
+        from . import player, relay
+        assert relay.web_dir(), "the web interface isn't there"
+        assert player.available(), "GStreamer's player (playbin3) isn't there"
+        need = [("flacdec",), ("opusdec",), ("vorbisdec",), ("mpg123audiodec", "avdec_mp3"), ("avdec_aac", "faad", "fdkaacdec"),
+                ("wavpackdec", "avdec_wavpack"), ("spectrum",), ("souphttpsrc", "curlhttpsrc")]
+        missing = [n[0] for n in need if not any(player.Gst.ElementFactory.find(x) for x in n)]
+        assert not missing, f"GStreamer lacks {', '.join(missing)}"
+        if sys.platform == "win32":
+            from . import smtc
+            assert smtc.MediaPlayer is not None, "Windows' media controls (pywinrt) aren't there"
+        if sys.platform == "darwin":
+            from . import nowplaying
+            assert nowplaying.MP is not None, "macOS' Now Playing (pyobjc) isn't there"
         qt = QApplication(sys.argv[:1])
         theme.load_fonts()
         from PySide6.QtGui import QFontDatabase
@@ -416,6 +445,7 @@ def main():
         # plugins don't fit the Qt bundled here, so Qt would draw its own, and on systems without
         # the portal it still does
         os.environ["QT_QPA_PLATFORMTHEME"] = "xdgdesktopportal"
+    from PySide6.QtWebEngineWidgets import QWebEngineView  # noqa: F401  (QtWebEngine wants to be there before the QApplication)
     QApplication.setApplicationName("Muzix Desktop")
     QApplication.setOrganizationName("Muzix")
     qt = QApplication(sys.argv)
@@ -431,8 +461,7 @@ def main():
     server = QLocalServer()
     QLocalServer.removeServer(SOCKET)
     server.listen(SOCKET)
-    server.newConnection.connect(lambda: (server.nextPendingConnection(), app.open_settings()))
+    server.newConnection.connect(lambda: (server.nextPendingConnection(), app.window.bring()))
     if not minimized and not QSystemTrayIcon.isSystemTrayAvailable():
-        log.warning("No system tray here: Settings stays open instead")
-        app.open_settings()
+        log.warning("No system tray here: closing the window quits")
     return qt.exec()

@@ -95,6 +95,52 @@ shop are decided (below).
 Later: game music with no server, the computer first (ZXTune is native everywhere; UADE is Unix only;
 GPL engines inside the app make the app GPL). iOS. Google Play.
 
+## Step 3 in detail
+
+The computer against a server. Muzix Desktop (the tray app) gets a window.
+
+### 3.1 The window
+
+- A window with the app's own web interface (it comes with the app), shown by QtWebEngine.
+- A small server inside the app, on 127.0.0.1, serves the interface and passes `/api/…` and the
+  Connect socket on to the Muzix server; the login cookie stays with the window. Only the window may
+  use it (a secret cookie for each run).
+- The first start asks for the server's address, as the Android app does; at home and away as there
+  (the server's public address). The sign-in names the computer.
+- Closing the window leaves Muzix in the tray; the tray's menu opens it again. Admin opens the web
+  version in the browser.
+
+### 3.2 The player
+
+- The app plays, not the page: the page hands over the queue as it does to the Android app (the same
+  messages). Gapless, every format as it is.
+- GStreamer (playbin3) everywhere (decided 2026-11-09). Its Python packages: macOS has them (1.28),
+  Windows only as a preview (1.29, until 1.30 is out), Linux none: there it's the system's GStreamer.
+  Linux first.
+- The visualizer gets the player's spectrum.
+
+### 3.3 Media keys and the system's player
+
+MPRIS on Linux, the media overlay on Windows, Now Playing on macOS: what plays, and the keys.
+
+### 3.4 Casting
+
+The Cast button lists the speakers on the network (pychromecast); the queue goes to the speaker with
+its signed links, as from Chrome.
+
+### 3.5 Packaging
+
+The AppImage, the Windows installer and the Mac app with QtWebEngine and the player; the desktop build
+builds the web interface first.
+
+- Linux: PyGObject built against the build machine's GStreamer; PyInstaller takes the plugins that play
+  sound (`hooksconfig` in muzix-desktop.spec), and the app points GStreamer at those only.
+- Windows and macOS: GStreamer's own Python packages, packed as they are; the app sets their paths before
+  GStreamer loads (player.py).
+- Qt's parts the window doesn't use are left out (3D, charts, Quick's controls, QML, most languages).
+- `--check` (run on each build) asks for the web interface, QtWebEngine, GStreamer with the decoders of
+  the common formats, the Cast speakers' library and the system's media controls.
+
 ## Supporter
 
 Not decided in full yet: the price and the shop come first. The idea, from 2026-11-09:

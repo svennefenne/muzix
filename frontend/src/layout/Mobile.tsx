@@ -12,8 +12,7 @@ import { api } from "../api";
 import { appVersion, useAppUpdate } from "../appUpdate";
 import { CastButton, CastNote, usePlaysElsewhere } from "../components/CastButton";
 import { Art, NewDot } from "../components/ui";
-import { useDownloads } from "../downloads";
-import { appPlayer } from "../player/app";
+import { appPlayer, useShell } from "../player/app";
 import { engine } from "../player/engine";
 import { usePlayer } from "../store/player";
 import { useShown } from "../modules";
@@ -117,7 +116,7 @@ function MoreSheet({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener("keydown", key);
   }, [onClose]);
   // the app (0.9 on) has no admin pages: its Admin is the server's web version, in the browser
-  const inApp = useDownloads((s) => s.available);
+  const inApp = useShell((s) => s.opens);
   const go = (to: string) => { if (to === "/admin" && inApp) appPlayer.openOnServer(to); else nav(to); onClose(); };
   const items = [
     ...more,

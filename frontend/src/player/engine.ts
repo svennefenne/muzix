@@ -1024,6 +1024,7 @@ class Engine {
 
   /** Frequency data (0..255 per bin), or null when nothing is analysable. */
   spectrum(): Uint8Array | null {
+    if (appPlayer.active) return appPlayer.spectrum();      // the app plays: its own (Muzix Desktop's)
     if (!this.analyser || !this.freq || this.el.paused) return null;
     this.analyser.getByteFrequencyData(this.freq);
     return this.freq;

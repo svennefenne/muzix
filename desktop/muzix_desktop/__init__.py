@@ -1,4 +1,5 @@
-"""Muzix Desktop: shares folders on this computer with Muzix servers (the Library Network) and
-fixes albums' metadata and artwork. Runs in the background, from an icon in the system tray."""
+"""Muzix Desktop: the Muzix window, for listening to a Muzix server; it also shares folders on this
+computer with Muzix servers (the Library Network) and fixes albums' metadata and artwork. It stays in
+the system tray."""
 
-__version__ = "0.1.4"
+__version__ = "0.2.0"

@@ -76,6 +76,10 @@ class Config:
     embed_cover: bool = True    # the cover into each song too, not only cover.jpg beside them
     autostart: bool = False
     seen_hint: bool = False     # the Fix Metadata window's "check Settings first"
+    # the server listened to in the Muzix window (window.py): its address at home and outside
+    listen_home: str = ""
+    listen_away: str = ""
+    window_port: int = 0        # the window's own server on 127.0.0.1 (relay.py): the same each run
 
     def server(self, server_id: str) -> Server | None:
         return next((s for s in self.servers if s.server_id == server_id), None)

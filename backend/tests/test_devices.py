@@ -118,6 +118,8 @@ def test_device_names_from_the_browser():
     assert device_name("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) "
                        "Version/18.0 Mobile/15E148 Safari/604.1") == "Safari on iOS"
     assert device_name("curl/8.0") == "curl" and device_name("") == "Unknown device"
+    assert device_name("Mozilla/5.0 (X11; Linux x86_64) QtWebEngine/6.12.0 Chrome/130.0 Safari/537.36 "
+                       "MuzixDesktop/0.2.0 (Linux; fenne-pc)") == "fenne-pc"
 
 
 def test_the_api_version_is_told():

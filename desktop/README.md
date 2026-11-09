@@ -1,10 +1,15 @@
 # Muzix Desktop
 
-A small app for people who listen on someone else's Muzix server but want to add
-their own music to it: it shares folders on your computer with the servers you
-choose, while the computer is on, and it fixes albums' tags and covers. It runs in
-the background, from an icon in the system tray (the menu bar on a Mac):
+Muzix on the computer: a window for listening to your Muzix server, which stays in
+the system tray (the menu bar on a Mac) when it's closed. It also shares folders on
+your computer with the servers you choose, while the computer is on, and it fixes
+albums' tags and covers. The tray's menu has:
 
+- **Open Muzix**: the window. Its web interface comes with the app; a small server
+  inside it, on 127.0.0.1, serves that and passes everything else on to your Muzix
+  server, at its address at home while that answers and its public address
+  otherwise (the server's *Public URL*). The first start asks for the address.
+- **Muzix server…**: another server.
 - **Fix Metadata & Artwork**: a small window that stays on top. Drop album folders
   on it; each gets suggestions from the sources chosen in Settings, you pick one,
   check how its songs pair with your files and which cover to use, and *Apply*.
@@ -70,6 +75,9 @@ A folder that has other music besides the album keeps its name and place.
 cd desktop
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt pyinstaller pytest
+# the window's player is GStreamer, through PyGObject: on Linux the system's (python-gobject and the
+# gstreamer plugins), linked into the venv; without it the window plays as a browser does
+ln -s /usr/lib/python3.*/site-packages/gi .venv/lib/python3.*/site-packages/
 .venv/bin/python -m muzix_desktop          # run it
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests
 .venv/bin/pyinstaller muzix-desktop.spec   # build into dist/

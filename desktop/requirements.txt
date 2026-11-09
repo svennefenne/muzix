@@ -5,3 +5,19 @@ PySide6==6.12.0
 websockets>=14
 platformdirs>=4
 certifi
+pychromecast>=14.1      # the window's player casts to Google Cast speakers (cast.py)
+# the window's player, GStreamer: from its own Python packages on Windows (a preview until 1.30 is out) and
+# macOS; on Linux the system's, with PyGObject (the desktop workflow installs them; README's Development)
+gstreamer-libs==1.29.2a0; sys_platform == "win32"
+gstreamer-plugins==1.29.2a0; sys_platform == "win32"
+gstreamer-python==1.29.2a0; sys_platform == "win32"
+gstreamer-libs==1.28.9; sys_platform == "darwin"
+gstreamer-plugins==1.28.9; sys_platform == "darwin"
+gstreamer-python==1.28.9; sys_platform == "darwin"
+# the system's media controls: Windows' (smtc.py), macOS' Now Playing (nowplaying.py); Linux's MPRIS is Gio's
+winrt-runtime; sys_platform == "win32"
+winrt-Windows.Foundation; sys_platform == "win32"
+winrt-Windows.Media; sys_platform == "win32"
+winrt-Windows.Media.Playback; sys_platform == "win32"
+winrt-Windows.Storage.Streams; sys_platform == "win32"
+pyobjc-framework-MediaPlayer; sys_platform == "darwin"

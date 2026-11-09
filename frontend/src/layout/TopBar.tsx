@@ -9,8 +9,7 @@ import { useAppUpdate } from "../appUpdate";
 import { Logo } from "../components/Logo";
 import { useShown } from "../modules";
 import { NewDot, useMenu } from "../components/ui";
-import { useDownloads } from "../downloads";
-import { appPlayer } from "../player/app";
+import { appPlayer, useShell } from "../player/app";
 import { usePlayer } from "../store/player";
 import { useUi } from "../store/ui";
 import { QuickSearch } from "./QuickSearch";
@@ -69,7 +68,7 @@ export function TopBar() {
   const update = useAppUpdate();
   const shown = useShown(TABS);
   // the app (0.9 on) has no admin pages: its Admin is the server's web version
-  const inApp = useDownloads((s) => s.available);
+  const inApp = useShell((s) => s.opens);
   const tabs = user?.is_admin && !inApp ? [...shown, { to: "/admin", label: "Admin" }] : shown;
 
   // Q / E step through the sections, like a console's shoulder buttons
@@ -135,7 +134,7 @@ function AdminSwitch() {
   const on = useUi((s) => s.adminMode);
   const setAdminMode = useUi((s) => s.setAdminMode);
   const loc = useLocation();
-  const inApp = useDownloads((s) => s.available);
+  const inApp = useShell((s) => s.opens);
   if (!admin) return null;
   if (inApp) {
     const sep = loc.search ? "&" : "?";

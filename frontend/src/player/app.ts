@@ -5,6 +5,7 @@
  * The app casts by itself too: every entry carries the signed link a speaker would play. */
 
 import { sized } from "../api";
+import { create } from "zustand";
 import { type Collection, type Downloaded, useDownloads } from "../downloads";
 import { report } from "../components/ErrorBoundary";
 import { usePlayer, type PlayItem } from "../store/player";
@@ -112,6 +113,23 @@ class AppPlayer {
     const url = location.origin + path;
     if (this.available) this.send({ t: "open", url });
     else window.open(url, "_blank", "noopener");
+  }
+
+  // ------------------------------------------------------------ the visualizer (Muzix Desktop's player)
+
+  private freq = new Uint8Array(256);
+  private heard = 0;
+
+  /** The app's spectrum (base64, a byte per band, as the analyser's), smoothed as the analyser smooths. */
+  private onSpectrum(bands: string) {
+    const raw = atob(bands);
+    for (let i = 0; i < this.freq.length && i < raw.length; i++) this.freq[i] = 0.78 * this.freq[i] + 0.22 * raw.charCodeAt(i);
+    this.heard = performance.now();
+  }
+
+  /** The playing song's frequency data, while the app sends it (engine.ts's spectrum()). */
+  spectrum(): Uint8Array | null {
+    return performance.now() - this.heard < 300 ? this.freq : null;
   }
 
   // ------------------------------------------------------------ downloads (downloads.ts)
@@ -316,6 +334,7 @@ class AppPlayer {
     else if (m.t === "volume") usePlayer.getState().set({ volume: m.value as number, muted: !!m.muted });
     else if (m.t === "queue") this.onQueue(m.queue as string[], m.index as number);
     else if (m.t === "downloads") this.onDownloads(m.list as Downloaded[], !!m.offline);
+    else if (m.t === "spectrum") this.onSpectrum(m.bands as string);
     else if (m.t === "cast") usePlayer.getState().set({ castState: m.state as CastState, castDevice: (m.device as string) || "" });
     else if (m.t === "error") {
       const msg = `Couldn't play ${(m.title as string) || "this"}`;
@@ -327,7 +346,9 @@ class AppPlayer {
   /** The app answered: it plays from now on. If it already plays something (the page was
    * reloaded), its queue becomes ours. */
   private onHello(m: { queue: string[]; index: number; state: AppState; saves?: boolean; device?: string; volume?: number; updates?: boolean;
-                       downloads?: Downloaded[]; offline?: boolean }) {
+                       downloads?: Downloaded[]; offline?: boolean; opens?: boolean }) {
+    // an app that opens the web version's admin pages in the browser (Android 0.9 on, Muzix Desktop) has none of its own
+    useShell.setState({ opens: !!m.opens || !!m.downloads });
     // an app that downloads (0.9 on) says what it has
     if (m.downloads) this.onDownloads(m.downloads, !!m.offline);
     // the phone's media volume is the volume here, before anything is sent to the app
@@ -408,5 +429,8 @@ class AppPlayer {
     }
   }
 }
+
+/** What the app around the page does itself. */
+export const useShell = create<{ opens: boolean }>(() => ({ opens: false }));
 
 export const appPlayer = new AppPlayer();

@@ -79,6 +79,8 @@ def device_name(agent: str) -> str:
     """A browser's login as people know it, from its user agent: "Firefox on Linux", "Muzix for Android 0.8.2"."""
     if m := re.search(r"MuzixApp/(\S+)", agent):
         return f"Muzix for Android {m.group(1)}"
+    if m := re.search(r"MuzixDesktop/\S+ \(([^;)]+); ([^)]+)\)", agent):      # the Muzix window: the computer's name
+        return m.group(2)
     browser = next((name for key, name in (("Edg/", "Edge"), ("OPR/", "Opera"), ("Vivaldi/", "Vivaldi"), ("Firefox/", "Firefox"),
                                            ("Chrome/", "Chrome"), ("Safari/", "Safari")) if key in agent), None)
     if browser is None:         # a program of its own: its name ("curl/8.0": curl)

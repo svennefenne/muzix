@@ -259,9 +259,18 @@ own library turns *Settings → Other libraries → Music from linked servers*
 off; for them every copy of the server's own albums is listed again, whatever
 the main library.
 
-### Muzix Desktop: sharing from a computer
+### Muzix Desktop: listening, and sharing from a computer
 
-Someone without a server of their own can share folders on their computer with
+Muzix Desktop (`desktop/`, Windows, macOS and Linux) is Muzix on the computer: a
+window with the web interface (it comes with the app) and a player of its own
+behind it, GStreamer, which plays every format as it is and gapless and feeds the
+visualizer. It casts to Google Cast speakers, the media keys and the system's own
+media controls work (MPRIS on Linux, the media overlay on Windows, Now Playing on
+macOS), and it's one of the account's devices for Muzix Connect. It uses the
+server's address at home while that answers and its public address otherwise.
+Closing the window leaves it in the system tray, playing on.
+
+Someone without a server of their own can also share folders on their computer with
 the servers they listen on: Muzix Desktop (`desktop/`) runs in the background on
 Windows, macOS and Linux, from an icon in the system tray. In its *Settings* they
 add the folders to share and a server's HTTPS address and sharing code; the
