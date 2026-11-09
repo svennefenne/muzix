@@ -49,7 +49,7 @@ class PlayerBridge(
     private val audio = context.getSystemService(AudioManager::class.java)
     /** The account's other devices, out of view (the page frozen): the app keeps the connection itself. */
     private val link = ConnectLink(audio, { player }, ::send)
-    /** Autoplay while the page is frozen: the songs run out, the app finds more itself. */
+    /** Autoplay while the page is frozen: the songs (or a podcast's episodes) run out, the app finds more itself. */
     private val autoplay = Autoplay({ player }, { link.entry(it) }, ::send)
 
     /** The phone's media volume changed (its buttons, or another device): the page hears of it, and
@@ -149,6 +149,7 @@ class PlayerBridge(
                 link.quality = m.optString("quality", "original")
                 link.radioBuffer = m.optInt("radioBuffer")
                 autoplay.on = m.optBoolean("autoplay")
+                autoplay.oldest = m.optJSONArray("oldest")?.let { a -> (0 until a.length()).map { a.optInt(it) }.toSet() } ?: emptySet()
             }
             "upcoming" -> {
                 // everything after the current song, replaced

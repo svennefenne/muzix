@@ -68,7 +68,7 @@ class AppPlayer {
     app.addEventListener("message", (e) => this.onMessage(e.data));
     this.send({ t: "hello" });
     useUi.subscribe((u, prev) => {
-      if (this.connected && (u.quality !== prev.quality || u.radioBuffer !== prev.radioBuffer || u.autoplay !== prev.autoplay)) this.prefs();
+      if (this.connected && (u.quality !== prev.quality || u.radioBuffer !== prev.radioBuffer || u.autoplay !== prev.autoplay || u.browse !== prev.browse)) this.prefs();
     });
     usePlayer.subscribe((s, prev) => {
       if (!this.connected) return;
@@ -96,8 +96,10 @@ class AppPlayer {
 
   private prefs() {
     const ui = useUi.getState();
-    // autoplay: the app carries it on itself while the page is frozen (android/…/Autoplay.kt)
-    this.send({ t: "prefs", quality: ui.quality, radioBuffer: ui.radioBuffer, autoplay: ui.autoplay });
+    // autoplay: the app carries it on itself while the page is frozen (android/…/Autoplay.kt), a podcast's
+    // next episode too, in the order its page is sorted: `oldest` are the podcasts sorted oldest first
+    const oldest = Object.entries(ui.browse).filter(([k, b]) => k.startsWith("podcast:") && b?.sort === "oldest").map(([k]) => Number(k.slice(8)));
+    this.send({ t: "prefs", quality: ui.quality, radioBuffer: ui.radioBuffer, autoplay: ui.autoplay, oldest });
   }
 
   /** Back to the app's screen for the server's address. */
