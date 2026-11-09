@@ -11,6 +11,7 @@ pychromecast>=14.1      # the window's player casts to Google Cast speakers (cas
 gstreamer-libs==1.29.2a0; sys_platform == "win32"
 gstreamer-plugins==1.29.2a0; sys_platform == "win32"
 gstreamer-python==1.29.2a0; sys_platform == "win32"
+gstreamer-plugins-net==1.29.2a0; sys_platform == "win32"     # http (souphttpsrc)
 gstreamer-libs==1.28.9; sys_platform == "darwin"
 gstreamer-plugins==1.28.9; sys_platform == "darwin"
 gstreamer-python==1.28.9; sys_platform == "darwin"

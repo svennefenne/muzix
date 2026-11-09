@@ -19,14 +19,18 @@ from .cast import Caster
 
 log = logging.getLogger(__name__)
 
-GST_WHEELS = ("gstreamer_libs", "gstreamer_plugins", "gstreamer_python")
+def gst_packages() -> list[str]:
+    """GStreamer's Python packages here (Windows and macOS): libs, plugins, the codecs' libraries, the
+    runtime, the bindings... each its own (muzix-desktop.spec takes the same ones)."""
+    import pkgutil
+    return sorted({m.name for m in pkgutil.iter_modules() if m.ispkg and m.name.startswith("gstreamer_")})
 
 
 def _gstreamer_wheels():
     """GStreamer from its Python packages (Windows and macOS): each tells where its parts are, and those
     paths have to be set before GStreamer is loaded. On Linux it's the system's."""
     import importlib
-    for name in GST_WHEELS:
+    for name in gst_packages():
         try:
             mod = importlib.import_module(name)
         except ImportError:

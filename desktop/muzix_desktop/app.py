@@ -402,7 +402,8 @@ def check() -> int:
         need = [("flacdec",), ("opusdec",), ("vorbisdec",), ("mpg123audiodec", "avdec_mp3"), ("avdec_aac", "faad", "fdkaacdec"),
                 ("wavpackdec", "avdec_wavpack"), ("spectrum",), ("souphttpsrc", "curlhttpsrc")]
         missing = [n[0] for n in need if not any(player.Gst.ElementFactory.find(x) for x in n)]
-        assert not missing, f"GStreamer lacks {', '.join(missing)}"
+        assert not missing, (f"GStreamer lacks {', '.join(missing)} (its packages: {player.gst_packages()}, plugins from "
+                             f"{os.environ.get('GST_PLUGIN_SYSTEM_PATH_1_0') or os.environ.get('GST_PLUGIN_PATH')})")
         if sys.platform == "win32":
             from . import smtc
             assert smtc.MediaPlayer is not None, "Windows' media controls (pywinrt) aren't there"

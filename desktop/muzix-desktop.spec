@@ -30,7 +30,8 @@ for root, _dirs, files in os.walk(web):
             datas.append((os.path.join(root, f), os.path.join("muzix_desktop", "web", os.path.relpath(root, web))))
 
 # GStreamer from its Python packages (Windows, macOS), as they are: player.py sets their paths at the start
-for name in ("gstreamer_libs", "gstreamer_plugins", "gstreamer_python"):
+import pkgutil
+for name in sorted({m.name for m in pkgutil.iter_modules() if m.ispkg and m.name.startswith("gstreamer_")}):
     spec = importlib.util.find_spec(name)
     if spec and spec.submodule_search_locations:
         datas.append((list(spec.submodule_search_locations)[0], name))
