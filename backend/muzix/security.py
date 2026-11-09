@@ -1,8 +1,9 @@
-"""Accounts and cookie sessions."""
+"""Accounts and their logins: a browser's cookie, or an app's token (`Authorization: Bearer`)."""
 
 import base64
 import hashlib
 import hmac
+import re
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
@@ -12,6 +13,7 @@ from argon2.exceptions import VerifyMismatchError
 from fastapi import Depends, HTTPException, Request, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from starlette.requests import HTTPConnection
 
 from . import env
 from .db import get_db
@@ -33,18 +35,24 @@ def check_password(user: User, pw: str) -> bool:
         return False
 
 
-def start_session(db: Session, user: User, request: Request, response: Response):
+def new_login(db: Session, user: User, request: Request, name: str = "") -> str:
+    """A login for one device: the token it signs in with from now on (one of the account's devices)."""
     token = secrets.token_urlsafe(32)
-    db.add(AuthSession(token=token, user_id=user.id,
+    db.add(AuthSession(token=token, user_id=user.id, name=name[:120],
                        user_agent=(request.headers.get("user-agent") or "")[:255]))
     db.commit()
+    return token
+
+
+def start_session(db: Session, user: User, request: Request, response: Response):
+    token = new_login(db, user, request)
     secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
     response.set_cookie(COOKIE, token, max_age=SESSION_DAYS * 86400, httponly=True,
                         samesite="lax", secure=secure, path="/")
 
 
 def end_session(db: Session, request: Request, response: Response):
-    token = request.cookies.get(COOKIE)
+    token = login_token(request)
     if token:
         row = db.get(AuthSession, token)
         if row:
@@ -53,8 +61,34 @@ def end_session(db: Session, request: Request, response: Response):
     response.delete_cookie(COOKIE, path="/")
 
 
+def login_token(conn: HTTPConnection) -> str | None:
+    """The login a request (or WebSocket) comes with: an app's bearer token, or the browser's cookie."""
+    auth = conn.headers.get("authorization", "")
+    if auth[:7].lower() == "bearer ":
+        return auth[7:].strip() or None
+    return conn.cookies.get(COOKIE)
+
+
+def login_id(token: str) -> str:
+    """A login as the account's list of devices names it: not the token itself, which signs in."""
+    return hashlib.sha256(token.encode()).hexdigest()[:16]
+
+
+def device_name(agent: str) -> str:
+    """A browser's login as people know it, from its user agent: "Firefox on Linux", "Muzix for Android 0.8.2"."""
+    if m := re.search(r"MuzixApp/(\S+)", agent):
+        return f"Muzix for Android {m.group(1)}"
+    browser = next((name for key, name in (("Edg/", "Edge"), ("OPR/", "Opera"), ("Vivaldi/", "Vivaldi"), ("Firefox/", "Firefox"),
+                                           ("Chrome/", "Chrome"), ("Safari/", "Safari")) if key in agent), None)
+    if browser is None:         # a program of its own: its name ("curl/8.0": curl)
+        return agent.split("/")[0].strip()[:40] or "Unknown device"
+    system = next((name for key, name in (("Android", "Android"), ("iPhone", "iOS"), ("iPad", "iPadOS"), ("Windows", "Windows"),
+                                          ("Mac OS X", "macOS"), ("CrOS", "ChromeOS"), ("Linux", "Linux")) if key in agent), "")
+    return f"{browser} on {system}" if system else browser
+
+
 def optional_user(request: Request, db: Session = Depends(get_db)) -> User | None:
-    user = session_user(db, request.cookies.get(COOKIE))
+    user = session_user(db, login_token(request))
     if user is not None:
         viewing(request, user)
     return user

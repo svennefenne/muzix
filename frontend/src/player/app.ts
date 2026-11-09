@@ -34,8 +34,6 @@ interface AppState {
 const WINDOW = 100;    // songs handed over at a time
 const TOP_UP = 20;     // hand over more when the app gets down to this many
 
-const playable = (it: PlayItem) => it.kind !== "spotify";
-
 class AppPlayer {
   readonly available = typeof window !== "undefined" && !!window.MuzixApp;
   private hooks: AppHooks | null = null;
@@ -154,9 +152,9 @@ class AppPlayer {
     }
   }
 
-  /** The playable items from `start` on, as many as one handover takes. */
+  /** The items from `start` on, as many as one handover takes. */
   private upcoming(start: number) {
-    return usePlayer.getState().queue.slice(start).filter(playable).slice(0, WINDOW);
+    return usePlayer.getState().queue.slice(start, start + WINDOW);
   }
 
   /** Starts the app on the queue at `start`, `at` seconds in. */
@@ -168,7 +166,6 @@ class AppPlayer {
       start = 0;
     }
     const first = usePlayer.getState().queue[start];
-    if (first && !playable(first)) useUi.getState().notify("Spotify songs don't play in the app; skipping them");
     const items = this.upcoming(start);
     if (!items.length) return useUi.getState().notify("Nothing in the queue plays in the app");
     const into = at > 0.5 && items[0] === first ? at : 0;
@@ -189,7 +186,7 @@ class AppPlayer {
   /** Makes the app's upcoming songs match ours, without touching what plays now. */
   async syncUpcoming() {
     const s = usePlayer.getState();
-    const want = this.upcoming(s.index).slice(s.current() && playable(s.current()!) ? 1 : 0);
+    const want = this.upcoming(s.index).slice(s.current() ? 1 : 0);
     this.handed = new Set([s.current()?.key ?? "", ...want.map((it) => it.key)]);
     const token = await this.token();
     this.send({ t: "upcoming", items: want.map((it) => this.item(it, token)) });
@@ -219,25 +216,16 @@ class AppPlayer {
     } else this.loadQueue(index, at);
   }
 
-  /** The nearest playable item from `from`, stepping by `step`; -1 if there's none. */
-  private playableFrom(from: number, step: number) {
-    const q = usePlayer.getState().queue;
-    for (let i = from; i >= 0 && i < q.length; i += step) if (playable(q[i])) return i;
-    return -1;
-  }
-
   next() {
     const s = usePlayer.getState();
-    const i = this.playableFrom(s.index + 1, 1);
-    if (i >= 0) this.jump(i);
-    else if (s.repeat === "all" && this.playableFrom(0, 1) >= 0) this.loadQueue(this.playableFrom(0, 1));
+    if (s.index + 1 < s.queue.length) this.jump(s.index + 1);
+    else if (s.repeat === "all" && s.queue.length) this.loadQueue(0);
   }
 
   prev(always = false) {
     const s = usePlayer.getState();
-    const i = this.playableFrom(s.index - 1, -1);
-    if ((s.position > 4 && !always) || i < 0) return this.seek(0);
-    this.jump(i);
+    if ((s.position > 4 && !always) || s.index < 1) return this.seek(0);
+    this.jump(s.index - 1);
   }
 
   seek(t: number) {
@@ -372,7 +360,7 @@ class AppPlayer {
       this.hooks?.onTime(st.position);
     }
     if (st.ended) this.hooks?.onFinish();
-    else if (st.left < TOP_UP && this.playableFrom(s.index + 1, 1) >= 0 && this.upcoming(s.index).length - 1 > st.left) {
+    else if (st.left < TOP_UP && s.index + 1 < s.queue.length && this.upcoming(s.index).length - 1 > st.left) {
       this.syncUpcoming();      // the app nears the end of what it has
     }
   }

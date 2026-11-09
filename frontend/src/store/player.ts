@@ -3,7 +3,7 @@ import { create } from "zustand";
 import type { CastState } from "../player/cast";
 import type { Book, Episode, OnlineTrack, Station, Track } from "../types";
 
-export type ItemKind = "track" | "book" | "episode" | "radio" | "spotify" | "online";
+export type ItemKind = "track" | "book" | "episode" | "radio" | "online";
 
 export interface PlayItem {
   key: string;
@@ -29,8 +29,6 @@ export interface PlayItem {
   bookId?: number;
   feedId?: number;            // an episode's podcast
   partOffset?: number;        // a book part's start within the whole book
-  spotifyUri?: string;
-  spotifyArtist?: string;     // first artist, for the genre lookup
   auto?: boolean;             // added by autoplay
   peer?: string | null;       // the server in the Library Network it's from
 }

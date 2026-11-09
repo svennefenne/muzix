@@ -19,7 +19,7 @@ Muzix is a self-hosted, Spotify-style player for everything you own: your music 
 ## Positioning
 
 - **The app dresses up for what's playing.** Genre skins restyle the whole interface for the music (death metal turns it into a death metal record, chiptunes get pixel fonts and CRT scanlines, jazz gets Blue Note colours and art deco type). Covers are never restyled: a skin dresses the interface around them. When no skin applies, users choose from 98 colour schemes, each with a light and a dark version.
-- **Everything in one place.** The music library, VGM, audiobooks, podcasts, radio and Spotify share one library, search, queue and player.
+- **Everything in one place.** The music library, VGM, audiobooks, podcasts and radio share one library, search, queue and player.
 - **Chiptunes done right.** Every tracker and console format plays natively, a game's loop points are honoured (intro, N loops, fade) and multi-song files show each song as its own track. VGM is a first-class section, not an afterthought.
 - **Built around a real organizing pipeline.** Uploads are matched with MusicBrainz (beets), get cover art and a main genre, and are filed as `Genre/Artist/Artist - Year - Album/…`, the same scheme as the owner's library.
 
@@ -29,13 +29,12 @@ Muzix is a self-hosted, Spotify-style player for everything you own: your music 
 - **Phone:** used as an app installed on the home screen, on the go or around the house, with a Spotify-style phone layout (tab bar, mini player). On Android it can also be the Muzix app in `android/`, a WebView wrapper around the same web interface that adds native playback and casting, so the design language stays web.
 - **Lean-back:** left running on a screen as a now-playing display (full-screen player, visualizer, skins).
 - **Administration:** library folders, scans and jobs, uploads, users and settings are handled by whoever runs the server, usually only the owner.
-- **Hosting:** one Docker container, usually behind a reverse proxy with HTTPS (Spotify playback needs it). Libraries live on NAS shares, so scans and folder listings can be slow.
+- **Hosting:** one Docker container, usually behind a reverse proxy with HTTPS. Libraries live on NAS shares, so scans and folder listings can be slow.
 
 ## Capabilities and Constraints
 
 - **Formats:** MP3, FLAC, Ogg/Opus, M4A, M4B, WavPack, APE and WMA; trackers (MOD, XM, IT, S3M, MT2…), console music (NSF, GBS, SPC, VGM…), SID, YM, FamiTracker/Furnace and MIDI.
 - **Accounts:** multiple users with an admin role. Each user's preferences follow them (colour scheme, light/dark/system mode, skin lock, panel states).
-- **Spotify:** playback inside Muzix needs Premium and the Web Playback SDK. New Spotify apps run in Development mode (no artist genres, short search results, at most five accounts), and ad and tracker blockers can break playback.
 - **Terminology:**
   - *Library*: the user's music.
   - *VGM*: chiptunes, trackers and game soundtracks.

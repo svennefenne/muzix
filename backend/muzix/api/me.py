@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -8,9 +8,10 @@ from sqlalchemy.orm import Session
 
 from .. import serial
 from ..db import get_db_with_copies
-from ..models import (Album, Artist, Book, BookProgress, Feed, Like, Playlist, PlaylistItem, Station,
+from ..models import (Album, Artist, AuthSession, Book, BookProgress, Feed, Like, Playlist, PlaylistItem, Station,
                       Subscription, Track, User)
-from ..security import check_password, current_user, hash_password, optional_user
+from ..security import (SESSION_DAYS, check_password, current_user, device_name, hash_password, login_id, login_token,
+                        optional_user)
 from .library import file_playlists, tracks_json
 
 router = APIRouter(prefix="/api", tags=["me"])
@@ -64,6 +65,33 @@ def change_password(body: PasswordChange, db: Session = Depends(get_db_with_copi
     if not check_password(u, body.current):
         raise HTTPException(400, "The current password is wrong")
     u.password_hash = hash_password(body.new)
+    db.commit()
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- devices: the account's logins
+
+def _logins(db: Session, user: User) -> list[AuthSession]:
+    since = datetime.now(timezone.utc) - timedelta(days=SESSION_DAYS)
+    return list(db.scalars(select(AuthSession).where(AuthSession.user_id == user.id, AuthSession.last_seen > since)
+                           .order_by(AuthSession.last_seen.desc())))
+
+
+@router.get("/me/devices")
+def devices(request: Request, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+    """Where the account is signed in: each browser and app, newest seen first, this one marked."""
+    mine = login_token(request)
+    return [{"id": login_id(r.token), "name": r.name or device_name(r.user_agent), "app": bool(r.name),
+             "since": serial.iso(r.created_at), "seen": serial.iso(r.last_seen), "current": r.token == mine}
+            for r in _logins(db, user)]
+
+
+@router.delete("/me/devices/{device_id}")
+def sign_out_device(device_id: str, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+    row = next((r for r in _logins(db, user) if login_id(r.token) == device_id), None)
+    if row is None:
+        raise HTTPException(404, "No such device")
+    db.delete(row)
     db.commit()
     return {"ok": True}
 

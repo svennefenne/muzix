@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 
 from muzix import db, modules, network, settings
 from muzix.api import admin, auth, books as books_api, setup
@@ -113,7 +113,7 @@ def test_its_requests_answer_that_its_off(client):
     r = c.get("/api/books")
     assert r.status_code == 404 and r.json()["detail"] == "The Audiobooks module is turned off on this server"
     assert c.get("/api/auth/state").json()["modules"] == {
-        "vgm": True, "audiobooks": False, "podcasts": True, "radio": True, "spotify": True, "network": True}
+        "vgm": True, "audiobooks": False, "podcasts": True, "radio": True, "network": True}
 
 
 def test_turned_on_again_it_catches_up(client, submitted):
@@ -129,7 +129,7 @@ def test_turned_on_again_it_catches_up(client, submitted):
     assert [s["key"] for s in mods["podcasts"]["settings"]] == ["podcast_refresh_hours", "podcast_keep_days"]
     # the Settings page leaves a module's settings to it
     owners = {s["key"]: s["module"] for s in c.get("/api/admin/settings").json()}
-    assert owners["chip_loops"] == "vgm" and owners["spotify_client_id"] == "spotify" and owners["site_name"] is None
+    assert owners["chip_loops"] == "vgm" and owners["radio_country"] == "radio" and owners["site_name"] is None
 
 
 def test_a_new_server_sets_up_after_its_admin_account(client, submitted, monkeypatch, tmp_path):
@@ -149,7 +149,7 @@ def test_a_new_server_sets_up_after_its_admin_account(client, submitted, monkeyp
         assert info["folders"][:2] == [{"path": f"{tmp_path}/music", "kind": "music"}, {"path": f"{tmp_path}/vgm", "kind": "vgm"}]
         suggested = {m["key"]: m["suggested"] for m in info["modules"]}
         assert suggested["vgm"] and suggested["podcasts"] and suggested["radio"]
-        assert not suggested["spotify"] and not suggested["network"]
+        assert not suggested["network"]
         assert [s["key"] for s in info["general"]] == ["site_name", "public_url", "allow_signup"]
 
         bad = c.post("/api/setup/finish", json={"folders": [{"path": f"{tmp_path}/nowhere", "kind": "music"}]})
@@ -158,14 +158,13 @@ def test_a_new_server_sets_up_after_its_admin_account(client, submitted, monkeyp
 
         done = c.post("/api/setup/finish", json={
             "folders": [{"path": f"{tmp_path}/music", "kind": "music"}, {"path": f"{tmp_path}/audiobooks", "kind": "audiobooks"}],
-            "modules": {"vgm": False, "audiobooks": True, "podcasts": True, "radio": False, "spotify": False, "network": True},
+            "modules": {"vgm": False, "audiobooks": True, "podcasts": True, "radio": False, "network": True},
             "settings": {"site_name": "Modules Muzix", "chip_loops": 3, "lastfm_api_key": "••••••"},
             "share": True,
         })
         assert done.status_code == 200 and network.clean_code(done.json()["code"])
         assert not setup.pending() and submitted == ["scan"]
-        assert modules.states() == {"vgm": False, "audiobooks": True, "podcasts": True, "radio": False,
-                                    "spotify": False, "network": True}
+        assert modules.states() == {"vgm": False, "audiobooks": True, "podcasts": True, "radio": False, "network": True}
         assert settings.get("site_name") == "Modules Muzix" and settings.get("chip_loops") == 3
         with db.session() as s:
             roots = {r.path: (r.kind, r.excludes, r.upload_target) for r in s.scalars(select(Root).where(Root.path.like(f"{tmp_path}%")))}
@@ -194,3 +193,17 @@ def test_skipping_the_setup_takes_the_mounted_folders(client, submitted, monkeyp
     finally:
         with db.session() as s:
             s.execute(delete(Root).where(Root.path.like(f"{tmp_path}%")))
+
+
+def test_spotify_is_gone_from_a_database_made_before():
+    with db.engine.begin() as conn:
+        conn.execute(text('CREATE TABLE IF NOT EXISTS spotify_links (user_id INTEGER PRIMARY KEY, access_token TEXT)'))
+        conn.execute(text("INSERT OR REPLACE INTO spotify_links VALUES (1, 'old')"))
+    settings.set_many({"site_name": "Before"})
+    with db.engine.begin() as conn:
+        conn.execute(text("""INSERT OR REPLACE INTO settings (key, value) VALUES ('spotify_client_id', '"abc"'), ('module_spotify', 'false')"""))
+    db._drop_gone()
+    with db.engine.begin() as conn:
+        assert conn.execute(text("SELECT name FROM sqlite_master WHERE name = 'spotify_links'")).first() is None
+        keys = {r[0] for r in conn.execute(text("SELECT key FROM settings"))}
+    assert "spotify_client_id" not in keys and "module_spotify" not in keys and "site_name" in keys

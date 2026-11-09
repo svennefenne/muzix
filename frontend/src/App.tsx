@@ -34,13 +34,12 @@ const Podcasts = lazy(() => import("./pages/Podcasts"));
 const PodcastPage = lazy(() => import("./pages/Podcasts").then((m) => ({ default: m.PodcastPage })));
 const EpisodePage = lazy(() => import("./pages/Podcasts").then((m) => ({ default: m.EpisodePage })));
 const Radio = lazy(() => import("./pages/Radio"));
-const Spotify = lazy(() => import("./pages/Spotify"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Admin = lazy(() => import("./pages/admin/Admin"));
 const Setup = lazy(() => import("./pages/Setup"));
 
 const MODULE_NAMES: Record<ModuleKey, string> = {
-  vgm: "VGM", audiobooks: "Audiobooks", podcasts: "Podcasts", radio: "Radio", spotify: "Spotify", network: "Library Network",
+  vgm: "VGM", audiobooks: "Audiobooks", podcasts: "Podcasts", radio: "Radio", network: "Library Network",
 };
 
 /** A module's page, while the module is on (modules.ts); else a word that it's off. */
@@ -210,7 +209,6 @@ function Shell() {
               <Route path="/podcasts/:id" element={<Gate module="podcasts"><PodcastPage /></Gate>} />
               <Route path="/podcasts/episode/:eid" element={<Gate module="podcasts"><EpisodePage /></Gate>} />
               <Route path="/radio" element={<Gate module="radio"><Radio /></Gate>} />
-              <Route path="/spotify/*" element={<Gate module="spotify"><Spotify /></Gate>} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/admin/*" element={<Admin />} />
               <Route path="*" element={<div className="page"><Display l1="Lost" l2="in space" /><p className="lede">That page doesn't exist.</p></div>} />

@@ -42,8 +42,6 @@ function carried(info?: chrome.cast.media.MediaInfo | null): Carried | null {
   return c?.muzix ? c : null;
 }
 
-const castable = (it: PlayItem) => it.kind !== "spotify";
-
 let link = { token: "", expires: 0 };
 
 /** A token for links a speaker can fetch without signing in (valid a day). */
@@ -230,9 +228,9 @@ class Caster {
     return qi;
   }
 
-  /** The castable items from `start` on, as many as fit in one handover. */
+  /** The items from `start` on, as many as fit in one handover. */
   private upcoming(start: number) {
-    return usePlayer.getState().queue.slice(start).filter(castable).slice(0, WINDOW);
+    return usePlayer.getState().queue.slice(start, start + WINDOW);
   }
 
   private repeatMode() {
@@ -250,7 +248,6 @@ class Caster {
       start = 0;
     }
     const first = s.queue[start];
-    if (first && !castable(first)) useUi.getState().notify("Spotify songs can't be cast; skipping them on the speaker");
     const items = this.upcoming(start);
     if (!items.length) return useUi.getState().notify("Nothing in the queue can play on a speaker");
     const token = await castLink();

@@ -11,15 +11,14 @@ import { playAlbum, playTracks } from "../actions";
 import { Art, NewDot } from "../components/ui";
 import { useModules } from "../modules";
 import { engine } from "../player/engine";
-import { sp } from "../player/spotify";
 import { fromStation } from "../store/player";
 import { useUi } from "../store/ui";
 import type { FilePlaylistDetail, ModuleKey, Playlist, SidebarData } from "../types";
 
-type Chip = "playlists" | "albums" | "artists" | "vgm" | "books" | "podcasts" | "radio" | "spotify";
+type Chip = "playlists" | "albums" | "artists" | "vgm" | "books" | "podcasts" | "radio";
 
 // a chip's module (modules.ts), when it has one
-const CHIP_MODULE: Partial<Record<Chip, ModuleKey>> = { vgm: "vgm", books: "audiobooks", podcasts: "podcasts", radio: "radio", spotify: "spotify" };
+const CHIP_MODULE: Partial<Record<Chip, ModuleKey>> = { vgm: "vgm", books: "audiobooks", podcasts: "podcasts", radio: "radio" };
 
 const CHIPS: { id: Chip; label: string; browse: [string, string] }[] = [
   { id: "playlists", label: "Playlists", browse: ["/library/playlists", "All playlists"] },
@@ -29,7 +28,6 @@ const CHIPS: { id: Chip; label: string; browse: [string, string] }[] = [
   { id: "books", label: "Books", browse: ["/audiobooks", "All audiobooks"] },
   { id: "podcasts", label: "Podcasts", browse: ["/podcasts", "Find podcasts"] },
   { id: "radio", label: "Radio", browse: ["/radio", "Find stations"] },
-  { id: "spotify", label: "Spotify", browse: ["/spotify", "Open Spotify"] },
 ];
 
 interface Row {
@@ -74,12 +72,6 @@ export function Sidebar() {
   const chip = available.some((c) => c.id === picked) ? picked : "";
   const nav = useNavigate();
   const data = useQuery({ queryKey: ["sidebar"], queryFn: () => api.get<SidebarData>("/api/sidebar"), refetchInterval: 60_000 });
-  const spStatus = useQuery({ queryKey: ["sp-status"], enabled: modules.spotify,
-                              queryFn: () => api.get<{ linked: boolean }>("/api/spotify/status") });
-  const spLists = useQuery({
-    queryKey: ["sp-sidebar"], enabled: chip === "spotify" && !!spStatus.data?.linked, staleTime: 300_000,
-    queryFn: () => sp<{ items: { id: string; name: string; images: { url: string }[] | null; owner: { display_name: string } }[] }>("me/playlists?limit=50"),
-  });
 
   const pick = (c: Chip) => {
     const next = chip === c ? "" : c;
@@ -119,14 +111,10 @@ export function Sidebar() {
       rows.push({ key: `r${a.id}`, chip: "artists", title: a.name, sub: "Artist", art: <Art src={a.art} name={a.name} size={96} round />,
                   to: `/library/artists/${a.id}` });
   }
-  for (const p of spLists.data?.items || [])
-    rows.push({ key: `sp${p.id}`, chip: "spotify", title: p.name, sub: `Spotify · ${p.owner?.display_name || "playlist"}`,
-                art: <Art src={p.images?.[0]?.url || null} name={p.name} size={96} />, to: `/spotify/playlist/${p.id}` });
 
   // the strip of covers has no chips, so it always shows everything
   const filter = collapsed ? "" : chip;
-  const shown = filter ? rows.filter((r) => r.chip === filter) : rows.filter((r) => r.chip !== "spotify");
-  const chips = available.filter((c) => c.id !== "spotify" || spStatus.data?.linked);
+  const shown = filter ? rows.filter((r) => r.chip === filter) : rows;
   const browse = filter ? CHIPS.find((c) => c.id === filter)!.browse : null;
 
   return (
@@ -141,7 +129,7 @@ export function Sidebar() {
                 onClick={() => nav("/library/playlists", { state: { create: true } })}><Plus size={16} /></button>
       </div>
       <div className="lib-chips" role="toolbar" aria-label="Show">
-        {chips.map((c) => (
+        {available.map((c) => (
           <button key={c.id} className={`lib-chip ${chip === c.id ? "on" : ""}`} aria-pressed={chip === c.id} onClick={() => pick(c.id)}>
             {c.label}
           </button>

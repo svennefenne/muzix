@@ -61,7 +61,6 @@ const QUALITY: Record<string, string> = { lossless: "lossless FLAC", high: "Opus
 /** What the badge by the volume means: the file, and how it reaches you. */
 function qualityTip(cur: PlayItem, quality: string) {
   if (cur.kind === "radio") return "A live radio station";
-  if (cur.kind === "spotify") return "Played by Spotify";
   const f = (cur.format || "").toUpperCase();
   if (cur.trackKind === "vgm") return `${f}: game music, played by an emulator of its chips`;
   const file = `${f} file${cur.detail ? ` (${cur.detail})` : ""}`;
@@ -99,7 +98,6 @@ export function SeekBar() {
 function qualityLabel(cur: ReturnType<typeof usePlayer.getState>["queue"][number] | null) {
   if (!cur) return "";
   if (cur.kind === "radio") return "RADIO";
-  if (cur.kind === "spotify") return "SPOTIFY";
   if (cur.trackKind === "vgm") return (cur.format || "").toUpperCase();
   return (cur.format || "").toUpperCase();
 }

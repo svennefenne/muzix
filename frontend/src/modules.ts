@@ -5,7 +5,7 @@ import { useUi } from "./store/ui";
 import type { ModuleKey, Modules } from "./types";
 
 const SECTIONS: [string, ModuleKey][] = [
-  ["/vgm", "vgm"], ["/audiobooks", "audiobooks"], ["/podcasts", "podcasts"], ["/radio", "radio"], ["/spotify", "spotify"],
+  ["/vgm", "vgm"], ["/audiobooks", "audiobooks"], ["/podcasts", "podcasts"], ["/radio", "radio"],
 ];
 
 /** The module a page belongs to, if any (music's are Muzix itself). */

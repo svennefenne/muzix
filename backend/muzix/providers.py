@@ -1,8 +1,8 @@
 """Metadata and cover art from outside: what an admin compares a library item with when editing it.
 
-MusicBrainz (with the Cover Art Archive), Deezer, iTunes and Bandcamp need no account; Spotify is
-asked through the admin's own linked account; Discogs (a personal token), fanart.tv (pictures found
-by MusicBrainz id) and Brave Search (plain web images) use keys from the admin page. VGMdb isn't
+MusicBrainz (with the Cover Art Archive), Deezer, iTunes and Bandcamp need no account; Discogs (a
+personal token), fanart.tv (pictures found by MusicBrainz id) and Brave Search (plain web images) use
+keys from the admin page. VGMdb isn't
 here: its API mirror is gone and the site sits behind a bot check. Bandcamp has no public API: it's
 asked what its own search box and app ask, and only when the admin looks something up.
 
@@ -73,18 +73,15 @@ def _json(r: httpx.Response) -> dict:
 
 # ---------------------------------------------------------------- searching
 
-def search(kind: str, artist: str = "", title: str = "", album: str = "", user=None, db=None,
-           only: set[str] | None = None) -> dict:
+def search(kind: str, artist: str = "", title: str = "", album: str = "", only: set[str] | None = None) -> dict:
     """{results: [...], errors: {source: why}} for kind album | track | artist, from every source
     (or those named in `only`: the desktop client's choice)."""
     jobs = {"musicbrainz": _musicbrainz, "discogs": _discogs, "deezer": _deezer, "itunes": _itunes, "bandcamp": _bandcamp}
-    if user is not None and db is not None:
-        jobs["spotify"] = _spotify
     if only is not None:
         jobs = {k: v for k, v in jobs.items() if k in only}
     results, errors = [], {}
     with ThreadPoolExecutor(len(jobs)) as pool:
-        futs = {pool.submit(fn, kind, artist, title, album, user, db): name for name, fn in jobs.items()}
+        futs = {pool.submit(fn, kind, artist, title, album): name for name, fn in jobs.items()}
         done, late = wait(futs, timeout=TIMEOUT + 8)
         for f in done:
             name = futs[f]
@@ -100,7 +97,7 @@ def search(kind: str, artist: str = "", title: str = "", album: str = "", user=N
     return {"results": results, "errors": errors}
 
 
-def _musicbrainz(kind, artist, title, album, user, db) -> list[dict]:
+def _musicbrainz(kind, artist, title, album) -> list[dict]:
     def q(field, v):
         v = v.replace('"', "")
         return f'{field}:"{v}"' if v else ""
@@ -138,7 +135,7 @@ def _musicbrainz(kind, artist, title, album, user, db) -> list[dict]:
     return out
 
 
-def _deezer(kind, artist, title, album, user, db) -> list[dict]:
+def _deezer(kind, artist, title, album) -> list[dict]:
     # plain words rank better than Deezer's artist:"" album:"" syntax, which favours exact titles by anyone
     query = " ".join(x for x in ((artist, title) if kind != "artist" else (artist or title,)) if x)
     with _client() as c:
@@ -200,7 +197,7 @@ def _dc_split(r: dict) -> tuple[str, str]:
     return (_dc_name(artist), album) if album else ("", artist)
 
 
-def _discogs(kind, artist, title, album, user, db) -> list[dict]:
+def _discogs(kind, artist, title, album) -> list[dict]:
     if kind == "track":
         return []       # Discogs lists releases, not songs
     out = []
@@ -239,7 +236,7 @@ def _art(url: str | None, size: int) -> str:
     return re.sub(r"/\d+x\d+bb\.", f"/{size}x{size}bb.", url or "")
 
 
-def _itunes(kind, artist, title, album, user, db) -> list[dict]:
+def _itunes(kind, artist, title, album) -> list[dict]:
     entity = {"album": "album", "track": "song", "artist": "musicArtist"}[kind]
     term = " ".join(x for x in (artist, title if kind != "artist" else "") if x)
     with _client() as c:
@@ -272,7 +269,7 @@ def _bc_img(image_id: int | None, size: int, album: bool = True) -> str | None:
     return f"https://f4.bcbits.com/img/{'a' if album else ''}{image_id:010d}_{size}.jpg" if image_id else None
 
 
-def _bandcamp(kind, artist, title, album, user, db) -> list[dict]:
+def _bandcamp(kind, artist, title, album) -> list[dict]:
     # its search box takes one line, which finds an album or song by the artist and title together
     text = " ".join(x for x in ((artist, title) if kind != "artist" else (artist or title,)) if x)
     with _client() as c:
@@ -314,46 +311,6 @@ def _bc_album(r: dict) -> dict:
             "genre": tags[0] if tags else "", "tracks": tracks, "cover": _bc_img(r.get("art_id"), 10)}
 
 
-def _spotify_token(user, db) -> str:
-    from .api import spotify
-    try:
-        return spotify.token(db=db, user=user)["access_token"]
-    except Exception as e:      # not linked, or the sign-in expired
-        raise SourceError("isn't linked to this account" if "linked" in str(getattr(e, "detail", "")) else
-                          "sign-in has expired; link it again") from e
-
-
-def _spotify(kind, artist, title, album, user, db) -> list[dict]:
-    token = _spotify_token(user, db)
-    field = {"album": "album", "track": "track", "artist": "artist"}[kind]
-    query = " ".join(x for x in ([f"artist:{artist}"] if artist and kind != "artist" else [])
-                     + ([f"{field}:{title}"] if title and kind != "artist" else [artist or title]) if x)
-    with _client() as c:
-        data = _get(c, "https://api.spotify.com/v1/search", {"q": query, "type": kind, "limit": LIMIT},
-                    headers={"Authorization": f"Bearer {token}"})
-    out = []
-    for r in data.get(f"{kind}s", {}).get("items", []):
-        if not r:
-            continue
-        images = (r.get("album", r) if kind == "track" else r).get("images") or []
-        cover = images[-2]["url"] if len(images) > 1 else images[0]["url"] if images else None
-        names = ", ".join(a["name"] for a in r.get("artists", []))
-        if kind == "album":
-            out.append({"source": "spotify", "kind": "album", "id": r["id"], "title": r.get("name", ""), "artist": names,
-                        "year": _year(r.get("release_date")), "tracks": r.get("total_tracks") or 0, "cover": cover,
-                        "url": r.get("external_urls", {}).get("spotify", "")})
-        elif kind == "track":
-            out.append({"source": "spotify", "kind": "track", "id": r["id"], "title": r.get("name", ""), "artist": names,
-                        "album": r.get("album", {}).get("name", ""), "year": _year(r.get("album", {}).get("release_date")),
-                        "no": r.get("track_number") or 0, "disc": r.get("disc_number") or 0,
-                        "length": round((r.get("duration_ms") or 0) / 1000), "cover": cover,
-                        "url": r.get("external_urls", {}).get("spotify", "")})
-        else:
-            out.append({"source": "spotify", "kind": "artist", "id": r["id"], "title": r.get("name", ""), "cover": cover,
-                        "url": r.get("external_urls", {}).get("spotify", "")})
-    return out
-
-
 def _fa_get(c: httpx.Client, path: str) -> dict:
     """fanart.tv with the admin's key: a project key, or a personal one. {} when it has nothing yet."""
     key = settings.get("fanarttv_api_key")
@@ -377,7 +334,7 @@ def _fa_liked(rows) -> list[dict]:
 
 # ---------------------------------------------------------------- a picked album or artist, in full
 
-def _artist(c: httpx.Client, source: str, id_: str, user, db) -> dict:
+def _artist(c: httpx.Client, source: str, id_: str) -> dict:
     """{name, cover}: an artist as one source has them, with its own picture of them (None when it has none).
     MusicBrainz has no pictures; fanart.tv has them by its ids, when the admin has a key."""
     if source == "musicbrainz":
@@ -402,10 +359,6 @@ def _artist(c: httpx.Client, source: str, id_: str, user, db) -> dict:
             raise SourceError(r["error"].get("message", "error"))
         cover = r.get("picture_xl") or None
         return {"name": r.get("name", ""), "cover": None if cover and "/artist//" in cover else cover}   # its blank face
-    if source == "spotify":
-        token = _spotify_token(user, db)
-        r = _get(c, f"https://api.spotify.com/v1/artists/{id_}", headers={"Authorization": f"Bearer {token}"})
-        return {"name": r.get("name", ""), "cover": (r.get("images") or [{}])[0].get("url")}
     if source == "itunes":
         r = _get(c, "https://itunes.apple.com/lookup", {"id": id_})
         return {"name": (r.get("results") or [{}])[0].get("artistName", ""), "cover": None}
@@ -417,14 +370,14 @@ def _artist(c: httpx.Client, source: str, id_: str, user, db) -> dict:
     raise SourceError(f"unknown source {source}")
 
 
-def details(source: str, kind: str, id_: str, user=None, db=None) -> dict:
+def details(source: str, kind: str, id_: str) -> dict:
     """An album's fields and track list from one source: {title, artist, year, genre, tracks: [...], cover},
     where cover is the source's own picture of it at full size (None when it has none). An artist: {name, cover}."""
     if kind not in ("album", "artist"):
         raise SourceError("only albums and artists have details")
     with _client() as c:
         if kind == "artist":
-            return _artist(c, source, id_, user, db)
+            return _artist(c, source, id_)
         if source == "musicbrainz":
             r = _get(c, f"https://musicbrainz.org/ws/2/release/{id_}",
                      {"inc": "recordings+artist-credits+genres+release-groups", "fmt": "json"}, mb=True)
@@ -473,15 +426,6 @@ def details(source: str, kind: str, id_: str, user=None, db=None) -> dict:
             return {"title": head.get("collectionName", ""), "artist": head.get("artistName", ""),
                     "year": _year(head.get("releaseDate")), "genre": head.get("primaryGenreName", ""), "tracks": tracks,
                     "cover": _art(head.get("artworkUrl100"), 1400) or None}
-        if source == "spotify":
-            token = _spotify_token(user, db)
-            r = _get(c, f"https://api.spotify.com/v1/albums/{id_}", headers={"Authorization": f"Bearer {token}"})
-            tracks = [{"disc": t.get("disc_number") or 1, "no": t.get("track_number") or 0, "title": t.get("name", ""),
-                       "artist": ", ".join(a["name"] for a in t.get("artists", [])),
-                       "length": round((t.get("duration_ms") or 0) / 1000)} for t in r.get("tracks", {}).get("items", [])]
-            return {"title": r.get("name", ""), "artist": ", ".join(a["name"] for a in r.get("artists", [])),
-                    "year": _year(r.get("release_date")), "genre": "", "tracks": tracks,
-                    "cover": (r.get("images") or [{}])[0].get("url")}
         if source == "bandcamp":
             band, _, num = id_.partition("/")
             if not (band.isdigit() and num.isdigit()):
@@ -493,7 +437,7 @@ def details(source: str, kind: str, id_: str, user=None, db=None) -> dict:
 
 # ---------------------------------------------------------------- cover art
 
-def covers(kind: str, artist: str = "", title: str = "", web: str = "", user=None, db=None, mbid: str = "",
+def covers(kind: str, artist: str = "", title: str = "", web: str = "", mbid: str = "",
            only: set[str] | None = None) -> dict:
     """{results: [{source, thumb, url, title, width, height}], errors} for kind album | artist | book | podcast.
     Pictures from the music sources (albums and artists), and web images when `web` is a query.
@@ -505,7 +449,7 @@ def covers(kind: str, artist: str = "", title: str = "", web: str = "", user=Non
         found = []
         if kind != "album":
             return found
-        for r in _musicbrainz("album", artist, title, "", None, None)[:4]:
+        for r in _musicbrainz("album", artist, title, "")[:4]:
             with _client() as c:
                 try:
                     data = _get(c, f"https://coverartarchive.org/release/{r['id']}")
@@ -518,7 +462,7 @@ def covers(kind: str, artist: str = "", title: str = "", web: str = "", user=Non
         return found
 
     def dz():
-        rows = _deezer(kind, artist, title, "", None, None)
+        rows = _deezer(kind, artist, title, "")
         return [{"source": "Deezer", "thumb": r["cover"], "url": re.sub(r"/\d+x\d+-", "/1000x1000-", r["cover"] or ""),
                  "title": f"{r['title']}" + (f" · {r['artist']}" if r.get("artist") else ""), "width": 1000, "height": 1000}
                 for r in rows if r.get("cover")]
@@ -527,7 +471,7 @@ def covers(kind: str, artist: str = "", title: str = "", web: str = "", user=Non
         if kind != "album":
             return []
         return [{"source": "iTunes", "thumb": r["cover"], "url": _art(r["cover"], 1400), "title": f"{r['title']} · {r['artist']}",
-                 "width": 1400, "height": 1400} for r in _itunes("album", artist, title, "", None, None) if r.get("cover")]
+                 "width": 1400, "height": 1400} for r in _itunes("album", artist, title, "") if r.get("cover")]
 
     def dc():
         found = []
@@ -556,7 +500,7 @@ def covers(kind: str, artist: str = "", title: str = "", web: str = "", user=Non
             if kind == "artist":
                 aid = mbid
                 if not aid:     # the namesake MusicBrainz ranks first, unless one is spelled exactly so
-                    named = _musicbrainz("artist", artist, "", "", None, None)
+                    named = _musicbrainz("artist", artist, "", "")
                     aid = next((a["id"] for a in named if a["title"].casefold() == artist.casefold()),
                                named[0]["id"] if named else "")
                 data = ask(aid) if aid else {}
@@ -581,11 +525,7 @@ def covers(kind: str, artist: str = "", title: str = "", web: str = "", user=Non
     def bc():
         return [{"source": "Bandcamp", "thumb": r["cover"], "url": r["cover"].replace("_9.jpg", "_10.jpg"),
                  "title": r["title"] + (f" · {r['artist']}" if kind == "album" else "")}
-                for r in _bandcamp(kind, artist, title, "", None, None) if r.get("cover")]
-
-    def sp():
-        rows = _spotify(kind, artist, title, "", user, db)
-        return [{"source": "Spotify", "thumb": r["cover"], "url": r["cover"], "title": r["title"]} for r in rows if r.get("cover")]
+                for r in _bandcamp(kind, artist, title, "") if r.get("cover")]
 
     def brave():
         key = settings.get("brave_api_key")
@@ -609,8 +549,6 @@ def covers(kind: str, artist: str = "", title: str = "", web: str = "", user=Non
     jobs = {}
     if music:
         jobs.update({"musicbrainz": mb, "fanarttv": fa, "discogs": dc, "deezer": dz, "itunes": it, "bandcamp": bc})
-        if user is not None and db is not None:
-            jobs["spotify"] = sp
     if web:
         jobs["web"] = brave
     if only is not None:

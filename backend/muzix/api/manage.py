@@ -67,17 +67,16 @@ def undo(edit_id: int):
 # ---------------------------------------------------------------- other sources
 
 @router.get("/lookup")
-def lookup(kind: str, artist: str = "", title: str = "", album: str = "",
-           db: Session = Depends(get_db), user: User = Depends(admin_user)):
+def lookup(kind: str, artist: str = "", title: str = "", album: str = "", user: User = Depends(admin_user)):
     if kind not in ("album", "track", "artist"):
         raise HTTPException(400, "Lookups are for albums, songs and artists")
-    return providers.search(kind, artist.strip(), title.strip(), album.strip(), user=user, db=db)
+    return providers.search(kind, artist.strip(), title.strip(), album.strip())
 
 
 @router.get("/lookup/{source}/{kind}/{id_:path}")       # Discogs ids are master/N or release/N
-def lookup_details(source: str, kind: str, id_: str, db: Session = Depends(get_db), user: User = Depends(admin_user)):
+def lookup_details(source: str, kind: str, id_: str, user: User = Depends(admin_user)):
     try:
-        return providers.details(source, kind, id_, user=user, db=db)
+        return providers.details(source, kind, id_)
     except providers.SourceError as e:
         raise HTTPException(502, f"{source} {e}")
     except Exception as e:      # the source's answer wasn't what was expected
@@ -90,8 +89,7 @@ def covers(kind: str, artist: str = "", title: str = "", web: str = "", item: in
     """`item` is the album or artist the cover is for: its MusicBrainz id finds it on fanart.tv."""
     row = db.get(Album if kind == "album" else Artist, item, execution_options={"include_hidden": True}) \
         if item and kind in ("album", "artist") else None
-    return providers.covers(kind, artist.strip(), title.strip(), web.strip(), user=user, db=db,
-                            mbid=row.mbid if row else "")
+    return providers.covers(kind, artist.strip(), title.strip(), web.strip(), mbid=row.mbid if row else "")
 
 
 # ---------------------------------------------------------------- one item

@@ -51,7 +51,7 @@ def test_discogs_needs_a_token(web):
     asked, _ = web
     settings.set_many({"discogs_token": ""})
     with pytest.raises(providers.SourceError, match="access token"):
-        providers._discogs("album", "Nirvana", "Nevermind", "", None, None)
+        providers._discogs("album", "Nirvana", "Nevermind", "")
     assert not asked
 
 
@@ -61,7 +61,7 @@ def test_discogs_albums_and_artists(web):
     answers["https://api.discogs.com/database/search"] = lambda req: (
         MASTERS if req.url.params["type"] == "master" else
         {"results": [{"type": "artist", "id": 125246, "title": "Nirvana (2)", "uri": "/artist/125246", "thumb": "https://i.discogs.com/a.jpeg"}]})
-    albums = providers._discogs("album", "Nirvana", "Nevermind", "", None, None)
+    albums = providers._discogs("album", "Nirvana", "Nevermind", "")
     assert asked[0].headers["Authorization"] == "Discogs token=tok"
     assert asked[0].url.params["artist"] == "Nirvana" and asked[0].url.params["release_title"] == "Nevermind"
     assert len(asked) == 1          # three masters: no need for single releases
@@ -70,9 +70,9 @@ def test_discogs_albums_and_artists(web):
                      "year": 1991, "genre": "Rock", "country": "US", "label": "DGC", "format": "Vinyl, LP, Album",
                      "cover": "https://i.discogs.com/t150.jpeg", "url": "https://www.discogs.com/master/13814-Nirvana-Nevermind"}
     assert albums[1]["cover"] is None
-    artists = providers._discogs("artist", "Nirvana", "", "", None, None)
+    artists = providers._discogs("artist", "Nirvana", "", "")
     assert artists[0]["title"] == "Nirvana" and artists[0]["id"] == "125246"
-    assert providers._discogs("track", "Nirvana", "Lithium", "", None, None) == []
+    assert providers._discogs("track", "Nirvana", "Lithium", "") == []
 
     found = providers.covers("album", "Nirvana", "Nevermind")
     discogs = [c for c in found["results"] if c["source"] == "Discogs"]
@@ -195,11 +195,11 @@ def test_bandcamp_albums_artists_and_compilations(web):
         "b": [{"type": "b", "id": 400780041, "img_id": 42651066, "name": "Ayreon", "location": "Netherlands",
                 "item_url_root": "https://ayreon.bandcamp.com"},
                {"type": "b", "id": 9, "name": "Mascot Label Group", "is_label": True}]}[json.loads(req.content)["search_filter"]]}}
-    found = providers._bandcamp("album", "Ayreon", "Transitus", "", None, None)
+    found = providers._bandcamp("album", "Ayreon", "Transitus", "")
     assert found == [{"source": "bandcamp", "kind": "album", "id": "400780041/2034387072", "title": "Transitus", "artist": "Ayreon",
                       "cover": "https://f4.bcbits.com/img/a3288844013_9.jpg", "url": "https://ayreon.bandcamp.com/album/transitus"}]
     assert json.loads(asked[-1].content)["search_text"] == "Ayreon Transitus"      # one line, as its search box takes
-    artists = providers._bandcamp("artist", "Ayreon", "", "", None, None)
+    artists = providers._bandcamp("artist", "Ayreon", "", "")
     assert [(a["id"], a["country"], a["cover"]) for a in artists] == [
         ("400780041", "Netherlands", "https://f4.bcbits.com/img/0042651066_9.jpg")]       # not the label
 

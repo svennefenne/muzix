@@ -79,8 +79,7 @@ def setup_info(db: Session = Depends(get_db)):
     folders = mounted()
     known = [{"path": r.path, "kind": r.kind} for r in db.scalars(select(Root).where(Root.kind != "peer"))]
     have = {f["kind"] for f in folders + known}
-    suggest = {"vgm": "vgm" in have, "audiobooks": "audiobooks" in have, "podcasts": True, "radio": True,
-               "spotify": False, "network": False}
+    suggest = {"vgm": "vgm" in have, "audiobooks": "audiobooks" in have, "podcasts": True, "radio": True, "network": False}
     return {
         "pending": pending(),
         "folders": folders + [f for f in known if f["path"] not in {x["path"] for x in folders}],

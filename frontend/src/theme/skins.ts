@@ -164,7 +164,7 @@ const FOLDER_SKIN: Record<string, string> = {
 };
 
 export interface SkinContext {
-  kind?: string;          // music | vgm | book | episode | radio | spotify
+  kind?: string;          // music | vgm | book | episode | radio
   genre?: string;
   tags?: string[];
   system?: string;

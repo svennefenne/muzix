@@ -11,7 +11,6 @@ import type { Episode, Track, User } from "../types";
 import { appPlayer } from "./app";
 import { caster, type CastHooks } from "./cast";
 import { type Command, connect } from "./connect";
-import { spotify } from "./spotify";
 import { onMobileData, onNetworkChange, stash } from "./stash";
 
 /** What plays the queue instead of the page's own audio element: a Cast speaker, the Android app's
@@ -50,8 +49,8 @@ function kept<T>(key: string): T | null {
   }
 }
 
-/** What the spare element can load ahead: files, not live radio or Spotify. */
-const loadsAhead = (it: PlayItem) => it.kind !== "radio" && it.kind !== "spotify";
+/** What the spare element can load ahead: files, not live radio. */
+const loadsAhead = (it: PlayItem) => it.kind !== "radio";
 
 /** What's downloaded whole away from wifi: songs and episodes, not hours-long audiobook files. */
 const stashable = (it: PlayItem) => loadsAhead(it) && it.duration <= 7200 && (it.duration > 0 || it.kind === "track" || it.kind === "online");
@@ -102,12 +101,10 @@ class Engine {
     document.addEventListener("visibilitychange", () => this.onVisibility());
     onNetworkChange(() => this.stashAhead());
     this.applyVolume();
-    spotify.onEnded = () => this.next(true);
     // on a Cast speaker (or in the Android app) that plays; we keep the books (plays, resume points, radio titles)
     const hooks: CastHooks = {
       onStart: () => {
         this.el.pause();
-        spotify.pause();
         this.dropSpare();
         this.stashAhead();
       },
@@ -378,7 +375,6 @@ class Engine {
     if (!cur || this.woken) return;
     if (this.remote) return this.remote.toggle();
     if (this.loadedKey !== cur.key) return this.load(true, s.position || undefined);
-    if (cur.kind === "spotify") return spotify.toggle();
     this.ensureAudioGraph();
     if (this.el.paused) this.el.play().catch(() => {});
     else this.el.pause();
@@ -411,7 +407,6 @@ class Engine {
     const cur = usePlayer.getState().current();
     if (!cur) return;
     this.scrobbled = false;
-    if (cur.kind === "spotify") return spotify.playItem({ ...cur, resume: 0 });
     this.seek(0, true);
     this.el.play().catch(() => {});
   }
@@ -439,12 +434,11 @@ class Engine {
     this.el.load();
     this.loadedKey = "";
     this.dropSpare();
-    spotify.pause();
   }
 
   // ------------------------------------------------------------ autoplay
 
-  /** Spotify's autoplay: with the queue about to run out, similar songs join it, picked by the
+  /** Autoplay, as on Spotify: with the queue about to run out, similar songs join it, picked by the
    * genre tags of the songs you chose (game music: more from the same chips). Not while the
    * queue repeats, nor after audiobooks, podcasts or radio. Shuffling here never runs out. */
   private autoplayDue() {
@@ -551,14 +545,6 @@ class Engine {
     window.clearTimeout(this.stallTimer);
     window.clearTimeout(this.retryTimer);
     s.set({ position: at ?? item.resume ?? 0, duration: item.duration, liveTitle: "", error: "", buffering: autoplay });
-    if (item.kind === "spotify") {
-      this.el.pause();
-      this.loadedKey = item.key;
-      spotify.playItem(at === undefined ? item : { ...item, resume: at });
-      this.updateMediaSession(item);
-      return;
-    }
-    spotify.pause();
     const start = at ?? item.resume ?? 0;
     this.offset = 0;
     this.loadedKey = item.key;
@@ -675,7 +661,6 @@ class Engine {
     const s = usePlayer.getState();
     const item = s.current();
     if (!item) return;
-    if (item.kind === "spotify") return spotify.seek(t);
     if (item.kind === "radio") return;
     t = Math.max(0, item.duration ? Math.min(t, item.duration - 0.5) : t);
     if (this.remote) return this.remote.seek(t);
@@ -700,7 +685,7 @@ class Engine {
   private onTime() {
     if (this.remote) return;
     const item = usePlayer.getState().current();
-    if (!item || item.kind === "spotify") return;
+    if (!item) return;
     const pos = this.offset + this.el.currentTime;
     const now = Date.now();
     if (this.hiddenAt && this.lastTick && now - this.lastTick > 10_000 && !this.el.paused) {
@@ -717,7 +702,7 @@ class Engine {
   private progress(pos: number, mediaDuration = 0) {
     const s = usePlayer.getState();
     const item = s.current();
-    if (!item || item.kind === "spotify") return;
+    if (!item) return;
     s.set({ position: pos });
     const dur = item.duration || mediaDuration;
     if (!this.scrobbled && item.kind === "track" && (pos > 30 || (dur && pos > dur / 2))) {
@@ -907,7 +892,7 @@ class Engine {
     if (here && at.playing) {
       this.reloaded = item.key;
       this.load(true, pos);
-    } else if (here && item.kind !== "radio" && item.kind !== "spotify") this.load(false, pos);
+    } else if (here && item.kind !== "radio") this.load(false, pos);
     else {
       s.set({ position: pos, duration: item.duration });
       this.updateMediaSession(item);
@@ -1062,7 +1047,6 @@ class Engine {
     if (this.remote === connect) return;       // its own volume, which this device's doesn't change
     if (this.remote) return this.remote.setVolume(s.muted ? 0 : s.volume, s.muted);
     for (const el of [this.el, this.spare]) el.volume = s.muted ? 0 : s.volume ** 1.6;   // perceptual curve
-    spotify.setVolume(s.muted ? 0 : s.volume);
   }
 
   // ------------------------------------------------------------ media keys

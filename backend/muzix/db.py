@@ -39,6 +39,7 @@ def init(url: str | None = None):
     from . import models  # noqa: F401  (register tables)
     Base.metadata.create_all(engine)
     _add_new_columns()
+    _drop_gone()
     with engine.begin() as conn:
         # one full-text index over everything searchable
         conn.execute(text(
@@ -61,6 +62,18 @@ def _add_new_columns():
                 if default is not None:
                     ddl += f" NOT NULL DEFAULT '{default}'" if not col.nullable else f" DEFAULT '{default}'"
                 conn.execute(text(ddl))
+
+
+# what Muzix had and doesn't any more (Spotify, gone in 2026-11): out of databases made before
+GONE_TABLES = ("spotify_links",)
+GONE_SETTINGS = ("spotify_client_id", "module_spotify")
+
+
+def _drop_gone():
+    with engine.begin() as conn:
+        for name in GONE_TABLES:
+            conn.execute(text(f'DROP TABLE IF EXISTS "{name}"'))
+        conn.execute(text("DELETE FROM settings WHERE key IN (%s)" % ", ".join(f"'{k}'" for k in GONE_SETTINGS)))
 
 
 def _visible(cls):

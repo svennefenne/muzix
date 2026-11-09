@@ -48,8 +48,6 @@ class ArtistEdit(BaseModel):
 
 
 def _changed(n: int) -> dict:
-    from . import spotify
-    spotify.forget_genres()             # what it looked up follows the rules too
     return {"artists": n}
 
 
@@ -163,7 +161,6 @@ def set_artist_tags(artist_id: int, body: ArtistTags):
     with db.session() as s:
         a = _artist(s, artist_id)
         hidden = tagging.set_artist_tags(s, a, body.tags)
-        _changed(0)
         return {"id": a.id, "name": a.name, **tagging.artist_tags(s, a), "removed_everywhere": hidden}
 
 
@@ -173,5 +170,4 @@ def edit_artist_tags(artist_id: int, body: ArtistEdit):
     with db.session() as s:
         a = _artist(s, artist_id)
         hidden = tagging.edit_artist_tags(s, a, body.add, body.remove)
-        _changed(0)
         return {"id": a.id, "name": a.name, **tagging.artist_tags(s, a), "removed_everywhere": hidden}

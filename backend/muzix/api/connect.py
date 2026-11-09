@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from .. import db
-from ..security import COOKIE, session_user
+from ..security import login_token, session_user
 
 router = APIRouter(tags=["connect"])
 log = logging.getLogger("muzix.connect")
@@ -134,7 +134,7 @@ async def on_transfer(acc: Account, dev: Device, m: dict):
 @router.websocket("/api/connect")
 async def connect(ws: WebSocket):
     with db.session() as s:
-        user = session_user(s, ws.cookies.get(COOKIE))
+        user = session_user(s, login_token(ws))
         uid = user.id if user else None
     if uid is None:
         await ws.close(code=4401)

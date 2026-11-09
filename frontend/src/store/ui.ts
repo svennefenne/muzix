@@ -75,7 +75,7 @@ const initial = localPrefs();
 export const useUi = create<UiState>((set, get) => ({
   user: null,
   siteName: "Muzix",
-  modules: { vgm: true, audiobooks: true, podcasts: true, radio: true, spotify: true, network: true },
+  modules: { vgm: true, audiobooks: true, podcasts: true, radio: true, network: true },
   scheme: initial.scheme || "muzix",
   mode: initial.mode || "system",
   genreSkins: initial.genre_skins ?? true,

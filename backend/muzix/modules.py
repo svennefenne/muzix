@@ -33,8 +33,6 @@ MODULES = (
            settings=("podcast_refresh_hours", "podcast_keep_days")),
     Module("radio", "Radio", "Internet radio stations from all over the world (radio-browser.info).",
            settings=("radio_country",)),
-    Module("spotify", "Spotify", "Your Spotify, played inside Muzix. Needs Spotify Premium, an app of your "
-           "own on developer.spotify.com, and Muzix on an HTTPS address.", settings=("spotify_client_id",)),
     Module("network", "Library Network", "Link with friends' Muzix servers and share your libraries: their "
            "music plays here, yours there."),
 )

@@ -32,6 +32,7 @@ class AuthSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     user_agent: Mapped[str] = mapped_column(String(255), default="")
+    name: Mapped[str] = mapped_column(String(120), default="", server_default="")   # an app's name for its device
     user: Mapped[User] = relationship()
 
 
@@ -400,17 +401,7 @@ class RadioPlay(Base):
     __table_args__ = (Index("ix_radio_plays_user_station", "user_id", "station", "played_at"),)
 
 
-# ---------------------------------------------------------------- spotify & jobs
-
-class SpotifyLink(Base):
-    __tablename__ = "spotify_links"
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
-    access_token: Mapped[str] = mapped_column(Text, default="")
-    refresh_token: Mapped[str] = mapped_column(Text, default="")
-    expires_at: Mapped[float] = mapped_column(Float, default=0)
-    scope: Mapped[str] = mapped_column(Text, default="")
-    display_name: Mapped[str] = mapped_column(String(255), default="")
-    product: Mapped[str] = mapped_column(String(32), default="")
+# ---------------------------------------------------------------- jobs
 
 
 class Job(Base):

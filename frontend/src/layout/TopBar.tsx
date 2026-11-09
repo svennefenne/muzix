@@ -1,5 +1,5 @@
 import {
-  Activity, BookOpen, Disc3, Download, Gamepad2, House, LogOut, Monitor, Moon, Music2, Podcast, Radio, Settings, Shield, Sun,
+  Activity, BookOpen, Disc3, Download, Gamepad2, House, LogOut, Monitor, Moon, Podcast, Radio, Settings, Shield, Sun,
   SunMoon, Wrench,
 } from "lucide-react";
 import { useEffect } from "react";
@@ -21,7 +21,6 @@ export const TABS = [
   { to: "/vgm", label: "VGM" },
   { to: "/audiobooks", label: "Audiobooks" },
   { to: "/radio", label: "Radio" },
-  { to: "/spotify", label: "Spotify" },
 ];
 
 /** The sections, as pills in the top bar on desktops (phones have them on Home). */
@@ -31,7 +30,6 @@ const SECTIONS = [
   { to: "/vgm", label: "VGM", icon: Gamepad2, tip: "VGM: chiptunes and tracker music" },
   { to: "/audiobooks", label: "Audiobooks", icon: BookOpen, tip: "Audiobooks: pick up where you left off" },
   { to: "/radio", label: "Radio", icon: Radio, tip: "Radio: stations from all over the world" },
-  { to: "/spotify", label: "Spotify", icon: Music2, tip: "Spotify: your Spotify, played in Muzix" },
 ];
 
 function SectionPills() {

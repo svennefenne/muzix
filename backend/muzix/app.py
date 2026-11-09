@@ -7,7 +7,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, db, env, jobs, modules, network, settings, tunnel
+from . import API_VERSION, __version__, db, env, jobs, modules, network, settings, tunnel
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -43,15 +43,14 @@ def create_app() -> FastAPI:
     from . import books, enrich, maintenance, mirror, podcasts, scanner  # noqa: F401
     from .organize import importer  # noqa: F401
     from .api import admin, android, auth, books as books_api, library, me, podcasts as podcasts_api
-    from .api import connect, manage as manage_api, network as network_api, online, radio, setup, spotify
+    from .api import connect, manage as manage_api, network as network_api, online, radio, setup
     from .api import stream, tags, themes, upload
 
     app = FastAPI(title="Muzix", version=__version__, docs_url="/api/docs", openapi_url="/api/openapi.json")
     app.add_middleware(NoProxyBuffering)
     # the requests of a module answer only while it's on
-    module_of = {books_api: "audiobooks", podcasts_api: "podcasts", radio: "radio", spotify: "spotify",
-                 online: "vgm", network_api: "network"}
-    for mod in (auth, setup, library, stream, me, admin, books_api, podcasts_api, radio, spotify, themes, upload,
+    module_of = {books_api: "audiobooks", podcasts_api: "podcasts", radio: "radio", online: "vgm", network_api: "network"}
+    for mod in (auth, setup, library, stream, me, admin, books_api, podcasts_api, radio, themes, upload,
                 online, manage_api, connect, android, network_api, tags):
         needs = [Depends(modules.needed(module_of[mod]))] if mod in module_of else []
         app.include_router(mod.router, dependencies=needs)
@@ -60,7 +59,7 @@ def create_app() -> FastAPI:
 
     @app.get("/api/health")
     def health():
-        return {"ok": True, "version": __version__}
+        return {"ok": True, "version": __version__, "api": API_VERSION}
 
     @app.get("/manifest.webmanifest", include_in_schema=False)
     def manifest(request: Request):

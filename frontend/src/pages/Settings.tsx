@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { Network, Server } from "lucide-react";
+import { LogOut, Network, Server } from "lucide-react";
 import { useMemo, useState } from "react";
 import { queryClient } from "../actions";
-import { api } from "../api";
+import { ago, api } from "../api";
 import { appVersion } from "../appUpdate";
 import { castStatus } from "../components/CastButton";
 import { SEARCH_ENGINES } from "../components/StationHistory";
@@ -50,6 +50,40 @@ function NetworkMusic() {
           </span>
         </div>
       </div>
+    </section>
+  );
+}
+
+interface Device { id: string; name: string; app: boolean; since: string | null; seen: string | null; current: boolean }
+
+/** Where the account is signed in (each browser, each app), and each signed out from here. */
+function Devices() {
+  const list = useQuery({ queryKey: ["devices"], queryFn: () => api.get<Device[]>("/api/me/devices") });
+  const notify = useUi((s) => s.notify);
+  const signOut = async (d: Device) => {
+    try {
+      await api.del(`/api/me/devices/${d.id}`);
+      notify(`${d.name} is signed out`);
+    } catch (e) {
+      notify((e as Error).message, "error");
+    }
+    list.refetch();
+  };
+  return (
+    <section className="panel">
+      <div className="panel-head"><div><div className="kicker">Account</div><div className="h2">Devices</div></div></div>
+      <p className="dim">Where you're signed in. A device signed out here has to sign in again.</p>
+      <ul className="admin-list">
+        {(list.data || []).map((d) => (
+          <li key={d.id}>
+            <div className="grow ellipsis">
+              <b>{d.name}</b>
+              <span className="faint"> · {d.current ? "this device" : `seen ${ago(d.seen)}`}</span>
+            </div>
+            {!d.current && <button className="btn small" onClick={() => signOut(d)}><LogOut size={14} /> Sign out</button>}
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -203,6 +237,8 @@ export default function Settings() {
           </div>
         </div>
       </section>
+
+      <Devices />
 
       {appPlayer.available && (
         <section className="panel">

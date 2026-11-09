@@ -38,7 +38,7 @@ export type DisplayMode = "list" | "grid" | "gallery";
 export interface BrowsePref { display?: DisplayMode; sort?: string; hide_finished?: boolean; collapsed?: boolean }
 
 /** The parts of Muzix a server can do without (modules.ts). */
-export type ModuleKey = "vgm" | "audiobooks" | "podcasts" | "radio" | "spotify" | "network";
+export type ModuleKey = "vgm" | "audiobooks" | "podcasts" | "radio" | "network";
 export type Modules = Record<ModuleKey, boolean>;
 
 export interface AuthState {

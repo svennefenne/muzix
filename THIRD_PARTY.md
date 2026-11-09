@@ -51,4 +51,3 @@ sources are available from their projects and from Debian.
   [Cover Art Archive](https://coverartarchive.org), optionally Last.fm.
 - [radio-browser.info](https://www.radio-browser.info) (radio directory).
 - Apple Podcasts search API (podcast directory and charts).
-- Spotify Web API and Web Playback SDK.

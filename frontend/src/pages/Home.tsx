@@ -15,7 +15,7 @@ import type { Album, Episode, Home as HomeData } from "../types";
 // the sections, as chips on phones (desktops have them in the top bar)
 const SECTIONS = [
   { to: "/library", label: "Music" }, { to: "/podcasts", label: "Podcasts" }, { to: "/vgm", label: "VGM" },
-  { to: "/audiobooks", label: "Audiobooks" }, { to: "/radio", label: "Radio" }, { to: "/spotify", label: "Spotify" },
+  { to: "/audiobooks", label: "Audiobooks" }, { to: "/radio", label: "Radio" },
 ];
 
 /** "a, b and c" */

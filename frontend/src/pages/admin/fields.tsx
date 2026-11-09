@@ -2,7 +2,7 @@
  * settings.py) and the folder picker. */
 
 import { useQuery } from "@tanstack/react-query";
-import { BookOpen, Folder, FolderOpen, Gamepad2, Music2, Network, Podcast, Radio } from "lucide-react";
+import { BookOpen, Folder, FolderOpen, Gamepad2, Network, Podcast, Radio } from "lucide-react";
 import { useState } from "react";
 import { api } from "../../api";
 import { Modal, Switch } from "../../components/ui";
@@ -15,7 +15,7 @@ export interface SettingSpec {
 }
 
 export const MODULE_ICONS: Record<ModuleKey, typeof Folder> = {
-  vgm: Gamepad2, audiobooks: BookOpen, podcasts: Podcast, radio: Radio, spotify: Music2, network: Network,
+  vgm: Gamepad2, audiobooks: BookOpen, podcasts: Podcast, radio: Radio, network: Network,
 };
 
 export function FolderBrowser({ onPick, onClose }: { onPick: (p: string) => void; onClose: () => void }) {

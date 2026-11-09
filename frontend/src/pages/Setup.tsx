@@ -25,7 +25,7 @@ const KIND_WORD: Record<Kind, string> = { music: "music", vgm: "chiptunes and ga
 /** Each step's title, in the display's two tones. */
 const TITLES: Record<string, [string, string?]> = {
   music: ["Your", "music"], modules: ["What else", "it plays"], server: ["This", "server"],
-  vgm: ["VGM"], audiobooks: ["Audio", "books"], podcasts: ["Podcasts"], radio: ["Radio"], spotify: ["Spotify"],
+  vgm: ["VGM"], audiobooks: ["Audio", "books"], podcasts: ["Podcasts"], radio: ["Radio"],
   network: ["Library", "Network"], done: ["Ready", "to play"],
 };
 const NAMES: Record<string, string> = { music: "Music", modules: "Modules", server: "This server", done: "Done" };
@@ -245,14 +245,6 @@ function Wizard({ info, onDone }: { info: SetupInfo; onDone: () => void }) {
               {mod.kinds.map((k) => <Folders key={k} kind={k} folders={folders} setFolders={setFolders} />)}
               {MODULE_NOTES[mod.key] && <p className="dim setup-note">{MODULE_NOTES[mod.key]}</p>}
               {mod.settings.map(field)}
-              {mod.key === "spotify" && (
-                <div className="field">
-                  <label>Redirect URI</label>
-                  {publicUrl ? <CopyLine text={`${publicUrl}/api/spotify/callback`} />
-                    : <div className="help">Set the public URL under This server first: Spotify needs Muzix's HTTPS address.</div>}
-                  <div className="help">Create an app at developer.spotify.com, add this redirect URI to it, and paste its Client ID above.</div>
-                </div>
-              )}
               {mod.key === "network" && (
                 <div className="field">
                   <label>Open for linking</label>

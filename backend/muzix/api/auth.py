@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from .. import __version__, modules, settings
 from ..db import get_db
 from ..models import User
-from ..security import (check_password, end_session, has_users, hash_password, optional_user,
+from ..security import (check_password, end_session, has_users, hash_password, new_login, optional_user,
                         start_session)
 from . import setup as first_setup
 
@@ -16,6 +16,10 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 class Credentials(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=256)
+
+
+class AppCredentials(Credentials):
+    device: str = Field("", max_length=120)     # the device's name, as the account's list of devices shows it
 
 
 def user_json(u: User | None):
@@ -54,13 +58,26 @@ def setup(body: Credentials, request: Request, response: Response, db: Session =
     return {"user": user_json(user)}
 
 
-@router.post("/login")
-def login(body: Credentials, request: Request, response: Response, db: Session = Depends(get_db)):
+def _signing_in(db: Session, body: Credentials) -> User:
     user = db.scalar(select(User).where(func.casefold(User.username) == body.username.strip().casefold()))
     if user is None or not check_password(user, body.password):
         raise HTTPException(401, "Wrong username or password")
+    return user
+
+
+@router.post("/login")
+def login(body: Credentials, request: Request, response: Response, db: Session = Depends(get_db)):
+    user = _signing_in(db, body)
     start_session(db, user, request, response)
     return {"user": user_json(user)}
+
+
+@router.post("/token")
+def app_login(body: AppCredentials, request: Request, db: Session = Depends(get_db)):
+    """An app signs in: a token of the device's own, sent as `Authorization: Bearer <token>` from then on
+    (the API, streams, Connect). Signed out from the account's list of devices, or by /logout with it."""
+    user = _signing_in(db, body)
+    return {"token": new_login(db, user, request, body.device.strip()), "user": user_json(user)}
 
 
 @router.post("/logout")

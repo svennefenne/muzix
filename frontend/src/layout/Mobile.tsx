@@ -2,7 +2,7 @@
  * mini-player and a bottom tab bar whose "More" sheet holds the other sections. */
 
 import {
-  BookOpen, Download, Gamepad2, Heart, House, Library, LogOut, MoreHorizontal, Music2, Pause, Play, Podcast, Radio, Search, Settings, Shield,
+  BookOpen, Download, Gamepad2, Heart, House, Library, LogOut, MoreHorizontal, Pause, Play, Podcast, Radio, Search, Settings, Shield,
   SkipForward, X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -25,7 +25,6 @@ const MORE = [
   { to: "/vgm", label: "VGM", sub: "Chiptunes and tracker music", icon: Gamepad2 },
   { to: "/audiobooks", label: "Audiobooks", sub: "Pick up where you left off", icon: BookOpen },
   { to: "/radio", label: "Radio", sub: "Stations from all over the world", icon: Radio },
-  { to: "/spotify", label: "Spotify", sub: "Your Spotify, played in Muzix", icon: Music2 },
 ];
 
 export function MiniPlayer() {
@@ -85,7 +84,7 @@ export function TabBar() {
   const [more, setMore] = useState(false);
   const update = useAppUpdate();
   const { pathname } = useLocation();
-  const inMore = ["/vgm", "/audiobooks", "/podcasts", "/radio", "/spotify", "/settings", "/admin"].some((p) => pathname.startsWith(p));
+  const inMore = ["/vgm", "/audiobooks", "/podcasts", "/radio", "/settings", "/admin"].some((p) => pathname.startsWith(p));
   useEffect(() => {
     setMore(false);
   }, [pathname]);

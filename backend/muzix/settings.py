@@ -30,7 +30,7 @@ SCHEMA: list[Spec] = [
     Spec("site_name", "str", "Muzix", "General", "Site name"),
     Spec("public_url", "str", "", "General", "Public URL",
          "The HTTPS address Muzix is reached at through your reverse proxy, e.g. "
-         "https://muzix.example.com. Needed for Spotify and podcast links."),
+         "https://muzix.example.com. Needed for podcast links."),
     Spec("allow_signup", "bool", False, "General", "Allow sign-up",
          "Let new people create an account from the login page."),
     # library
@@ -108,15 +108,11 @@ SCHEMA: list[Spec] = [
     Spec("modarchive_api_key", "secret", "", "Online archives", "The Mod Archive API key",
          "Lets VGM → Online archives browse modarchive.org. Keys are personal: ask for one in the API "
          "section of The Mod Archive's forum (https://modarchive.org/forums), then paste it here."),
-    # spotify
-    Spec("spotify_client_id", "str", "", "Spotify", "Client ID",
-         "From developer.spotify.com → your app. Redirect URI: <public URL>/api/spotify/callback"),
     # modules (modules.py): on unless turned off, so a server from before them keeps everything
     Spec("module_vgm", "bool", True, "Modules", "VGM"),
     Spec("module_audiobooks", "bool", True, "Modules", "Audiobooks"),
     Spec("module_podcasts", "bool", True, "Modules", "Podcasts"),
     Spec("module_radio", "bool", True, "Modules", "Radio"),
-    Spec("module_spotify", "bool", True, "Modules", "Spotify"),
     Spec("module_network", "bool", True, "Modules", "Library Network"),
 ]
 

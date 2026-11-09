@@ -1,8 +1,8 @@
 # Muzix
 
 A self-hosted, Spotify-style player for everything you own: your music library,
-chiptunes and tracker modules, audiobooks, podcasts and internet radio, with
-your Spotify account built in. Runs as one Docker container (made for Unraid).
+chiptunes and tracker modules, audiobooks, podcasts and internet radio. Runs as
+one Docker container (made for Unraid).
 
 **The app dresses up for what's playing.** Put on death metal and the whole
 interface turns into a death metal record: bone-on-blood blackletter, a thorned
@@ -92,8 +92,6 @@ applies you choose from 98 colour schemes, each with a light and a dark version.
   timestamps (12:34) play from there.
 - **Internet radio**: tens of thousands of stations from radio-browser.info,
   saved stations, live "now playing" titles.
-- **Spotify**: your playlists, saved albums and liked songs in Muzix style,
-  played inside Muzix with the Web Playback SDK (Premium), genre skins included.
 - **Cast to speakers**: send the queue to a Chromecast Audio, Nest or Home
   speaker or a speaker group (audio only). The speaker streams straight from
   Muzix, lossless where it can, and keeps going when your phone sleeps.
@@ -102,7 +100,7 @@ applies you choose from 98 colour schemes, each with a light and a dark version.
 - **Admin mode** (the wrench in the top bar, admins only): a cog on every album,
   song, artist, audiobook, podcast, playlist and station, with
   - *Edit metadata*: the fields (an album with all its songs) side by side with
-    what MusicBrainz, Discogs, Bandcamp, Deezer, iTunes and your linked Spotify
+    what MusicBrainz, Discogs, Bandcamp, Deezer and iTunes
     know, to fill in with one click; a picked album brings that source's cover
     along, a picked artist their picture. Otherwise covers come from those
     sources, fanart.tv, a web image search, a picture's address or a file.
@@ -181,7 +179,7 @@ docker run -d --name muzix -p 8080:8080 \
 ### Modules
 
 Music is Muzix itself; the rest are modules a server can run or leave out:
-VGM, Audiobooks, Podcasts, Radio, Spotify and the Library Network. They're
+VGM, Audiobooks, Podcasts, Radio and the Library Network. They're
 chosen in the setup and turned on or off later under *Admin → Modules*, where
 each module also has its settings (and its folders). A module that's off is
 gone from the menus, its pages say it's off, its content is left out of every
@@ -190,31 +188,11 @@ refreshes, syncing with linked servers) waits. Nothing of it is deleted: turned
 on again, it's all back, and it catches up on what it missed. Servers from
 before modules have every module on.
 
-### HTTPS and Spotify
+### HTTPS
 
 Put Muzix behind your reverse proxy (SWAG, Nginx Proxy Manager, Traefik...) and
-set **Admin → Settings → General → Public URL** to its HTTPS address. Then:
-
-1. Create an app at <https://developer.spotify.com/dashboard> (Web API and Web
-   Playback SDK).
-2. Add the redirect URI `https://<your muzix address>/api/spotify/callback`.
-3. Paste the app's Client ID into **Admin → Settings → Spotify** and press
-   *Connect Spotify* on the Spotify tab.
-
-Playing Spotify inside Muzix needs Spotify Premium; without it you can still browse.
-
-New Spotify apps run in *Development mode*: the app owner needs Premium, and
-at most five Spotify accounts can use the app. Add other people's accounts
-under *User Management* in the app's dashboard.
-
-**"Authentication failed" when playing Spotify:** Spotify's player runs in a
-frame from `sdk.scdn.co` and has to reach `apresolve.spotify.com`,
-`spclient.wg.spotify.com` and `dealer.spotify.com`. Ad and tracker blockers
-such as AdGuard and Privacy Badger block those, so allow your Muzix address in
-them (AdGuard: turn off protection for the site; Privacy Badger: disable it for
-the site). The browser also needs DRM: in Firefox, *Settings → General → Play
-DRM-controlled content*. The browser console (F12) shows blocked Spotify
-requests as "CORS request did not succeed".
+set **Admin → Settings → General → Public URL** to its HTTPS address. Podcast
+links and the Library Network use it, and casting needs it.
 
 ### Your devices
 
@@ -237,7 +215,7 @@ The speaker fetches the audio itself with links signed for a day, so it has to
 reach that address too: a local DNS entry pointing it at your server keeps the
 audio inside your network. Files the speaker plays as they are (MP3, AAC,
 FLAC up to 96 kHz, Ogg, WAV) are sent unchanged; everything else, chiptunes
-included, arrives as FLAC. Spotify songs are skipped on the speaker.
+included, arrives as FLAC.
 
 ### Library Network
 
@@ -321,8 +299,7 @@ asks for the server's address (http on the local network works too); "Change
 server" in the account menu asks again. The Cast button (or the output switcher
 in the notification) moves the queue to a Google Cast speaker and back, with the
 same signed links as casting from Chrome, so the app has to be connected to
-Muzix's https address for it. Spotify playback isn't in the app; open Muzix in
-Chrome for that. Away from wifi (or on a phone's hotspot) the app downloads the
+Muzix's https address for it. Away from wifi (or on a phone's hotspot) the app downloads the
 song that plays and the next two into its cache (1 GB at most), so the music
 plays on through tunnels; a dropped connection is waited out, never skipped.
 The app saves where episodes and audiobooks got to by itself (every 15 seconds,
