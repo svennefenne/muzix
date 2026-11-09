@@ -38,6 +38,10 @@ def _gstreamer_wheels():
         for key, value in getattr(mod, "environment", {}).items():
             if isinstance(value, (list, tuple)):        # some give a list of paths
                 value = os.pathsep.join(str(v) for v in value)
+            # only what's there: some name a folder they don't have, and Windows won't take one that's missing
+            value = os.pathsep.join(p for p in value.split(os.pathsep) if p and os.path.exists(p))
+            if not value:
+                continue
             if key == "PYTHONPATH":
                 sys.path[:0] = [p for p in value.split(os.pathsep) if p not in sys.path]
             else:
