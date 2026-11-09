@@ -68,7 +68,7 @@ class AppPlayer {
     app.addEventListener("message", (e) => this.onMessage(e.data));
     this.send({ t: "hello" });
     useUi.subscribe((u, prev) => {
-      if (this.connected && (u.quality !== prev.quality || u.radioBuffer !== prev.radioBuffer)) this.prefs();
+      if (this.connected && (u.quality !== prev.quality || u.radioBuffer !== prev.radioBuffer || u.autoplay !== prev.autoplay)) this.prefs();
     });
     usePlayer.subscribe((s, prev) => {
       if (!this.connected) return;
@@ -96,7 +96,8 @@ class AppPlayer {
 
   private prefs() {
     const ui = useUi.getState();
-    this.send({ t: "prefs", quality: ui.quality, radioBuffer: ui.radioBuffer });
+    // autoplay: the app carries it on itself while the page is frozen (android/…/Autoplay.kt)
+    this.send({ t: "prefs", quality: ui.quality, radioBuffer: ui.radioBuffer, autoplay: ui.autoplay });
   }
 
   /** Back to the app's screen for the server's address. */

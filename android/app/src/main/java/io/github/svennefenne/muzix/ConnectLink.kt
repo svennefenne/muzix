@@ -228,7 +228,8 @@ class ConnectLink(private val audio: AudioManager, private val player: () -> Pla
         (from until queue.length()).mapNotNull { queue.optJSONObject(it) }.filter { it.optString("kind") != "spotify" }.take(WINDOW)
             .mapIndexed { i, it -> Items.fromJson(entry(it, if (i == 0) startAt else 0.0)) }
 
-    private fun entry(it: JSONObject, from: Double): JSONObject {
+    /** An entry from another device (or autoplay) as the page would hand it over, in this phone's sound quality. */
+    fun entry(it: JSONObject, from: Double = 0.0): JSONObject {
         val radio = it.optString("kind") == "radio"
         val url = Uri.parse(Server.address + it.optString("src")).buildUpon().apply {
             if (radio) { if (radioBuffer > 0) appendQueryParameter("buffer", radioBuffer.toString()) }

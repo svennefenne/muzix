@@ -49,6 +49,8 @@ class PlayerBridge(
     private val audio = context.getSystemService(AudioManager::class.java)
     /** The account's other devices, out of view (the page frozen): the app keeps the connection itself. */
     private val link = ConnectLink(audio, { player }, ::send)
+    /** Autoplay while the page is frozen: the songs run out, the app finds more itself. */
+    private val autoplay = Autoplay({ player }, { link.entry(it) }, ::send)
 
     /** The phone's media volume changed (its buttons, or another device): the page hears of it, and
      * so do the account's other devices (their volume slider shows the phone's). */
@@ -70,7 +72,10 @@ class PlayerBridge(
         future.addListener({
             val c = future.get()
             controller = c
-            player = (PlaybackService.player ?: c).also { it.addListener(this) }
+            player = (PlaybackService.player ?: c).also {
+                it.addListener(this)
+                it.addListener(autoplay)
+            }
             Progress.onSaved = { key -> send(JSONObject().put("t", "saved").put("key", key)) }
             while (waiting.isNotEmpty()) handleSafely(waiting.removeFirst())
             ticking(c.isPlaying)
@@ -85,6 +90,7 @@ class PlayerBridge(
         runCatching { context.unregisterReceiver(volumeSeen) }
         main.removeCallbacks(tick)
         player?.removeListener(this)
+        player?.removeListener(autoplay)
         player = null
         controller?.release()
         controller = null
@@ -101,6 +107,7 @@ class PlayerBridge(
     /** The page out of view (it freezes after a while) or back: the device's connection is the app's meanwhile. */
     fun visible(on: Boolean) {
         if (on) link.stop() else link.start()
+        autoplay.away(!on)
     }
 
     fun inView(visible: Boolean) {
@@ -141,6 +148,7 @@ class PlayerBridge(
             "prefs" -> {
                 link.quality = m.optString("quality", "original")
                 link.radioBuffer = m.optInt("radioBuffer")
+                autoplay.on = m.optBoolean("autoplay")
             }
             "upcoming" -> {
                 // everything after the current song, replaced
