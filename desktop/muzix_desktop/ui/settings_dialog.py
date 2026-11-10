@@ -98,9 +98,11 @@ class SettingsDialog(QDialog):
         onl.addWidget(start)
 
         box, bl = frame("panel")
-        bl.addWidget(label("Shared folders", "h3"))
-        bl.addWidget(label("Everything playable in them and their subfolders is shared. Mark folders of game music "
-                           "and tracker modules as VGM.", "dim", wrap=True))
+        bl.addWidget(label("Your music folders", "h3"))
+        bl.addWidget(label("This computer's library in the Muzix window (Muzix library… → This computer). Those "
+                           "marked Share are also shared with your servers: everything playable in them and their "
+                           "subfolders. Mark folders of game music and tracker modules as VGM (they're for sharing: "
+                           "game music needs a server to play).", "dim", wrap=True))
         self.folder_rows = QVBoxLayout()
         self.folder_rows.setSpacing(6)
         bl.addLayout(self.folder_rows)
@@ -160,13 +162,18 @@ class SettingsDialog(QDialog):
             kind.setCurrentIndex(1 if f.kind == "vgm" else 0)
             kind.currentIndexChanged.connect(lambda i, f=f: self._set_kind(f, "vgm" if i else "music"))
             row.addWidget(kind)
+            share = QCheckBox("Share")
+            share.setToolTip("Shared with your servers too")
+            share.setChecked(f.share)
+            share.toggled.connect(lambda on, f=f: self._set_share(f, on))
+            row.addWidget(share)
             rm = _button("Remove", "ghost")
             rm.clicked.connect(lambda _=False, f=f: self._remove_folder(f))
             row.addWidget(rm)
             self.folder_rows.addLayout(row)
 
     def _add_folder(self):
-        path = QFileDialog.getExistingDirectory(self, "A folder to share")
+        path = QFileDialog.getExistingDirectory(self, "A music folder")
         if not path or any(f.path == path for f in self.cfg.folders):
             return
         with config._lock:
@@ -180,6 +187,12 @@ class SettingsDialog(QDialog):
             self.cfg.folders = [x for x in self.cfg.folders if x.path != f.path]
             config.save()
         self._fill_folders()
+        self.folders_changed.emit()
+
+    def _set_share(self, f: config.Folder, on: bool):
+        with config._lock:
+            f.share = on
+            config.save()
         self.folders_changed.emit()
 
     def _set_kind(self, f: config.Folder, kind: str):

@@ -43,7 +43,9 @@ a = Analysis(
     hiddenimports=["muzix.organize.beetsplug.musicorg", "beetsplug.lastgenre"] + collect_submodules("muzix.meta")
                   # the window's own server (relay.py) and the speakers (cast.py) load parts of themselves by name
                   + collect_submodules("uvicorn") + collect_submodules("websockets") + collect_submodules("zeroconf")
-                  + collect_submodules("pychromecast"),
+                  + collect_submodules("pychromecast")
+                  # this computer's library's server (library.py: the server's own code, run by name)
+                  + collect_submodules("muzix"),
     # the server's own web side isn't needed here
     excludes=["uvloop", "tkinter", "matplotlib", "IPython", "PySide6.Qt3DCore", "PySide6.QtQuick3D",
               "PySide6.QtMultimedia", "PySide6.QtCharts", "PySide6.QtDataVisualization"]

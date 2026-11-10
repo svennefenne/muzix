@@ -2,7 +2,11 @@
 the app and passes everything for the Muzix server (`/api/…`, the Connect socket) on to it, at its
 address at home while that answers and its outside address otherwise. The login cookie stays with the
 window, as in a browser: moving between the addresses changes nothing for the page. Only the window may
-use it: it carries a secret cookie, new for each run (window.py sets it)."""
+use it: it carries a secret cookie, new for each run (window.py sets it).
+
+With this computer's library on (library.py), the library is the local server's, signed in with its
+token here; what's the account's stays the server's while there's one: podcasts, radio, the account's
+devices and Muzix Connect (docs/app-plan.md)."""
 
 import asyncio
 import logging
@@ -35,8 +39,26 @@ SECRET_HEADER = "x-muzix-window"        # the same, from the app's player (playe
 # what the server sees: its list of devices names the window after the computer (backend/muzix/security.py)
 UA = f"MuzixDesktop/{__version__} ({platform.system() or 'Unknown'}; {platform.node() or 'Computer'})"
 # not passed on, either way
+# the account's, on the server, even while the library is this computer's
+ACCOUNT = ("/api/podcasts", "/api/radio", "/api/connect", "/api/me/devices", "/api/auth/logout", "/api/android", "/api/desktop")
 HOP = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailers",
        "transfer-encoding", "upgrade", "host", "user-agent", SECRET_HEADER}
+
+
+# what a speaker may have of this computer's library: audio by its signed links, and covers
+SPEAKER = re.compile(r"/api/(stream/\d+|books/\d+/parts/\d+/stream|radio/play|podcasts/episodes/\d+/stream|art/[\w/.-]+)")
+
+
+def _lan_ip() -> str:
+    """This computer's address on the local network (the one its traffic leaves by; nothing is sent)."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("192.0.2.1", 9))
+        return s.getsockname()[0]
+    except OSError:
+        return ""
+    finally:
+        s.close()
 
 
 def web_dir() -> str:
@@ -90,6 +112,9 @@ class Relay:
         self.home, self.away = home, away
         self.address = home or away             # where the server is now
         self.session = ""                       # the window's login: the player's requests carry it too
+        self.signed_in = None                   # (session) → called when the window signs in to the server
+        self.local, self.local_token = "", ""   # this computer's library, when it's the window's (library.py)
+        self.lan = ""                           # this computer's library for Cast speakers (for_speakers)
         self.web = web_dir()
         self.loop: asyncio.AbstractEventLoop | None = None
         self.client: httpx.AsyncClient | None = None
@@ -127,6 +152,41 @@ class Relay:
 
     def stop(self):
         self.server.should_exit = True
+        if getattr(self, "_lan_server", None):
+            self._lan_server.should_exit = True
+
+    # ------------------------------------------------------------ Cast speakers, for this computer's library
+
+    def for_speakers(self) -> str:
+        """Where a Cast speaker on the network gets this computer's library (started the first time): only its
+        signed audio links (a speaker's, ?ct=) and covers, nothing else of it."""
+        if self.lan or not self.loop:
+            return self.lan
+        ip = _lan_ip()
+        if not ip:
+            return ""
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind((ip, 0))
+        s.listen(16)
+        app = Starlette(routes=[Route("/api/{path:path}", self._speaker, methods=["GET", "HEAD"])])
+        self._lan_server = uvicorn.Server(uvicorn.Config(app, log_level="warning", lifespan="off"))
+        asyncio.run_coroutine_threadsafe(self._lan_server.serve(sockets=[s]), self.loop)
+        self.lan = f"http://{ip}:{s.getsockname()[1]}"
+        log.info("Cast speakers get this computer's music from %s", self.lan)
+        return self.lan
+
+    async def _speaker(self, request: Request):
+        path = request.url.path
+        signed = SPEAKER.fullmatch(path) and (request.query_params.get("ct") or path.startswith("/api/art/"))
+        if not signed or not self.local:
+            return PlainTextResponse("Not for speakers", 403)
+        headers = [(k, v) for k, v in request.headers.items() if k in ("range", "accept", "icy-metadata")]
+        url = self.local + path + (f"?{request.url.query}" if request.url.query else "")
+        r = await self.client.send(self.client.build_request(request.method, url, headers=headers), stream=True)
+        resp = StreamingResponse(r.aiter_raw(), status_code=r.status_code, background=BackgroundTask(r.aclose))
+        resp.raw_headers = [(k.encode("latin-1"), v.encode("latin-1")) for k, v in r.headers.multi_items()
+                            if k.lower() not in HOP and k.lower() != "set-cookie"]
+        return resp
 
     # ------------------------------------------------------------ the server's address
 
@@ -134,6 +194,16 @@ class Relay:
         """Another server (or its addresses), from the address screen."""
         self.home, self.away = home, away
         self.address = home or away
+
+    def use_local(self, address: str, token: str):
+        """This computer's library (library.py), or the server's again ("")."""
+        self.local, self.local_token = address, token
+
+    def _target(self, path: str) -> tuple[str, bool]:
+        """Where a request goes: (address, whether it's this computer's library)."""
+        if self.local and not (self.address and path.startswith(ACCOUNT)):
+            return self.local, True
+        return self.address, False
 
     def pick(self):
         """Which address answers, from the window's thread (the network changed)."""
@@ -168,11 +238,12 @@ class Relay:
         this server only."""
         return {SECRET_HEADER: self.secret} if url.startswith(self.origin + "/") else {}
 
-    def _headers(self, conn) -> list[tuple[str, str]]:
-        """The window's headers for the server: its cookies without the window's own secret."""
+    def _headers(self, conn, local: bool = False) -> list[tuple[str, str]]:
+        """The window's headers for the server: its cookies without the window's own secret. This computer's
+        library gets none of the window's cookies (they're the server's), but its own token."""
         out = []
         for k, v in conn.headers.items():
-            if k in HOP:
+            if k in HOP or (local and k in ("cookie", "authorization")):
                 continue
             if k == "cookie":
                 for c in v.split("; "):
@@ -182,20 +253,23 @@ class Relay:
                 if not v:
                     continue
             out.append((k, v))
-        if self.session and not any(k == "cookie" and "muzix_session=" in v for k, v in out):
+        if local:
+            out.append(("authorization", f"Bearer {self.local_token}"))
+        elif self.session and not any(k == "cookie" and "muzix_session=" in v for k, v in out):
             out.append(("cookie", f"muzix_session={self.session}"))     # the player's: the window's login
         return out + [("user-agent", UA)]
 
     async def _api(self, request: Request):
         if not self._allowed(request):
             return PlainTextResponse("Only the Muzix window may use this", 403)
-        if not self.address:
+        base, local = self._target(request.url.path)
+        if not base:
             return JSONResponse({"detail": "No server yet"}, 502)
         path = request.url.path + (f"?{request.url.query}" if request.url.query else "")
-        again = request.method in ("GET", "HEAD")      # a body can't be sent twice
+        again = request.method in ("GET", "HEAD") and not local     # a body can't be sent twice
         for attempt in (0, 1):
-            req = self.client.build_request(request.method, self.address + path, headers=self._headers(request),
-                                            content=None if again else request.stream())
+            req = self.client.build_request(request.method, base + path, headers=self._headers(request, local),
+                                            content=None if request.method in ("GET", "HEAD") else request.stream())
             try:
                 r = await self.client.send(req, stream=True)
                 break
@@ -203,31 +277,36 @@ class Relay:
                 # the server isn't at that address any more (left home): the other one, once
                 if attempt or not again or not await self._repick():
                     return JSONResponse({"detail": "The server can't be reached"}, 502)
+                base = self.address
         resp = StreamingResponse(r.aiter_raw(), status_code=r.status_code, background=BackgroundTask(r.aclose))
-        resp.raw_headers = [(k.encode("latin-1"), self._back(k, v).encode("latin-1"))
-                            for k, v in r.headers.multi_items() if k.lower() not in HOP]
+        resp.raw_headers = [(k.encode("latin-1"), self._back(k, v, base).encode("latin-1"))
+                            for k, v in r.headers.multi_items()
+                            if k.lower() not in HOP and not (local and k.lower() == "set-cookie")]
         return resp
 
-    def _back(self, name: str, value: str) -> str:
+    def _back(self, name: str, value: str, base: str) -> str:
         """The server's headers as the window needs them: its login cookie for 127.0.0.1 (plain http), and
         its redirects here."""
         name = name.lower()
         if name == "set-cookie":
             if m := re.match(r"muzix_session=([^;]*)", value):     # signed in (or out)
                 self.session = m.group(1)
+                if self.session and self.signed_in:
+                    self.signed_in(self.session)
             return re.sub(r";\s*(secure|domain=[^;]*)", "", value, flags=re.I)
-        if name == "location" and value.startswith(self.address):
-            return value[len(self.address):] or "/"
+        if name == "location" and value.startswith(base):
+            return value[len(base):] or "/"
         return value
 
     async def _socket(self, ws: WebSocket):
         """The Connect socket, passed on both ways."""
-        if not self._allowed(ws) or not self.address:
+        base, local = self._target(ws.url.path)
+        if not self._allowed(ws) or not base:
             await ws.close(code=1008)
             return
         await ws.accept()
-        url = self.address.replace("http", "ws", 1) + ws.url.path + (f"?{ws.url.query}" if ws.url.query else "")
-        headers = [(k, v) for k, v in self._headers(ws) if k in ("cookie", "user-agent", "authorization")]
+        url = base.replace("http", "ws", 1) + ws.url.path + (f"?{ws.url.query}" if ws.url.query else "")
+        headers = [(k, v) for k, v in self._headers(ws, local) if k in ("cookie", "user-agent", "authorization")]
         try:
             async with websockets.connect(url, additional_headers=headers, max_size=None, open_timeout=10) as up:
                 async def down():
@@ -245,8 +324,10 @@ class Relay:
                 await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
                 for t in tasks:
                     t.cancel()
-        except (OSError, websockets.WebSocketException, WebSocketDisconnect, asyncio.TimeoutError):
-            await self._repick()
+        except (OSError, asyncio.TimeoutError):
+            await self._repick()            # the server isn't there: the other address
+        except (websockets.WebSocketException, WebSocketDisconnect):
+            pass                            # the server said no (signed out), or the socket closed
         try:
             await ws.close()
         except RuntimeError:

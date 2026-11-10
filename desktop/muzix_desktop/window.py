@@ -8,6 +8,7 @@ import asyncio
 import logging
 import re
 import sys
+import threading
 
 import httpx
 from PySide6.QtCore import QFile, QObject, QTimer, QUrl, Qt, Signal, Slot
@@ -20,6 +21,7 @@ from PySide6.QtWidgets import (QApplication, QHBoxLayout, QLineEdit, QMainWindow
                                QSystemTrayIcon, QVBoxLayout, QWidget)
 
 from . import config, player
+from .library import Library
 from .relay import SECRET_COOKIE, Relay, health, local, normalize
 from .ui import theme
 from .ui.widgets import in_background, label
@@ -84,12 +86,19 @@ class _Bridge(QObject):
 
 
 class Window(QMainWindow):
+    library_up = Signal(bool)       # this computer's library answers (or didn't start)
+
     def __init__(self, cfg: config.Config):
         super().__init__()
         self.cfg = cfg
+        self.library = Library(cfg)
+        self.library_up.connect(self._library_up)
         self.setWindowTitle("Muzix")
         self.resize(1280, 820)
         self.relay = Relay(cfg.listen_home, cfg.listen_away, cfg.window_port)
+        # signed in to a server: what this computer kept with no server moves into the account (step 6)
+        self.relay.signed_in = lambda session: threading.Thread(
+            target=lambda: self.relay.address and self.library.move_to_account(self.relay.address, session), daemon=True).start()
         if cfg.window_port != self.relay.port:
             cfg.window_port = self.relay.port
             config.save()
@@ -142,7 +151,9 @@ class Window(QMainWindow):
         self.stack.addWidget(self.address_page)
         self.stack.addWidget(self.web)
         self.setCentralWidget(self.stack)
-        if self.relay.address:
+        if cfg.library == "local":
+            self._open_local()
+        elif self.relay.address:
             self._show_web()
         else:
             self.ask()
@@ -173,6 +184,10 @@ class Window(QMainWindow):
         self.go = QPushButton("Connect")
         self.go.setProperty("role", "accent")
         self.go.clicked.connect(self._connect)
+        # or no server: the music in this computer's folders (Settings → Sharing)
+        self.here = QPushButton("Play this computer's music instead")
+        self.here.setProperty("role", "ghost")
+        self.here.clicked.connect(self._choose_local)
         row = QHBoxLayout()
         row.addStretch(1)
         row.addWidget(self.field)
@@ -180,14 +195,16 @@ class Window(QMainWindow):
         row.addStretch(1)
         box.addLayout(row)
         box.addWidget(self.note, alignment=Qt.AlignmentFlag.AlignHCenter)
+        box.addWidget(self.here, alignment=Qt.AlignmentFlag.AlignHCenter)
         outer.addLayout(box)
         outer.addStretch(2)
         return page
 
     def ask(self):
-        """The address screen (the first time, and "Muzix server…" in the tray's menu)."""
+        """The address screen (the first time, and "Muzix library…" in the tray's menu)."""
         self.field.setText(self.relay.home or self.relay.away)
-        self.note.setText("")
+        self.note.setText("Now: this computer's music" if self.cfg.library == "local" else "")
+        self.here.setEnabled(True)
         self.stack.setCurrentWidget(self.address_page)
         self.field.setFocus()
 
@@ -214,11 +231,41 @@ class Window(QMainWindow):
             home = address if local(address) else ""
             away = outside if outside and outside != address else ("" if home else address)
             self.cfg.listen_home, self.cfg.listen_away = home, away
+            self.cfg.library = "server"
             config.save()
             self.relay.use(home, away)
+            self.relay.use_local("", "")
+            self.library.stop()
             self._show_web()
 
         in_background(look, done, lambda why: (self.go.setEnabled(True), self.note.setText(why)))
+
+    # ------------------------------------------------------------ this computer's library
+
+    def _choose_local(self):
+        self.cfg.library = "local"
+        config.save()
+        self._open_local()
+
+    def _open_local(self):
+        """This computer's library: its server started (library.py), then the window on it."""
+        self.stack.setCurrentWidget(self.address_page)
+        self.note.setText("Opening this computer's music…")
+        self.here.setEnabled(False)
+        self.library.start(lambda: self.library_up.emit(self.library.ready.is_set()))
+
+    def _library_up(self, ok: bool):
+        self.here.setEnabled(True)
+        if not ok:
+            self.note.setText("This computer's library didn't start: see library/server.log in Muzix Desktop's data folder")
+            return
+        self.relay.use_local(self.library.address, self.library.token)
+        self._show_web()
+
+    def folders_changed(self):
+        """Settings changed the folders: the library follows."""
+        if self.cfg.library == "local" and self.library.ready.is_set():
+            threading.Thread(target=self.library.sync, daemon=True).start()
 
     def _show_web(self):
         self.stack.setCurrentWidget(self.web)
@@ -227,10 +274,18 @@ class Window(QMainWindow):
     # ------------------------------------------------------------ the player's side
 
     def _for_speaker(self, url: str) -> str:
-        """A link for a speaker: on the server's own address, the https one if it has it (a Cast speaker
-        plays from https), not this window's 127.0.0.1."""
-        base = self.relay.away if self.relay.away.startswith("https://") else self.relay.address
-        return base + url[len(self.relay.origin):] if url.startswith(self.relay.origin) else url
+        """A link for a speaker, not this window's 127.0.0.1: the server's own address (the https one if it
+        has it: a Cast speaker plays from https), or for this computer's library, its address on the network
+        for speakers (relay.py)."""
+        if not url.startswith(self.relay.origin):
+            return url
+        path = url[len(self.relay.origin):]
+        base, local = self.relay._target(path.split("?")[0])
+        if local:
+            base = self.relay.for_speakers() or base
+        elif self.relay.away.startswith("https://"):
+            base = self.relay.away
+        return base + path
 
     def _speakers(self):
         """The page's Cast button: the speakers on the network, or stopping the one that plays."""
@@ -285,4 +340,5 @@ class Window(QMainWindow):
     def shutdown(self):
         if self.player:
             self.player.release()
+        self.library.stop()
         self.relay.stop()

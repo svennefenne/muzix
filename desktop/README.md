@@ -9,7 +9,10 @@ albums' tags and covers. The tray's menu has:
   inside it, on 127.0.0.1, serves that and passes everything else on to your Muzix
   server, at its address at home while that answers and its public address
   otherwise (the server's *Public URL*). The first start asks for the address.
-- **Muzix server…**: another server.
+- **Muzix library…**: another server, or this computer's music: the folders in
+  *Settings → Sharing*, played with no server at all (Muzix's own server code runs
+  inside the app for them, on 127.0.0.1, and never changes the files). With a server
+  too, podcasts, radio and Muzix Connect stay the server account's.
 - **Fix Metadata & Artwork**: a small window that stays on top. Drop album folders
   on it; each gets suggestions from the sources chosen in Settings, you pick one,
   check how its songs pair with your files and which cover to use, and *Apply*.

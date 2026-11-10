@@ -59,6 +59,7 @@ class Server:
 class Folder:
     path: str
     kind: str = "music"         # music | vgm
+    share: bool = True          # shared with the servers too (the local library has every folder: library.py)
 
 
 @dataclass
@@ -80,6 +81,11 @@ class Config:
     listen_home: str = ""
     listen_away: str = ""
     window_port: int = 0        # the window's own server on 127.0.0.1 (relay.py): the same each run
+    # the library the window shows: the server's, or this computer's folders (library.py)
+    library: str = "server"     # server | local
+    library_port: int = 0
+    library_password: str = ""  # the local library's own account (made the first time, used only here)
+    library_token: str = ""
 
     def server(self, server_id: str) -> Server | None:
         return next((s for s in self.servers if s.server_id == server_id), None)
@@ -110,7 +116,8 @@ def load() -> Config:
                 c.servers = [Server(**{f: s.get(f, "") for f in ("address", "server_id", "name", "key")},
                                     state=s.get("state") or "waiting") for s in v]
             elif k == "folders":
-                c.folders = [Folder(path=f["path"], kind=f.get("kind") or "music") for f in v]
+                c.folders = [Folder(path=f["path"], kind=f.get("kind") or "music", share=f.get("share", True) is not False)
+                             for f in v]
             elif k == "sources":
                 c.sources.update({s: bool(on) for s, on in v.items()})
             elif hasattr(c, k):

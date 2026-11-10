@@ -113,7 +113,7 @@ class App:
         self.menu = QMenu()
         self.open_action = QAction("Open Muzix")
         self.open_action.triggered.connect(self.window.bring)
-        self.server_action = QAction("Muzix server…")
+        self.server_action = QAction("Muzix library…")
         self.server_action.triggered.connect(lambda: (self.window.ask(), self.window.bring()))
         self.fix_action = QAction("Fix Metadata && Artwork…")
         self.fix_action.triggered.connect(self.open_fix)
@@ -154,8 +154,8 @@ class App:
         self.scan()
         if self.cfg.sharing:
             self.sharing.start()
-        if not minimized and (not self.cfg.folders or not self.cfg.servers):
-            QTimer.singleShot(400, self.open_settings)      # the first start: what to share, and where
+        if not minimized and self.cfg.servers and not self.cfg.folders:
+            QTimer.singleShot(400, self.open_settings)      # sharing set up, but nothing to share yet
         try:
             if autostart.enabled():
                 autostart.set_enabled(True)     # the login entry kept up to date (--minimized, where the app is)
@@ -288,7 +288,7 @@ class App:
             return
         self.scanning = True
         self._progress(0, 0)            # looking through the folders, before it knows how many are new
-        folders = [(f.path, f.kind) for f in self.cfg.folders]
+        folders = [(f.path, f.kind) for f in self.cfg.folders if f.share]
 
         def done(changed):
             self.scanning = False
@@ -334,6 +334,9 @@ class App:
             from .ui.settings_dialog import SettingsDialog
             self.settings = SettingsDialog(self)
             self.settings.folders_changed.connect(self.scan)
+            self.settings.folders_changed.connect(self.window.folders_changed)
+            # Read again: this computer's library too (it reads its folders by itself every few hours)
+            self.settings.rescan.connect(lambda: self.cfg.library == "local" and self.window.library.rescan())
             self.settings.rescan.connect(self.scan)
             self.settings.sharing_toggled.connect(self.set_sharing)
             self.settings.server_added.connect(self._server_added)

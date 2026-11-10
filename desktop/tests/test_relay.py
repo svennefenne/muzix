@@ -5,6 +5,7 @@ import threading
 import time
 
 import httpx
+import pytest
 import uvicorn
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -68,3 +69,32 @@ def test_only_the_window_gets_through_to_the_server():
     assert httpx.post(relay.origin + "/api/auth/login", json={},
                       headers={"x-muzix-window": "guess"}).status_code == 403
     relay.stop()
+
+
+def test_speakers_get_only_signed_audio_from_this_computers_library():
+    async def stream(request: Request):
+        return JSONResponse({"ct": request.query_params.get("ct"), "auth": request.headers.get("authorization")})
+
+    app = Starlette(routes=[Route("/api/stream/{id}", stream), Route("/api/albums", stream)])
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    server = uvicorn.Server(uvicorn.Config(app, log_level="warning", lifespan="off"))
+    threading.Thread(target=server.run, kwargs={"sockets": [s]}, daemon=True).start()
+    local = f"http://127.0.0.1:{s.getsockname()[1]}"
+    _up(local + "/api/albums")
+    relay = Relay()
+    _up(relay.origin + "/")
+    relay.use_local(local, "the-librarys-token")
+    for _ in range(50):
+        if relay.loop:
+            break
+        time.sleep(0.1)
+    lan = relay.for_speakers()
+    if not lan:
+        pytest.skip("no network here")
+    got = httpx.get(lan + "/api/stream/7?q=cast&ct=signed").json()
+    assert got == {"ct": "signed", "auth": None}               # the speaker's own signature, not the library's token
+    assert httpx.get(lan + "/api/stream/7").status_code == 403  # unsigned
+    assert httpx.get(lan + "/api/albums?ct=signed").status_code == 403
+    relay.stop()
+    server.should_exit = True
