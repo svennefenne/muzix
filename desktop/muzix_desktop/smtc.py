@@ -21,7 +21,7 @@ except ImportError:
 class Smtc(QObject):
     pressed = Signal(int)
 
-    def __init__(self, player, show, cookies, art=lambda url: url):
+    def __init__(self, player, show, headers, art=lambda url: url):
         super().__init__()
         self.player, self.art = player, art
         self.sent: tuple = ()

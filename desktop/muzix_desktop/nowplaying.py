@@ -17,7 +17,7 @@ except ImportError:
 class NowPlaying(QObject):
     pressed = Signal(str, float)
 
-    def __init__(self, player, show, cookies, art=lambda url: url):
+    def __init__(self, player, show, headers, art=lambda url: url):
         super().__init__()
         self.player = player
         self.sent: tuple = ()

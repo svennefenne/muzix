@@ -108,7 +108,7 @@ class Window(QMainWindow):
         # the player, and the page's way to it
         self.player = None
         if player.available():
-            self.player = player.Player(self._cookies, lambda: self.isVisible() and not self.isMinimized(), self._for_speaker)
+            self.player = player.Player(self.relay.headers, lambda: self.isVisible() and not self.isMinimized(), self._for_speaker)
             self.bridge = _Bridge(self.player.handle)
             self.player.sent.connect(self.bridge.message)
             self.player.command.connect(self._command)
@@ -127,13 +127,13 @@ class Window(QMainWindow):
             try:
                 if sys.platform.startswith("linux"):
                     from .mpris import Mpris
-                    self.system = Mpris(self.player, self.bring, self._cookies)
+                    self.system = Mpris(self.player, self.bring, self.relay.headers)
                 elif sys.platform == "win32":
                     from .smtc import Smtc
-                    self.system = Smtc(self.player, self.bring, self._cookies, self._for_speaker)
+                    self.system = Smtc(self.player, self.bring, self.relay.headers, self._for_speaker)
                 elif sys.platform == "darwin":
                     from .nowplaying import NowPlaying
-                    self.system = NowPlaying(self.player, self.bring, self._cookies, self._for_speaker)
+                    self.system = NowPlaying(self.player, self.bring, self.relay.headers, self._for_speaker)
             except Exception:       # no media keys, but the window plays on
                 log.exception("The system's media controls didn't start")
 
@@ -225,11 +225,6 @@ class Window(QMainWindow):
         self.web.load(QUrl(self.relay.origin + "/"))
 
     # ------------------------------------------------------------ the player's side
-
-    def _cookies(self) -> list[str]:
-        """The player's way in: the window's secret and its login (the relay sees it go by)."""
-        s = self.relay.session
-        return [f"{SECRET_COOKIE}={self.relay.secret}"] + ([f"muzix_session={s}"] if s else [])
 
     def _for_speaker(self, url: str) -> str:
         """A link for a speaker: on the server's own address, the https one if it has it (a Cast speaker

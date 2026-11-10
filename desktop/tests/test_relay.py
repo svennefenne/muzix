@@ -59,4 +59,12 @@ def test_only_the_window_gets_through_to_the_server():
     assert got["cookie"] == "theirs=1"              # the window's secret stays here
     cookie = r.headers["set-cookie"]
     assert "muzix_session=abc" in cookie and "secure" not in cookie.lower() and "domain" not in cookie.lower()
+    # the app's player: the secret as a header (GStreamer before 1.22 runs cookies together), and the
+    # window's login added here
+    player = httpx.Client(headers=relay.headers(relay.origin + "/api/auth/login"))
+    assert relay.headers("https://radio.example.com/stream") == {}         # the secret goes nowhere else
+    got = player.post(relay.origin + "/api/auth/login", json={}).json()
+    assert got["cookie"] == "muzix_session=abc"
+    assert httpx.post(relay.origin + "/api/auth/login", json={},
+                      headers={"x-muzix-window": "guess"}).status_code == 403
     relay.stop()

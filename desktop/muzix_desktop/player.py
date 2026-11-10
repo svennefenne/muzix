@@ -100,9 +100,9 @@ class Player(QObject):
     changed = Signal()          # what plays, or how (the system's player: mpris.py)
     command = Signal(str, dict)  # one that isn't for the player (the window's: another server, a link)
 
-    def __init__(self, cookies, shown=lambda: True, for_speaker=lambda url: url, speakers=True):
+    def __init__(self, headers, shown=lambda: True, for_speaker=lambda url: url, speakers=True):
         super().__init__()
-        self.cookies = cookies              # () → the cookies for the window's server ("name=value")
+        self.headers = headers              # (url) → the headers the window's own server wants from the player
         self.shown = shown                  # () → whether the window shows (the visualizer's spectrum only then)
         self.for_speaker = for_speaker      # a speaker's link, on the server's own address (relay.py)
         self.bin = Gst.ElementFactory.make(_playbin(), "muzix")
@@ -349,9 +349,15 @@ class Player(QObject):
             self.bin.set_property("uri", self.queue[nxt]["url"])
 
     def _source_setup(self, _bin, source):
-        """The window's server takes the window's cookies (the login, and the window's own secret)."""
-        if source.find_property("cookies") is not None:
-            source.set_property("cookies", self.cookies())
+        """The window's own server (relay.py) takes the window's secret as a header: GStreamer before 1.22 runs
+        several cookies into one line, which loses them."""
+        url = source.get_property("location") if source.find_property("location") is not None else ""
+        wanted = self.headers(url or "")
+        if wanted and source.find_property("extra-headers") is not None:
+            extra = Gst.Structure.new_empty("extra-headers")
+            for k, v in wanted.items():
+                extra.set_value(k, v)
+            source.set_property("extra-headers", extra)
         if source.find_property("user-agent") is not None:
             source.set_property("user-agent", f"MuzixDesktop/{__version__}")
 

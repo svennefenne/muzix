@@ -50,8 +50,8 @@ US = 1_000_000          # MPRIS counts in microseconds
 
 
 class Mpris:
-    def __init__(self, player, show, cookies):
-        self.player, self.show, self.cookies = player, show, cookies
+    def __init__(self, player, show, headers):
+        self.player, self.show, self.headers = player, show, headers
         self.bus = None
         self.sent: dict = {}            # what the desktop was last told
         self.art: dict[str, str] = {}   # a cover's address → its file here (the desktop can't sign in)
@@ -138,7 +138,7 @@ class Mpris:
         def fetch():
             try:
                 if not os.path.exists(path):
-                    r = httpx.get(url, headers={"Cookie": "; ".join(self.cookies())}, timeout=15)
+                    r = httpx.get(url, headers=self.headers(url), timeout=15)
                     r.raise_for_status()
                     os.makedirs(self.dir, exist_ok=True)
                     with open(path, "wb") as f:

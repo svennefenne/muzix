@@ -31,11 +31,12 @@ log = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)       # not a line for each of the window's requests
 
 SECRET_COOKIE = "muzix_window"
+SECRET_HEADER = "x-muzix-window"        # the same, from the app's player (player.py), which sends no cookies
 # what the server sees: its list of devices names the window after the computer (backend/muzix/security.py)
 UA = f"MuzixDesktop/{__version__} ({platform.system() or 'Unknown'}; {platform.node() or 'Computer'})"
 # not passed on, either way
 HOP = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailers",
-       "transfer-encoding", "upgrade", "host", "user-agent"}
+       "transfer-encoding", "upgrade", "host", "user-agent", SECRET_HEADER}
 
 
 def web_dir() -> str:
@@ -159,7 +160,13 @@ class Relay:
     # ------------------------------------------------------------ the window's requests
 
     def _allowed(self, conn) -> bool:
-        return secrets.compare_digest(conn.cookies.get(SECRET_COOKIE, ""), self.secret)
+        given = conn.cookies.get(SECRET_COOKIE) or conn.headers.get(SECRET_HEADER) or ""
+        return secrets.compare_digest(given, self.secret)
+
+    def headers(self, url: str) -> dict:
+        """What the app's player (and the system's media controls) send for `url`: the window's secret, to
+        this server only."""
+        return {SECRET_HEADER: self.secret} if url.startswith(self.origin + "/") else {}
 
     def _headers(self, conn) -> list[tuple[str, str]]:
         """The window's headers for the server: its cookies without the window's own secret."""
@@ -175,6 +182,8 @@ class Relay:
                 if not v:
                     continue
             out.append((k, v))
+        if self.session and not any(k == "cookie" and "muzix_session=" in v for k, v in out):
+            out.append(("cookie", f"muzix_session={self.session}"))     # the player's: the window's login
         return out + [("user-agent", UA)]
 
     async def _api(self, request: Request):

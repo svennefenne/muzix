@@ -37,7 +37,7 @@ def test_the_queue_plays_on_gapless(tmp_path, monkeypatch):
     for name in ("a", "b"):
         _song(str(tmp_path / f"{name}.wav"), 1.5)
     app = QCoreApplication.instance() or QCoreApplication([])
-    p = player.Player(lambda: [], speakers=False)
+    p = player.Player(lambda url: {}, speakers=False)
     got = []
     p.sent.connect(lambda s: got.append(json.loads(s)))
     items = [{"key": k, "url": f"file://{tmp_path}/{k}.wav", "title": k.upper(), "duration": 1.5, "muzix": k} for k in ("a", "b")]
@@ -86,7 +86,7 @@ def test_a_speaker_takes_the_queue_and_gives_it_back(tmp_path, monkeypatch):
     for name in ("a", "b"):
         _song(str(tmp_path / f"{name}.wav"), 3)
     app = QCoreApplication.instance() or QCoreApplication([])
-    p = player.Player(lambda: [], for_speaker=lambda url: url.replace("http://127.0.0.1:1", "https://muzix.example.com"))
+    p = player.Player(lambda url: {}, for_speaker=lambda url: url.replace("http://127.0.0.1:1", "https://muzix.example.com"))
     items = [{"key": k, "url": f"file://{tmp_path}/{k}.wav", "cast": f"http://127.0.0.1:1/api/stream/{k}?q=cast&ct=t",
               "castMime": "audio/flac", "title": k, "duration": 3} for k in ("a", "b")]
     p.handle(json.dumps({"t": "load", "index": 0, "position": 0, "play": True, "items": items}))
