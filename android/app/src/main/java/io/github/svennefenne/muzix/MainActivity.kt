@@ -18,6 +18,7 @@ import android.view.ContextThemeWrapper
 import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
 import android.webkit.CookieManager
+import android.webkit.JsResult
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -326,7 +327,7 @@ class MainActivity : ComponentActivity() {
         box.addView(here, LinearLayout.LayoutParams(dp(320), dp(48)).apply { topMargin = dp(12) })
         if (library.folders().isNotEmpty()) {
             box.addView(TextView(this).apply {
-                text = "Its folders: " + library.folders().joinToString(", ") { Uri.decode(it.lastPathSegment.orEmpty()).substringAfterLast(':').ifEmpty { "/" } }
+                text = "Its folders: " + library.folders().joinToString(", ") { LocalLibrary.name(it) }
                 setTextColor(DIM)
                 textSize = 13f
                 gravity = Gravity.CENTER
@@ -639,6 +640,17 @@ class MainActivity : ComponentActivity() {
                 picked = callback
                 val type = params.acceptTypes.firstOrNull { it.contains("/") } ?: "*/*"
                 pickFiles.launch(type)
+                return true
+            }
+
+            // the page's questions as the app's own, not under "The page at http://127.0.0.1 says"
+            override fun onJsConfirm(view: WebView, url: String, message: String, result: JsResult): Boolean {
+                AlertDialog.Builder(this@MainActivity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setMessage(message)
+                    .setPositiveButton(android.R.string.ok) { _, _ -> result.confirm() }
+                    .setNegativeButton(android.R.string.cancel) { _, _ -> result.cancel() }
+                    .setOnCancelListener { result.cancel() }
+                    .show()
                 return true
             }
         }

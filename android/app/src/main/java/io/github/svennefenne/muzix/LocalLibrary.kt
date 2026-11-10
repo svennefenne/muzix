@@ -35,10 +35,17 @@ class LocalLibrary(private val context: Context) {
         prefs.edit().putStringSet("folders", folders().map { it.toString() }.toSet() + tree.toString()).apply()
     }
 
+    /** A folder taken out again: the app no longer reads it, and its songs leave the library (the files stay
+     * where they are), with their likes, plays and places in playlists. */
+    @Synchronized
     fun removeFolder(tree: Uri) {
         runCatching { context.contentResolver.releasePersistableUriPermission(tree, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
         prefs.edit().putStringSet("folders", folders().map { it.toString() }.toSet() - tree.toString()).apply()
+        db.delete("tracks", IN_FOLDER, arrayOf(tree.toString()))
+        group(emptyMap())
     }
+
+    fun songsIn(tree: Uri): Int = db.rawQuery("SELECT count(*) FROM tracks WHERE $IN_FOLDER", arrayOf(tree.toString())).use { it.moveToFirst(); it.getInt(0) }
 
     // ------------------------------------------------------------ reading them
 
@@ -51,12 +58,20 @@ class LocalLibrary(private val context: Context) {
         try {
             val found = mutableListOf<Doc>()
             val covers = HashMap<String, Uri>()        // a folder's own picture (cover.jpg, folder.jpg...)
+            val unread = mutableListOf<String>()
             for (tree in folders()) {
                 runCatching { walk(tree, DocumentsContract.getTreeDocumentId(tree), "", found, covers) }
-                    .onFailure { Log.w(TAG, "Couldn't read $tree", it) }
+                    .onFailure { Log.w(TAG, "Couldn't read $tree", it); unread.add(tree.toString()) }
             }
             val known = HashMap<String, Long>()
-            db.rawQuery("SELECT uri, modified FROM tracks", null).use { c -> while (c.moveToNext()) known[c.getString(0)] = c.getLong(1) }
+            val kept = HashSet<String>()        // a folder that couldn't be read keeps its songs: away for now, not gone
+            db.rawQuery("SELECT uri, modified, folder FROM tracks", null).use { c ->
+                while (c.moveToNext()) {
+                    known[c.getString(0)] = c.getLong(1)
+                    val folder = c.getString(2)
+                    if (unread.any { folder == it || folder.startsWith("$it/") }) kept.add(c.getString(0))
+                }
+            }
             val now = System.currentTimeMillis()
             var read = 0
             for (d in found) {
@@ -67,7 +82,7 @@ class LocalLibrary(private val context: Context) {
                 }
             }
             val there = found.map { it.uri.toString() }.toHashSet()
-            for (uri in known.keys - there) db.delete("tracks", "uri = ?", arrayOf(uri))
+            for (uri in known.keys - there - kept) db.delete("tracks", "uri = ?", arrayOf(uri))
             group(covers)
             return read
         } finally {
@@ -79,7 +94,8 @@ class LocalLibrary(private val context: Context) {
         val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, docId)
         val cols = arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME,
             DocumentsContract.Document.COLUMN_MIME_TYPE, DocumentsContract.Document.COLUMN_LAST_MODIFIED, DocumentsContract.Document.COLUMN_SIZE)
-        context.contentResolver.query(children, cols, null, null, null)?.use { c ->
+        // a folder the phone can't list now (a card taken out, the app's access gone) isn't an empty one
+        (context.contentResolver.query(children, cols, null, null, null) ?: throw java.io.IOException("Can't list $path")).use { c ->
             while (c.moveToNext()) {
                 val id = c.getString(0)
                 val name = c.getString(1) ?: continue
@@ -151,9 +167,25 @@ class LocalLibrary(private val context: Context) {
                 "formats = (SELECT group_concat(DISTINCT format) FROM tracks WHERE album_id = albums.id), " +
                 "genre = coalesce((SELECT genre FROM tracks WHERE album_id = albums.id AND genre != '' GROUP BY genre ORDER BY count(*) DESC LIMIT 1), '')")
             db.execSQL("UPDATE artists SET genre = coalesce((SELECT genre FROM albums WHERE artist_id = artists.id AND genre != '' GROUP BY genre ORDER BY count(*) DESC LIMIT 1), '')")
+            // what went with the songs: their likes, plays, places in playlists and recent searches (a new
+            // song, album or artist can be given a gone one's id)
+            for (table in listOf("likes", "recent")) {
+                db.execSQL("DELETE FROM $table WHERE (kind = 'track' AND item_id NOT IN (SELECT id FROM tracks)) OR " +
+                    "(kind = 'album' AND item_id NOT IN (SELECT id FROM albums)) OR (kind = 'artist' AND item_id NOT IN (SELECT id FROM artists))")
+            }
+            db.execSQL("DELETE FROM plays WHERE track_id NOT IN (SELECT id FROM tracks)")
+            db.execSQL("DELETE FROM playlist_items WHERE track_id NOT IN (SELECT id FROM tracks)")
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
+        }
+        // and the pictures of the albums and artists gone
+        val ids = { table: String -> buildSet { db.rawQuery("SELECT id FROM $table", null).use { c -> while (c.moveToNext()) add(c.getLong(0)) } } }
+        val albums = ids("albums")
+        val artists = ids("artists")
+        artDir.listFiles()?.forEach { f ->
+            val m = Regex("""(album|artist)-(\d+)\.jpg""").matchEntire(f.name) ?: return@forEach
+            if (m.groupValues[2].toLong() !in (if (m.groupValues[1] == "album") albums else artists)) f.delete()
         }
         // the covers the albums don't have yet: the folder's picture, else one in a song's tags
         val missing = mutableListOf<Pair<Long, String>>()
@@ -218,5 +250,10 @@ class LocalLibrary(private val context: Context) {
         private const val TAG = "MuzixLocal"
         val AUDIO = setOf("mp3", "flac", "ogg", "oga", "opus", "m4a", "m4b", "aac", "wav", "mka", "webm", "3gp", "amr", "mid", "midi")
         private val COVER_NAMES = setOf("cover", "folder", "front", "album", "albumart")
+        // a song read from the folder ?1 (the tree's address, then its path inside)
+        private const val IN_FOLDER = "folder = ?1 OR substr(folder, 1, length(?1) + 1) = ?1 || '/'"
+
+        /** A folder's name as the phone shows it ("Music", "Music/Rock"). */
+        fun name(tree: Uri): String = Uri.decode(tree.lastPathSegment.orEmpty()).substringAfterLast(':').ifEmpty { "/" }
     }
 }

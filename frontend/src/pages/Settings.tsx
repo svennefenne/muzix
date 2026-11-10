@@ -93,6 +93,44 @@ function DownloadSettings() {
   );
 }
 
+type PhoneFolder = { uri: string; name: string; songs: number };
+
+/** The folders the Android app's own library reads (the app answers for them), and each taken out again. */
+function PhoneFolders() {
+  const list = useQuery({ queryKey: ["phone-folders"], queryFn: () => api.get<PhoneFolder[]>("/api/local/folders") });
+  const notify = useUi((s) => s.notify);
+  const remove = async (f: PhoneFolder) => {
+    const songs = `${f.songs} song${f.songs === 1 ? "" : "s"}`;
+    if (!confirm(`Take "${f.name}" out of this phone's library? The files stay on the phone; the library loses its ${songs}, with any likes and places in playlists.`)) return;
+    try {
+      await api.del(`/api/local/folders?uri=${encodeURIComponent(f.uri)}`);
+      notify(`${f.name} is out of the library`);
+    } catch (e) {
+      notify((e as Error).message, "error");
+    }
+    queryClient.invalidateQueries();      // every list, as the library is now
+  };
+  return (
+    <div className="field">
+      <label>Music folders</label>
+      {list.data?.length === 0 && <span className="dim">None yet: podcasts and radio play without one.</span>}
+      <ul className="admin-list" style={{ marginTop: 0 }}>
+        {(list.data || []).map((f) => (
+          <li key={f.uri}>
+            <div className="grow ellipsis">
+              <b>{f.name}</b>
+              <span className="faint"> · {f.songs} song{f.songs === 1 ? "" : "s"}</span>
+            </div>
+            <button className="btn small" onClick={() => remove(f)}><X size={14} /> Remove</button>
+          </li>
+        ))}
+      </ul>
+      <div style={{ marginTop: 8 }}><button className="btn small" onClick={() => appPlayer.addFolder()}><Plus size={14} /> Add a music folder</button></div>
+      <div className="help">The app only reads them. A folder taken out stays on the phone as it is.</div>
+    </div>
+  );
+}
+
 /** Where the account is signed in (each browser, each app), and each signed out from here. */
 function Devices() {
   const list = useQuery({ queryKey: ["devices"], queryFn: () => api.get<Device[]>("/api/me/devices") });
@@ -324,6 +362,8 @@ export default function Settings() {
               <button className="btn" onClick={() => appPlayer.changeServer()}><Server size={16} /> Change server</button>
             </div>
           </div>
+          {/* Muzix Desktop keeps its folders in its own Settings, with the sharing switches */}
+          {shell.library === "local" && !shell.desktop && <PhoneFolders />}
           <div className="field">
             <label>Version</label>
             <span className="dim">{shell.desktop ? "Muzix Desktop" : "Muzix for Android"} {appVersion()}. When a newer one is out, your menu offers it.</span>

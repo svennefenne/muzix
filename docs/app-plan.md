@@ -187,8 +187,11 @@ This phone's music in the Android app (0.10.0), with no server, or beside one.
   artist pictures from Deezer, shown only. Only the app gets in: a secret for each run.
 - With a server too, podcasts, radio and the account's devices stay the server's: passed on with the
   app's login there, and the sidebar's podcasts and stations come from there.
-- Not yet: Muzix Connect while the library is this phone's (its socket isn't passed on), casting this
-  phone's songs, and taking a folder away again.
+- From 0.10.2 Settings' "The app" lists this library's folders, each with its songs, to take out again
+  (the files stay on the phone; its songs leave the library with their likes, plays and places in
+  playlists). A folder the phone can't read for now (a card taken out) keeps its songs till it can.
+- Not yet: Muzix Connect while the library is this phone's (its socket isn't passed on), and casting this
+  phone's songs.
 
 ## Step 6 and 7 in detail
 

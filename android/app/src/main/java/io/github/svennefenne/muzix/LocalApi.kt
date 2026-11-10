@@ -65,6 +65,8 @@ class LocalApi(private val context: Context, private val lib: LocalLibrary) {
             method == "GET" && p.size == 2 && p[0] == "stream" && id != null -> stream(id)
             method == "GET" && p.size == 3 && p[0] == "tracks" && p[2] == "lyrics" && id != null -> ok(lyrics(id))
             method == "GET" && p.size >= 3 && p[0] == "art" -> picture(p[1], p[2].toLongOrNull() ?: -1)
+            method == "GET" && path == "/api/local/folders" -> ok(folders())
+            method == "DELETE" && path == "/api/local/folders" -> removeFolder(q["uri"].orEmpty())
             method == "GET" && path in setOf("/api/file-playlists", "/api/vgm/systems", "/api/me/devices") -> ok(JSONArray())
             else -> Answer.Json(404, JSONObject().put("detail", "Not in this phone's library"))
         }
@@ -88,6 +90,19 @@ class LocalApi(private val context: Context, private val lib: LocalLibrary) {
         for (k in changes.keys()) if (changes.isNull(k)) p.remove(k) else p.put(k, changes.get(k))
         store.edit().putString("prefs", p.toString()).apply()
         return p
+    }
+
+    // ------------------------------------------------------------ this phone's folders (Settings)
+
+    private fun folders() = JSONArray().apply {
+        for (tree in lib.folders()) put(JSONObject().put("uri", tree.toString()).put("name", LocalLibrary.name(tree)).put("songs", lib.songsIn(tree)))
+    }
+
+    /** A folder taken out of the library (its files stay where they are). */
+    private fun removeFolder(uri: String): Answer {
+        val tree = lib.folders().firstOrNull { it.toString() == uri } ?: return Answer.Json(404, JSONObject().put("detail", "Not one of this phone's folders"))
+        lib.removeFolder(tree)
+        return ok(JSONObject().put("ok", true))
     }
 
     // ------------------------------------------------------------ shapes (backend/muzix/serial.py)
