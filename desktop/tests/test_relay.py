@@ -98,3 +98,40 @@ def test_speakers_get_only_signed_audio_from_this_computers_library():
     assert httpx.get(lan + "/api/albums?ct=signed").status_code == 403
     relay.stop()
     server.should_exit = True
+
+
+def test_a_speakers_link_to_the_server_is_signed_by_the_server():
+    """With this computer's library on, the page signs a speaker's links with that library's token; the
+    account's episodes and stations are the server's, which signs them itself."""
+    asked = []
+
+    async def health(request: Request):
+        return JSONResponse({"ok": True, "api": 1, "address": ""})
+
+    async def token(request: Request):
+        asked.append(request.cookies.get("muzix_session"))
+        return JSONResponse({"token": "1.99.server", "expires": int(time.time()) + 86400})
+
+    app = Starlette(routes=[Route("/api/health", health), Route("/api/cast/token", token)])
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    server = uvicorn.Server(uvicorn.Config(app, log_level="warning", lifespan="off"))
+    threading.Thread(target=server.run, kwargs={"sockets": [s]}, daemon=True).start()
+    up = f"http://127.0.0.1:{s.getsockname()[1]}"
+    _up(up + "/api/health")
+    relay = Relay(up)
+    _up(relay.origin + "/")
+    relay.session = "abc"
+    episode = relay.origin + "/api/podcasts/episodes/5/stream?q=cast&ct=1.99.local"
+    # the server's music shows: the page's links are signed by the server already
+    assert relay.speaker_link(episode) == up + "/api/podcasts/episodes/5/stream?q=cast&ct=1.99.local"
+    assert asked == []
+    # this computer's library: the server's links get the server's signature, asked for once
+    relay.use_local("http://127.0.0.1:9", "tok")
+    assert relay.speaker_link(episode) == up + "/api/podcasts/episodes/5/stream?q=cast&ct=1.99.server"
+    assert relay.speaker_link(relay.origin + "/api/radio/play?url=https%3A%2F%2Fradio.example.com%2Fs&ct=1.99.local") \
+        == up + "/api/radio/play?url=https%3A%2F%2Fradio.example.com%2Fs&ct=1.99.server"
+    assert asked == ["abc"]
+    assert relay.speaker_link("https://radio.example.com/s") == "https://radio.example.com/s"
+    relay.stop()
+    server.should_exit = True

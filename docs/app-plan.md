@@ -166,7 +166,9 @@ This computer's music in Muzix Desktop, with no server, or beside one.
 - It never changes the music files: the window has no admin pages, and nothing else in the server writes
   to the library's folders. Genres come from the files' tags; covers, artist pictures and lyrics from
   Deezer, MusicBrainz and LRCLIB, kept in its own data folder.
-- Casting: the app serves the songs to the speaker over the local network, its signed links only.
+- Casting: the app serves the songs to the speaker over the local network, its signed links only. The
+  account's episodes and stations play from the server, so from 0.4.2 their links carry the server's own
+  signature (asked for with the window's login and kept for the day) instead of this library's.
 - The address screen offers "Play this computer's music instead"; the tray's "Muzix library…" switches, and
   from 0.3.1 the user menu's switch "This computer's music" too.
 - From 0.3.2 the window with no server starts with this computer's music, not the address screen, as the

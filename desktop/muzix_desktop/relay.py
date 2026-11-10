@@ -20,7 +20,8 @@ import secrets
 import socket
 import sys
 import threading
-from urllib.parse import urlsplit
+import time
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
 import uvicorn
@@ -121,6 +122,7 @@ class Relay:
         self.offline = False                    # neither address answers: what's downloaded answers instead
         self.on_offline = None                  # (offline) → called when that changes, from the relay's thread
         self.downloads = None                   # downloads.py, for its answers offline
+        self._cast = ("", 0)                    # the server's signature for speakers' links, and until when
         self.web = web_dir()
         self.loop: asyncio.AbstractEventLoop | None = None
         self.client: httpx.AsyncClient | None = None
@@ -193,6 +195,46 @@ class Relay:
         resp.raw_headers = [(k.encode("latin-1"), v.encode("latin-1")) for k, v in r.headers.multi_items()
                             if k.lower() not in HOP and k.lower() != "set-cookie"]
         return resp
+
+    # ------------------------------------------------------------ links for Cast speakers
+
+    def speaker_link(self, url: str) -> str:
+        """A link for a speaker, not this window's 127.0.0.1: the server's own address (the https one if it
+        has it: a Cast speaker plays from https), or for this computer's library, its address on the network
+        for speakers. With this computer's library on, the page's links are signed by it, so the server's
+        (the account's episodes and stations) get the server's own signature instead."""
+        if not url.startswith(self.origin + "/"):
+            return url
+        path = url[len(self.origin):]
+        base, local = self._target(path.split("?")[0])
+        if local:
+            return (self.for_speakers() or base) + path
+        if self.local and "ct=" in path and (token := self._server_token()):
+            u = urlsplit(path)
+            query = [(k, token if k == "ct" else v) for k, v in parse_qsl(u.query, keep_blank_values=True)]
+            path = urlunsplit(u._replace(query=urlencode(query)))
+        if self.away.startswith("https://"):
+            base = self.away
+        return base + path
+
+    def _server_token(self) -> str:
+        """The server's signature for speakers' links (the window's login's), kept while it's good for an hour more."""
+        token, until = self._cast
+        if until - time.time() > 3600:
+            return token
+
+        async def ask():
+            r = await self.client.get(self.address + "/api/cast/token", timeout=8,
+                                      headers={"cookie": f"muzix_session={self.session}", "user-agent": UA})
+            r.raise_for_status()
+            return r.json()
+        try:
+            got = asyncio.run_coroutine_threadsafe(ask(), self.loop).result(10)
+            self._cast = (got["token"], int(got["expires"]))
+        except Exception as e:
+            log.warning("No speaker link from the server: %s", e)
+            return ""
+        return self._cast[0]
 
     # ------------------------------------------------------------ the server's address
 

@@ -133,7 +133,7 @@ class Window(QMainWindow):
         # the player, and the page's way to it
         self.player = None
         if player.available():
-            self.player = player.Player(self.relay.headers, lambda: self.isVisible() and not self.isMinimized(), self._for_speaker,
+            self.player = player.Player(self.relay.headers, lambda: self.isVisible() and not self.isMinimized(), self.relay.speaker_link,
                                         library=lambda: self.cfg.library, downloads=self.downloads,
                                         downloaded=self._downloaded, offline=self._offline)
             self.bridge = _Bridge(self.player.handle)
@@ -157,10 +157,10 @@ class Window(QMainWindow):
                     self.system = Mpris(self.player, self.bring, self.relay.headers)
                 elif sys.platform == "win32":
                     from .smtc import Smtc
-                    self.system = Smtc(self.player, self.bring, self.relay.headers, self._for_speaker)
+                    self.system = Smtc(self.player, self.bring, self.relay.headers, self.relay.speaker_link)
                 elif sys.platform == "darwin":
                     from .nowplaying import NowPlaying
-                    self.system = NowPlaying(self.player, self.bring, self.relay.headers, self._for_speaker)
+                    self.system = NowPlaying(self.player, self.bring, self.relay.headers, self.relay.speaker_link)
             except Exception:       # no media keys, but the window plays on
                 log.exception("The system's media controls didn't start")
 
@@ -362,20 +362,6 @@ class Window(QMainWindow):
             self.player.send_downloads()
 
     # ------------------------------------------------------------ the player's side
-
-    def _for_speaker(self, url: str) -> str:
-        """A link for a speaker, not this window's 127.0.0.1: the server's own address (the https one if it
-        has it: a Cast speaker plays from https), or for this computer's library, its address on the network
-        for speakers (relay.py)."""
-        if not url.startswith(self.relay.origin):
-            return url
-        path = url[len(self.relay.origin):]
-        base, local = self.relay._target(path.split("?")[0])
-        if local:
-            base = self.relay.for_speakers() or base
-        elif self.relay.away.startswith("https://"):
-            base = self.relay.away
-        return base + path
 
     def _speakers(self):
         """The page's Cast button: the speakers on the network, or stopping the one that plays."""
