@@ -6,11 +6,17 @@ import { Cast, Monitor, MonitorSpeaker, Smartphone } from "lucide-react";
 import type { MouseEvent, ReactNode } from "react";
 import { appPlayer } from "../player/app";
 import { caster } from "../player/cast";
-import { connect, type Device, useDevices } from "../player/connect";
+import { connect, type Device, libraryOf, useDevices } from "../player/connect";
 import { usePlayer } from "../store/player";
-import { useMenu } from "./ui";
+import { type MenuItem, useMenu } from "./ui";
 
 const phone = (d: Device) => d.kind === "app" || /Android|iOS/.test(d.name);
+
+/** Why the music can't move to a device that shows another library than the queue's (its songs aren't there). */
+function elsewhereLibrary(d: Device): Partial<MenuItem> {
+  if (libraryOf(d) === connect.queueLibrary()) return {};
+  return { disabled: true, note: d.library === "local" ? `Shows ${phone(d) ? "the phone's" : "the computer's"} own music` : "Shows the server's music" };
+}
 
 /** The other device that plays, while one does. */
 function usePlayingElsewhere() {
@@ -49,11 +55,13 @@ export function CastButton({ size = 18, className = "ctl", label = false }: { si
         label: `${here?.name || "This device"} (this one)${!elsewhere && !casting ? " · playing" : ""}`,
         icon: mark(!elsewhere && !casting, here && phone(here) ? <Smartphone size={16} /> : <Monitor size={16} />),
         onClick: () => elsewhere && connect.transfer(you),
+        ...(here && elsewhere ? elsewhereLibrary(here) : {}),
       },
       ...others.map((d) => ({
         label: d.name + (d.name === elsewhere ? " · playing" : ""),
         icon: mark(d.name === elsewhere, phone(d) ? <Smartphone size={16} /> : <Monitor size={16} />),
         onClick: () => d.name !== elsewhere && connect.transfer(d.id),
+        ...(d.name !== elsewhere ? elsewhereLibrary(d) : {}),
       })),
       ...(ready ? [{ sep: true }, {
         label: casting ? `${device} · playing` : state === "unavailable" ? "Google Cast: no speakers found yet" : "Google Cast speaker…",

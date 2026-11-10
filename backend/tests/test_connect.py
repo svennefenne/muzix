@@ -32,9 +32,9 @@ def until(ws, t):
             return m
 
 
-def device(client, uid, did, name, kind="browser"):
+def device(client, uid, did, name, kind="browser", library="server"):
     ws = client.websocket_connect("/api/connect", headers={"cookie": f"muzix_session={uid}"}).__enter__()
-    ws.send_json({"t": "hello", "id": did, "name": name, "kind": kind})
+    ws.send_json({"t": "hello", "id": did, "name": name, "kind": kind, "library": library})
     assert until(ws, "devices")["you"] == did
     return ws
 
@@ -106,3 +106,33 @@ def test_a_reload_is_the_same_device_and_nobody_signed_out_gets_in(client):
     with pytest.raises(Exception):
         with client.websocket_connect("/api/connect") as ws:
             ws.receive_json()
+
+
+def test_a_phone_playing_its_own_music_is_controlled_but_its_queue_stays(client):
+    desk = device(client, 1, "desk", "Chrome on Linux")
+    phone = device(client, 1, "phone", "Galaxy S23", "app", library="local")
+    listed = until(desk, "devices")
+    assert {d["id"]: d["library"] for d in listed["devices"]} == {"desk": "server", "phone": "local"}
+
+    # the phone plays this phone's music: the desk sees it and controls it
+    mine = [{"key": "track:1", "title": "Only on the phone"}]
+    phone.send_json({"t": "state", "state": {"queue": mine, "index": 0, "position": 3, "playing": True, "library": "local:phone"}})
+    assert until(desk, "state")["state"]["library"] == "local:phone"
+    desk.send_json({"t": "command", "cmd": "next"})
+    assert until(phone, "command")["cmd"] == "next"
+    # but its songs don't move to the desk (the desk's /api/stream/1 is another song)
+    desk.send_json({"t": "transfer", "to": "desk", "play": True})
+    desk.send_json({"t": "sync"})
+    assert until(desk, "devices")["active"] == "phone"
+
+    # the server's music moves only between devices that show it
+    laptop = device(client, 1, "laptop", "Firefox on Windows")
+    desk.send_json({"t": "state", "state": {"queue": QUEUE, "index": 0, "position": 0, "playing": True, "library": "server"}})
+    assert until(phone, "yield") == {"t": "yield"}
+    desk.send_json({"t": "transfer", "to": "phone", "play": True})
+    desk.send_json({"t": "transfer", "to": "laptop", "play": True})
+    took = until(laptop, "takeover")
+    assert took["state"]["queue"] == QUEUE
+    for ws in (desk, phone, laptop):
+        ws.close()
+

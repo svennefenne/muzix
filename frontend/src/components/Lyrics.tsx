@@ -12,7 +12,8 @@ import { useUi } from "../store/ui";
 import type { LyricLine, Lyrics } from "../types";
 
 export function useLyrics(item: PlayItem | null) {
-  const id = item?.kind === "track" ? item.id : null;
+  // another library's song (player/connect.ts) has another song's id here
+  const id = item?.kind === "track" && !item.foreign ? item.id : null;
   return useQuery({
     queryKey: ["lyrics", id], enabled: id !== null, staleTime: Infinity, retry: false,
     queryFn: () => api.get<Lyrics>(`/api/tracks/${id}/lyrics`),

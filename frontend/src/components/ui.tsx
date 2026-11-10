@@ -161,6 +161,8 @@ export interface MenuItem {
   sep?: boolean;
   heading?: string;
   checked?: boolean;     // a switch: the item turns it on or off
+  disabled?: boolean;    // shown, not chosen: `note` says why
+  note?: string;
 }
 
 interface MenuState {
@@ -208,7 +210,9 @@ export function MenuHost() {
           {it.icon}{it.label}<SwitchLook on={it.checked} />
         </button>
       ) : (
-        <button key={i} role="menuitem" onClick={() => { hide(); it.onClick?.(); }}>{it.icon}{it.label}</button>
+        <button key={i} role="menuitem" disabled={it.disabled} onClick={() => { hide(); it.onClick?.(); }}>
+          {it.icon}{it.note ? <span className="menu-text">{it.label}<small>{it.note}</small></span> : it.label}
+        </button>
       ))}
     </div>
   );

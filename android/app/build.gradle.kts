@@ -52,7 +52,7 @@ android {
         minSdk = 29
         targetSdk = 35
         versionCode = commits.get()
-        versionName = "0.10.4"
+        versionName = "0.10.5"
     }
 
     buildFeatures {
@@ -102,4 +102,6 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     // this phone's library: the app's own little web server on 127.0.0.1 (LocalServer.kt)
     implementation("org.nanohttpd:nanohttpd:2.3.1")
+    // and its Muzix Connect socket, passed on to the server
+    implementation("org.nanohttpd:nanohttpd-websocket:2.3.1")
 }

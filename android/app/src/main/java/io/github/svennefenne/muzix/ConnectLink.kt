@@ -137,6 +137,7 @@ class ConnectLink(private val audio: AudioManager, private val player: () -> Pla
             .put("repeat", when (p.repeatMode) { Player.REPEAT_MODE_ALL -> "all"; Player.REPEAT_MODE_ONE -> "one"; else -> "off" })
             .put("volume", mediaVolume())
             .put("muted", p.volume == 0f)
+            .put("library", library())
         if (sentQueue != queueVersion) {
             st.put("queue", JSONArray((0 until p.mediaItemCount).mapNotNull { carried(p.getMediaItemAt(it))?.let(::JSONObject) }))
             sentQueue = queueVersion
@@ -193,8 +194,8 @@ class ConnectLink(private val audio: AudioManager, private val player: () -> Pla
                 "one" -> Player.REPEAT_MODE_ONE
                 else -> Player.REPEAT_MODE_OFF
             }
-            "load" -> load(p, m.optJSONArray("queue") ?: return, m.optInt("index"), m.optDouble("position", 0.0), m.optBoolean("play", true))
-            "queue" -> {
+            "load" -> if (ours(m)) load(p, m.optJSONArray("queue") ?: return, m.optInt("index"), m.optDouble("position", 0.0), m.optBoolean("play", true))
+            "queue" -> if (ours(m)) {
                 // the queue changed there: what comes after what plays here, replaced
                 val queue = m.optJSONArray("queue") ?: return
                 val key = p.currentMediaItem?.mediaId
@@ -253,6 +254,12 @@ class ConnectLink(private val audio: AudioManager, private val player: () -> Pla
         if (quality != "original" || kind == "radio") return false
         return if (it.has("castNative")) it.optBoolean("castNative") else kind == "book"
     }
+
+    /** The library this phone plays from, as the states say it (backend/muzix/api/connect.py): the server's, or its own. */
+    private fun library(): String = if (Server.local) "local:${device?.optString("id")}" else "server"
+
+    /** A queue from another device that's of this phone's library (another library's songs aren't here). */
+    private fun ours(m: JSONObject): Boolean = m.optString("library").let { it.isEmpty() || it == library() }
 
     private fun carried(it: MediaItem): String? = it.mediaMetadata.extras?.getString("muzix")?.takeIf { s -> s.isNotEmpty() }
 

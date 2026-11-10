@@ -230,6 +230,8 @@ class Engine {
       onUnfollow: (pos) => {
         appPlayer.standby = false;
         usePlayer.getState().set({ playing: false, buffering: false });
+        // another library's queue doesn't play here: its songs aren't in this one
+        if (usePlayer.getState().current()?.foreign) return usePlayer.getState().set({ queue: [], index: -1, position: 0, duration: 0 });
         if (usePlayer.getState().current()) this.begin(false, pos);
       },
       onTakeover: (pos, play) => {
@@ -280,7 +282,7 @@ class Engine {
       case "load": {
         const queue = c.queue as PlayItem[];
         const index = Number(c.index) || 0;
-        if (!queue?.length) return;
+        if (!queue?.length || (c.library && c.library !== connect.mine())) return;
         s.set({ queue, index });
         this.begin(c.play !== false, Number(c.position) || queue[index]?.resume || 0);
         break;
@@ -288,6 +290,7 @@ class Engine {
       case "queue": {
         // the queue changed there (added, moved, removed): what plays here plays on
         const queue = c.queue as PlayItem[];
+        if (c.library && c.library !== connect.mine()) return;
         const key = s.current()?.key;
         const at = queue.findIndex((it) => it.key === key);
         s.set({ queue, index: at >= 0 ? at : Math.min(Number(c.index) || 0, queue.length - 1) });
@@ -319,6 +322,11 @@ class Engine {
 
   play(items: PlayItem[], start = 0) {
     if (!items.length) return;
+    // another device plays another library's music: what's chosen here plays here (its songs aren't there)
+    if (connect.following && !connect.sameLibrary()) {
+      connect.claim();
+      appPlayer.standby = false;
+    }
     usePlayer.getState().set({ queue: items, index: start });
     if (this.remote) return this.remote.loadQueue(start, items[start]?.resume ?? 0);
     this.load(true);
@@ -327,6 +335,9 @@ class Engine {
   enqueue(items: PlayItem[], next = false) {
     const s = usePlayer.getState();
     if (s.index < 0) return this.play(items);
+    if (connect.following && !connect.sameLibrary()) {
+      return useUi.getState().notify("The queue there is another library's music: play this here instead", "error");
+    }
     const q = [...s.queue];
     q.splice(next ? s.index + 1 : q.length, 0, ...items);
     s.set({ queue: q });

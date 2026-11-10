@@ -206,7 +206,13 @@ This phone's music in the Android app (0.10.0), with no server, or beside one.
   on the wifi, where a second listener gives out only the audio, by links signed with a token new for each
   run (GET /api/cast/token); the account's episodes and stations are passed on to the server with the
   app's login. The phone has to stay on that wifi while it casts its own songs.
-- Not yet: Muzix Connect while the library is this phone's (its socket isn't passed on).
+- Muzix Connect (0.10.5; Muzix Desktop 0.4.1 too): a device showing its own library is still one of the
+  account's devices (the phone's server passes the page's socket on to the server, with the app's login),
+  and the user's choices of 2026-11-10 hold: what it plays is seen and controlled from the others (and it
+  controls theirs), but a queue moves only between devices that show the same library: the device picker
+  greys the others out, saying which music they show, and the server refuses such a move too. Another
+  library's songs are shown without their covers, likes or links; music chosen while another library
+  plays elsewhere plays here, and it can't go into that queue.
 
 ## Step 6 and 7 in detail
 

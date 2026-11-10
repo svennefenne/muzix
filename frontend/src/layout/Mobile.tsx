@@ -60,7 +60,7 @@ export function MiniPlayer() {
         {/* cast and like go first when the screen is narrow (see .miniplayer-slot); an episode or
             audiobook has the steps and the skips instead, and the full player has cast */}
         {spoken ? <SpokenSteps className="mp-play" size={22} stepSize={17} /> : <CastButton className="mp-play mp-cast" size={20} />}
-        {cur.kind === "track" && (
+        {cur.kind === "track" && !cur.foreign && (
           <button className={`mp-play mp-like ${cur.liked ? "on" : ""}`} aria-label="Like" aria-pressed={!!cur.liked}
                   onClick={() => toggleQueuedLike(cur)}>
             <Heart size={20} fill={cur.liked ? "currentColor" : "none"} />

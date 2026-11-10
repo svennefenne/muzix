@@ -80,7 +80,7 @@ export function NowPanel() {
                 {live ? cur.title : cur.artistId ? <Link to={`/library/artists/${cur.artistId}`}>{cur.artist}</Link> : cur.artist}
               </div>
             </div>
-            {cur.kind === "track" && (
+            {cur.kind === "track" && !cur.foreign && (
               <button className={`ctl ${isLiked ? "on" : ""}`} aria-label={isLiked ? "Remove from liked songs" : "Add to liked songs"} aria-pressed={isLiked}
                       data-tip={likeTip(isLiked)}
                       onClick={async () => setLiked({ ...liked, [cur.key]: await toggleLike("track", Number(cur.id), isLiked) })}>
@@ -94,8 +94,8 @@ export function NowPanel() {
             </p>
           )}
           {cur.albumId && <Link className="np-albumlink" to={`/album/${cur.albumId}`}>Go to the album</Link>}
-          {cur.kind === "episode" && <Link className="np-albumlink" to={`/podcasts/episode/${cur.id}`}>Go to the episode</Link>}
-          {cur.kind === "radio" && (
+          {cur.kind === "episode" && !cur.foreign && <Link className="np-albumlink" to={`/podcasts/episode/${cur.id}`}>Go to the episode</Link>}
+          {cur.kind === "radio" && !cur.foreign && (
             <button className="np-link np-albumlink" onClick={() => showHistory(String(cur.id), cur.title)}>
               <History size={14} /> Played on this station
             </button>

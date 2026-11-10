@@ -4,8 +4,14 @@ what it plays, and where; their controls come back to it through here, and choos
 moves the music there. Kept in memory only: who's online, which device plays, and what it played
 last (so another can carry on with it, even once it's gone).
 
+A device can show a library of its own (the app's: this phone's or this computer's music) instead of the
+server's. What it plays is still seen and controlled from the others, but a queue only moves between
+devices that show the same library: a song's address means another song in another library. The state
+says which library its queue is from ("server", or "local:<device id>").
+
 Messages, as JSON with a "t":
-  from a device   hello {id, name, kind}       on connecting, and again after a reconnect
+  from a device   hello {id, name, kind, library}   on connecting, and again after a reconnect; library
+                                               "local" while it shows its own
                   state {state}                the device that plays: its queue (when it changed),
                                                index, position, playing, ...; playing elsewhere makes
                                                this one the device that plays
@@ -13,7 +19,7 @@ Messages, as JSON with a "t":
                   transfer {to, play, state?}  play on `to` from now on (`state`: what to play, when
                                                nothing played anywhere yet)
                   sync                         back in view: the devices and what plays, again
-  to a device     devices {devices, active, you, grace}   the active device missing from devices
+  to a device     devices {devices, active, you, grace}   each with its library; the active device missing from devices
                                                is away: for `grace` seconds it may come back
                   state {state}                what the device that plays plays
                   command {cmd, ...}           to the device that plays
@@ -44,6 +50,12 @@ class Device:
     name: str
     kind: str
     ws: WebSocket
+    library: str = "server"          # or "local": the app's own music
+
+
+def library(dev: Device) -> str:
+    """The library a device plays from, as states name it."""
+    return f"local:{dev.id}" if dev.library == "local" else "server"
 
 
 @dataclass
@@ -87,7 +99,7 @@ def current(acc: Account) -> dict | None:
 
 async def tell_devices(acc: Account, only: Device | None = None):
     settle(acc)
-    listed = [{"id": d.id, "name": d.name, "kind": d.kind} for d in acc.devices.values()]
+    listed = [{"id": d.id, "name": d.name, "kind": d.kind, "library": d.library} for d in acc.devices.values()]
     for d in [only] if only else list(acc.devices.values()):
         await send(d, {"t": "devices", "devices": listed, "active": acc.active, "you": d.id, "grace": GRACE})
 
@@ -123,6 +135,8 @@ async def on_transfer(acc: Account, dev: Device, m: dict):
     st = mine or current(acc) or m.get("state")
     if not st or not st.get("queue"):
         return
+    if (st.get("library") or "server") != library(to):
+        return          # its songs aren't in that device's library
     before = acc.devices.get(acc.active)
     if before and before.id != to.id:
         await send(before, {"t": "yield"})
@@ -153,7 +167,8 @@ async def connect(ws: WebSocket):
                 if dev and acc.devices.get(dev.id) is dev:
                     del acc.devices[dev.id]
                 dev = Device(id=str(m.get("id") or "")[:64], name=str(m.get("name") or "A device")[:80],
-                             kind=m.get("kind") if m.get("kind") in KINDS else "browser", ws=ws)
+                             kind=m.get("kind") if m.get("kind") in KINDS else "browser", ws=ws,
+                             library="local" if m.get("library") == "local" else "server")
                 if not dev.id:
                     break
                 old = acc.devices.get(dev.id)

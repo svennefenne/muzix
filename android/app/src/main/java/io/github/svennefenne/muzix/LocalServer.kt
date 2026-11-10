@@ -6,6 +6,7 @@ import android.net.NetworkCapabilities
 import android.util.Log
 import android.webkit.CookieManager
 import fi.iki.elonen.NanoHTTPD
+import fi.iki.elonen.NanoWSD
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -13,6 +14,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.FileInputStream
+import java.io.IOException
 import java.net.Inet4Address
 import java.security.SecureRandom
 import java.util.Base64
@@ -24,16 +26,27 @@ import java.util.concurrent.TimeUnit
  * server too, what's the account's stays the server's (podcasts, radio, the account's devices), passed
  * on with the app's login there. Only the app may use it (other apps can reach 127.0.0.1): the web view
  * and the player carry a secret, new for each run. A Cast speaker gets the songs from the phone's address
- * on the wifi instead, by their signed links only (forSpeakers).
+ * on the wifi instead, by their signed links only (forSpeakers). The page's Muzix Connect socket is passed
+ * on to the server, the account's (its devices see and control what this phone plays).
  */
-class LocalServer(private val context: Context, private val api: LocalApi, port: Int) : NanoHTTPD("127.0.0.1", port) {
+class LocalServer(private val context: Context, private val api: LocalApi, port: Int) : NanoWSD("127.0.0.1", port) {
     val secret: String = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(24).also { SecureRandom().nextBytes(it) })
     val origin get() = "http://127.0.0.1:$listeningPort"
     /** The server whose account this is, if there's one: what's the account's goes there. */
     @Volatile var server = ""
-    private val http = OkHttpClient.Builder().readTimeout(0, TimeUnit.MILLISECONDS).build()
+    private val http = OkHttpClient.Builder().readTimeout(0, TimeUnit.MILLISECONDS).pingInterval(25, TimeUnit.SECONDS).build()
 
     override fun serve(session: IHTTPSession): Response {
+        // a socket: only the app's Connect one, while there's a server to pass it on to
+        if (isWebsocketRequested(session) && (session.uri != "/api/connect" || !allowed(session) || server.isEmpty())) {
+            return newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "No socket here")
+        }
+        return super.serve(session)
+    }
+
+    override fun openWebSocket(handshake: IHTTPSession): WebSocket = Passed(handshake)
+
+    override fun serveHttp(session: IHTTPSession): Response {
         val path = session.uri
         if (!path.startsWith("/api/")) return page(path)
         if (!allowed(session)) return newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "Only the Muzix app may use this")
@@ -160,6 +173,43 @@ class LocalServer(private val context: Context, private val api: LocalApi, port:
     }
 
     // ------------------------------------------------------------ the account's, on the server
+
+    /** The page's Connect socket (or the app's own, ConnectLink), passed on to the server with the app's login. */
+    private inner class Passed(handshake: IHTTPSession) : WebSocket(handshake) {
+        private var up: okhttp3.WebSocket? = null
+
+        override fun onOpen() {
+            val req = Request.Builder().url(server.replaceFirst("http", "ws") + "/api/connect").header("User-Agent", PlaybackService.USER_AGENT)
+                .apply { CookieManager.getInstance().getCookie(server)?.let { header("Cookie", it) } }.build()
+            up = http.newWebSocket(req, object : okhttp3.WebSocketListener() {
+                override fun onMessage(webSocket: okhttp3.WebSocket, text: String) {
+                    runCatching { send(text) }
+                }
+
+                override fun onClosed(webSocket: okhttp3.WebSocket, code: Int, reason: String) = down()
+
+                override fun onFailure(webSocket: okhttp3.WebSocket, t: Throwable, response: okhttp3.Response?) = down()
+            })
+        }
+
+        private fun down() {
+            runCatching { if (isOpen) close(WebSocketFrame.CloseCode.GoingAway, "The server's socket closed", false) }
+        }
+
+        override fun onMessage(message: WebSocketFrame) {
+            up?.send(message.textPayload)
+        }
+
+        override fun onClose(code: WebSocketFrame.CloseCode?, reason: String?, initiatedByRemote: Boolean) {
+            up?.close(1000, null)
+        }
+
+        override fun onPong(pong: WebSocketFrame?) {}
+
+        override fun onException(exception: IOException?) {
+            up?.cancel()
+        }
+    }
 
     private fun account(s: IHTTPSession, method: String, body: String): Response {
         val url = server + s.uri + (s.queryParameterString?.let { "?$it" } ?: "")

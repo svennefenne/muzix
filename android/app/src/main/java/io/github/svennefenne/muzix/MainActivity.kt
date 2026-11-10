@@ -47,7 +47,6 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.mediarouter.app.MediaRouteChooserDialog
 import androidx.mediarouter.app.MediaRouteControllerDialog
 import androidx.webkit.WebViewCompat
-import fi.iki.elonen.NanoHTTPD
 import androidx.webkit.WebViewFeature
 import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.cast.framework.CastState
@@ -422,10 +421,11 @@ class MainActivity : ComponentActivity() {
         // the same port each time if it's free (the page keeps its settings by its address)
         val srv = LocalServer.running ?: run {
             val port = getSharedPreferences("muzix", MODE_PRIVATE).getInt("local_port", 0)
+            // no read timeout: the Connect socket waits quietly for what the other devices do
             try {
-                LocalServer(applicationContext, api, port).also { it.start(NanoHTTPD.SOCKET_READ_TIMEOUT, true) }
+                LocalServer(applicationContext, api, port).also { it.start(0, true) }
             } catch (e: java.io.IOException) {
-                LocalServer(applicationContext, api, 0).also { it.start(NanoHTTPD.SOCKET_READ_TIMEOUT, true) }
+                LocalServer(applicationContext, api, 0).also { it.start(0, true) }
             }
         }.also { LocalServer.running = it }
         getSharedPreferences("muzix", MODE_PRIVATE).edit().putInt("local_port", srv.listeningPort).apply()

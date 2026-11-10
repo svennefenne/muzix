@@ -31,6 +31,7 @@ export interface PlayItem {
   partOffset?: number;        // a book part's start within the whole book
   auto?: boolean;             // added by autoplay
   peer?: string | null;       // the server in the Library Network it's from
+  foreign?: boolean;          // another device plays it from another library (player/connect.ts): only shown
 }
 
 export function fromTrack(t: Track): PlayItem {

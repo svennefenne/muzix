@@ -1,13 +1,27 @@
 /** Muzix Connect, as with Spotify: this page is one of the account's devices (backend/muzix/api/connect.py).
  * While another device plays, this one follows it: the queue and what plays are that device's, shown
  * here, and the controls here go to it (the engine hands them to this module the way it does to a
- * Cast speaker). Choosing a device moves the music there, where it was. */
+ * Cast speaker). Choosing a device moves the music there, where it was.
+ *
+ * An app that shows its own library (this phone's or this computer's music) is a device too, but a queue
+ * moves only between devices that show the same library: a song's address is another song in another
+ * library. Another library's songs are shown here without their covers, likes or links. */
 
 import { create } from "zustand";
 import { type PlayItem, type Repeat, usePlayer } from "../store/player";
-import { appPlayer } from "./app";
+import { appPlayer, useShell } from "./app";
 
-export interface Device { id: string; name: string; kind: "browser" | "app" }
+export interface Device { id: string; name: string; kind: "browser" | "app"; library?: "server" | "local" }
+
+/** The library a device plays from, as the states say it: the server's, or that device's own. */
+export function libraryOf(d: Device) {
+  return d.library === "local" ? `local:${d.id}` : "server";
+}
+
+/** Another library's song, as this page shows it: no cover, nothing that would find another song here. */
+function foreign(it: PlayItem): PlayItem {
+  return { ...it, art: null, albumId: null, artistId: null, liked: false, foreign: true };
+}
 
 interface DeviceState {
   devices: Device[];
@@ -25,6 +39,7 @@ interface Shared {
   index: number; position: number; duration: number;
   playing: boolean; buffering: boolean; shuffle: boolean; repeat: Repeat;
   volume?: number; muted?: boolean;
+  library?: string;           // the queue's: "server", or "local:<device id>" (none from an older app: the server's)
 }
 
 export interface Command {
@@ -88,9 +103,26 @@ class Connect {
   private publishing = false;
   private parked = false;          // in the app, out of view: the app has the device's connection
   private silence = 0;             // back in view, a sync asked for: no answer, and the connection was dead
+  private theirs = "server";       // the library of what the device that plays plays
+  private originals = new Map<string, PlayItem>();   // another library's songs as they came, by key
 
   get active() {
     return this.following;
+  }
+
+  /** The library this device shows. */
+  mine() {
+    return useShell.getState().library === "local" ? `local:${this.id || deviceId()}` : "server";
+  }
+
+  /** The library of the queue the device picker would move: what plays there, or here. */
+  queueLibrary() {
+    return this.following ? this.theirs : this.mine();
+  }
+
+  /** Whether what's chosen here can go to the device that plays: it shows the same library. */
+  sameLibrary() {
+    return !this.following || this.theirs === this.mine();
   }
 
   attach(hooks: ConnectHooks) {
@@ -148,7 +180,8 @@ class Connect {
    * hears it too: it keeps the device's connection while the page is out of view. */
   hello() {
     if (!this.wanted) return;
-    const hello = { t: "hello", id: this.id, name: deviceName(), kind: appPlayer.available ? "app" : "browser" };
+    const hello = { t: "hello", id: this.id, name: deviceName(), kind: appPlayer.available ? "app" : "browser",
+                    library: useShell.getState().library === "local" ? "local" : "server" };
     this.send(hello);
     if (appPlayer.available) appPlayer.tellDevice(hello);
   }
@@ -242,7 +275,7 @@ class Connect {
     if (this.following || !this.ws || s.index < 0 || (active !== you && !s.playing)) return;
     const st: Shared = {
       index: s.index, position: s.position, duration: s.duration, playing: s.playing, buffering: s.buffering,
-      shuffle: s.shuffle, repeat: s.repeat, volume: s.volume, muted: s.muted,
+      shuffle: s.shuffle, repeat: s.repeat, volume: s.volume, muted: s.muted, library: this.mine(),
     };
     if (s.queue !== this.sentQueue || active !== you) st.queue = s.queue;
     this.sentQueue = s.queue;
@@ -303,11 +336,15 @@ class Connect {
    * an empty player picks up what played last, to play here. */
   private onState(st: Shared) {
     const s = usePlayer.getState();
-    if (!this.following && (s.queue.length || st.playing)) return;
+    const theirs = st.library || "server";
+    if (!this.following && (s.queue.length || st.playing || theirs !== this.mine())) return;
+    if (theirs !== this.theirs && !st.queue) return;     // another library's queue comes with it
+    this.theirs = theirs;
+    if (st.queue && theirs !== this.mine()) this.originals = new Map(st.queue.map((it) => [it.key, it]));
     const before = s.current()?.key;
     this.applying = true;
     s.set({
-      ...(st.queue ? { queue: st.queue } : {}),
+      ...(st.queue ? { queue: theirs === this.mine() ? st.queue : st.queue.map(foreign) } : {}),
       index: st.index, position: st.position, duration: st.duration, playing: this.following && st.playing,
       buffering: this.following && st.buffering, shuffle: st.shuffle, repeat: st.repeat,
       ...(this.following && st.volume !== undefined && Date.now() - this.turned > 1500
@@ -338,9 +375,9 @@ class Connect {
   /** The music moves to `device` (this one, or another), where it was. */
   transfer(device: string) {
     const s = usePlayer.getState();
-    const state: Shared | undefined = s.queue.length ? {
+    const state: Shared | undefined = s.queue.length && !this.following ? {
       queue: s.queue, index: Math.max(0, s.index), position: s.position, duration: s.duration, playing: true, buffering: false,
-      shuffle: s.shuffle, repeat: s.repeat,
+      shuffle: s.shuffle, repeat: s.repeat, library: this.mine(),
     } : undefined;
     this.send({ t: "transfer", to: device, play: s.playing || this.following ? s.playing : true, state });
   }
@@ -353,12 +390,17 @@ class Connect {
 
   loadQueue(start: number, at = 0, autoplay = true) {
     const s = usePlayer.getState();
-    this.command({ cmd: "load", queue: s.queue, index: start, position: at, play: autoplay });
+    this.command({ cmd: "load", queue: this.outgoing(s.queue), index: start, position: at, play: autoplay, library: this.theirs });
   }
 
   syncUpcoming() {
     const s = usePlayer.getState();
-    this.command({ cmd: "queue", queue: s.queue, index: s.index });
+    this.command({ cmd: "queue", queue: this.outgoing(s.queue), index: s.index, library: this.theirs });
+  }
+
+  /** The queue as the device that plays has it: another library's songs as they came, not as shown here. */
+  private outgoing(queue: PlayItem[]) {
+    return queue.map((it) => (it.foreign ? this.originals.get(it.key) ?? it : it));
   }
 
   jump(index: number) {

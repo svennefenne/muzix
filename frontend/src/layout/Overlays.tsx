@@ -181,7 +181,7 @@ function PhoneTransport() {
         )}
       </div>
       <div className="np-extra">
-        {spoken ? <>{shuffle}{repeat}</> : cur?.kind === "track" ? (
+        {spoken ? <>{shuffle}{repeat}</> : cur?.foreign ? <span /> : cur?.kind === "track" ? (
           <button className={`ctl ${cur.liked ? "on" : ""}`} aria-label="Like" aria-pressed={!!cur.liked} data-tip={likeTip(!!cur.liked)}
                   onClick={() => toggleQueuedLike(cur)}>
             <Heart size={22} fill={cur.liked ? "currentColor" : "none"} />
@@ -350,7 +350,7 @@ export function NowPlaying() {
                 <button className="btn" data-tip="Previous song" data-tip-key="P" onClick={() => engine.prev()}>Previous</button>
                 <button className="btn accent" data-tip="Play or pause" data-tip-key="Space" onClick={() => engine.toggle()}>Play / pause</button>
                 <button className="btn" data-tip={nextTip(usePlayer.getState())} data-tip-key="N" onClick={() => engine.next()}>Next</button>
-                {cur.kind === "radio" && (
+                {cur.kind === "radio" && !cur.foreign && (
                   <button className="btn" onClick={() => showHistory(String(cur.id), cur.title)}><History size={15} /> Played here</button>
                 )}
                 <LyricsButton />

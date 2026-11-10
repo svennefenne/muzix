@@ -121,7 +121,7 @@ export function PlayerBar() {
             <div className="np-text">
               <div className="np-title ellipsis">
                 {cur.albumId ? <Link to={`/album/${cur.albumId}`}>{s.liveTitle || cur.title}</Link>
-                  : cur.kind === "episode" ? <Link to={`/podcasts/episode/${cur.id}`}>{cur.title}</Link> : (s.liveTitle || cur.title)}
+                  : cur.kind === "episode" && !cur.foreign ? <Link to={`/podcasts/episode/${cur.id}`}>{cur.title}</Link> : (s.liveTitle || cur.title)}
               </div>
               <div className="np-sub ellipsis">
                 {s.liveTitle ? cur.title : cur.artistId ? <Link to={`/artist/${cur.artistId}`}>{cur.artist}</Link> : cur.artist}
@@ -129,7 +129,7 @@ export function PlayerBar() {
               </div>
               <CastNote />
             </div>
-            {cur.kind === "track" && (
+            {cur.kind === "track" && !cur.foreign && (
               <button className={`mini ${cur.liked ? "liked" : ""}`} aria-label="Like" aria-pressed={!!cur.liked} data-tip={likeTip(!!cur.liked)}
                       onClick={() => toggleQueuedLike(cur)}>
                 <Heart size={16} fill={cur.liked ? "currentColor" : "none"} />
