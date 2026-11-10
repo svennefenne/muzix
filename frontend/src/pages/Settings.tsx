@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { LogOut, Network, Plus, Server, X } from "lucide-react";
+import { ChevronRight, LogOut, Network, Plus, Server, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { queryClient } from "../actions";
 import { ago, api } from "../api";
@@ -198,20 +198,35 @@ function SkinRules() {
   );
 }
 
+/** The color schemes in groups that open and close: the one with the scheme in use is open to begin with, and
+ * a filter opens every group it finds something in. */
 export function SchemePicker({ value, onChange, dark }: { value: string; onChange: (slug: string) => void; dark: boolean }) {
   const [filter, setFilter] = useState("");
   const list = useMemo(() => PALETTES.filter((p) => p.name.toLowerCase().includes(filter.toLowerCase())), [filter]);
+  const [open, setOpen] = useState(() => new Set<string>([PALETTES.find((p) => p.slug === value)?.category ?? "muzix"]));
+  const toggle = (cat: string) => setOpen((o) => new Set(o.has(cat) ? [...o].filter((c) => c !== cat) : [...o, cat]));
+  const find = (text: string) => {
+    setFilter(text);
+    const q = text.trim().toLowerCase();
+    if (q) setOpen((o) => new Set([...o, ...PALETTES.filter((p) => p.name.toLowerCase().includes(q)).map((p) => p.category)]));
+  };
+  const inUse = PALETTES.find((p) => p.slug === value);
   return (
     <div>
-      <input className="input" style={{ maxWidth: 320, marginBottom: 14 }} placeholder={`Filter ${PALETTES.length} color schemes`}
-             value={filter} onChange={(e) => setFilter(e.target.value)} />
+      <input className="input" style={{ maxWidth: 320, marginBottom: 10 }} placeholder={`Filter ${PALETTES.length} color schemes`}
+             value={filter} onChange={(e) => find(e.target.value)} />
       {GROUPS.map(([cat, label]) => {
         const items = list.filter((p) => p.category === cat);
         if (!items.length) return null;
+        const shown = open.has(cat);
         return (
-          <div key={cat} style={{ marginBottom: 18 }}>
-            <div className="kicker" style={{ marginBottom: 8 }}>{label} · {items.length}</div>
-            <div className="swatches">
+          <div key={cat} className="scheme-group">
+            <button className="scheme-head" aria-expanded={shown} aria-controls={`schemes-${cat}`} onClick={() => toggle(cat)}>
+              <ChevronRight size={14} className="chev" aria-hidden="true" />
+              <span>{label} · {items.length}</span>
+              {inUse?.category === cat && <span className="in-use ellipsis">{inUse.name}</span>}
+            </button>
+            <div className="swatches" id={`schemes-${cat}`} hidden={!shown}>
               {items.map((p) => {
                 const c = dark ? p.dark : p.light;
                 return (
@@ -219,7 +234,7 @@ export function SchemePicker({ value, onChange, dark }: { value: string; onChang
                     <div className="strip" style={{ background: c.bg }}>
                       {[c.bg, c.surface, c.primary, c.secondary, c.success, c.warning, c.error, c.text].map((x, i) => <span key={i} style={{ background: x }} />)}
                     </div>
-                    <div className="name ellipsis">{p.name}</div>
+                    <div className="name">{p.name}</div>
                   </button>
                 );
               })}
