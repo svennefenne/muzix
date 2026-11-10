@@ -52,7 +52,7 @@ android {
         minSdk = 29
         targetSdk = 35
         versionCode = commits.get()
-        versionName = "0.9.0"
+        versionName = "0.10.0"
     }
 
     buildFeatures {
@@ -100,4 +100,6 @@ dependencies {
     implementation("androidx.fragment:fragment-ktx:1.8.9")
     // the app's own connection to the account's other devices, while its page is frozen (ConnectLink.kt)
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // this phone's library: the app's own little web server on 127.0.0.1 (LocalServer.kt)
+    implementation("org.nanohttpd:nanohttpd:2.3.1")
 }

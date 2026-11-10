@@ -45,6 +45,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.mediarouter.app.MediaRouteChooserDialog
 import androidx.mediarouter.app.MediaRouteControllerDialog
 import androidx.webkit.WebViewCompat
+import fi.iki.elonen.NanoHTTPD
 import androidx.webkit.WebViewFeature
 import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.cast.framework.CastState
@@ -67,6 +68,14 @@ class MainActivity : ComponentActivity() {
     private var web: WebView? = null
     private var server = ""
     private var picked: ValueCallback<Array<Uri>>? = null
+    // this phone's music (step 5): its folders, read by the app, served by its own little server
+    private val library by lazy { LocalLibrary(applicationContext) }
+    private val pickFolder = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
+        if (tree != null) {
+            library.addFolder(tree)
+            openLocal(firstRead = true)
+        }
+    }
     private val pickFiles = registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         picked?.onReceiveValue(uris.toTypedArray())
         picked = null
@@ -104,7 +113,8 @@ class MainActivity : ComponentActivity() {
             if (w != null && w.canGoBack()) w.goBack() else moveTaskToBack(true)   // the music goes on
         }
         val saved = Server.saved(this)
-        if (saved == null) showConnect("", null) else showWeb(saved)
+        if (Server.library(this) == "local" && library.folders().isNotEmpty()) openLocal(firstRead = false)
+        else if (saved == null) showConnect("", null) else showWeb(saved)
         soon()          // with no network at all, nothing below calls
         // the network changes (wifi at home, mobile data outside): the address that answers (it runs once at the start, too)
         getSystemService(ConnectivityManager::class.java).registerDefaultNetworkCallback(networks)
@@ -145,7 +155,7 @@ class MainActivity : ComponentActivity() {
     /** Commands from the page that aren't for the player. */
     private fun command(t: String, m: JSONObject) {
         when (t) {
-            "server" -> showConnect(server, null)
+            "server" -> showConnect(if (Server.local) Server.last(this) else server, null)
             "cast" -> chooseSpeaker()
             "bars" -> runCatching { Color.parseColor(m.optString("color")) }.getOrNull()?.let(::bars)
             "update" -> update(m.optString("url"))
@@ -303,6 +313,28 @@ class MainActivity : ComponentActivity() {
             setBackgroundColor(PRIMARY)
         }
         box.addView(go, LinearLayout.LayoutParams(dp(320), dp(48)))
+        // or no server: this phone's music, from the folders picked
+        val here = Button(this).apply {
+            text = if (library.folders().isEmpty()) "Play this phone's music" else "This phone's music"
+            setTextColor(TEXT)
+            setBackgroundColor(Color.TRANSPARENT)
+            setOnClickListener { if (library.folders().isEmpty()) pickFolder.launch(null) else openLocal(firstRead = false) }
+        }
+        box.addView(here, LinearLayout.LayoutParams(dp(320), dp(48)).apply { topMargin = dp(12) })
+        if (library.folders().isNotEmpty()) {
+            box.addView(TextView(this).apply {
+                text = "Its folders: " + library.folders().joinToString(", ") { Uri.decode(it.lastPathSegment.orEmpty()).substringAfterLast(':').ifEmpty { "/" } }
+                setTextColor(DIM)
+                textSize = 13f
+                gravity = Gravity.CENTER
+            }, LinearLayout.LayoutParams(dp(320), LinearLayout.LayoutParams.WRAP_CONTENT))
+            box.addView(Button(this).apply {
+                text = "Add a folder"
+                setTextColor(DIM)
+                setBackgroundColor(Color.TRANSPARENT)
+                setOnClickListener { pickFolder.launch(null) }
+            }, LinearLayout.LayoutParams(dp(320), dp(44)))
+        }
         var connecting = false
         val connect = connect@{
             if (connecting) return@connect          // the keyboard's Go and Enter can both fire
@@ -319,7 +351,9 @@ class MainActivity : ComponentActivity() {
                         go.isEnabled = true
                         connecting = false
                         answer.onSuccess { (api, outside) ->
-                            if (address !in Server.addresses()) bridge.clear()     // another server: the queue's links are gone
+                            if (address !in Server.addresses() || Server.local) bridge.clear()     // another library: the queue's links are gone
+                            closeLocal()
+                            Server.setLibrary(this, "server")
                             Server.connected(this, address, outside)
                             Server.save(this, address, api)
                             showWeb(address)
@@ -356,6 +390,77 @@ class MainActivity : ComponentActivity() {
         Result.failure(Exception("Couldn't reach $address (${e.javaClass.simpleName}: ${e.message})"))
     }
 
+    // ------------------------------------------------------------ this phone's music
+
+    /** This phone's library: its little server started, its folders read (the first time before it shows). */
+    private fun openLocal(firstRead: Boolean) {
+        if (!Server.local) bridge.clear()          // the server's queue's links are gone
+        Server.setLibrary(this, "local")
+        val api = LocalApi(this, library)
+        // the same port each time if it's free (the page keeps its settings by its address)
+        val srv = LocalServer.running ?: run {
+            val port = getSharedPreferences("muzix", MODE_PRIVATE).getInt("local_port", 0)
+            try {
+                LocalServer(applicationContext, api, port).also { it.start(NanoHTTPD.SOCKET_READ_TIMEOUT, true) }
+            } catch (e: java.io.IOException) {
+                LocalServer(applicationContext, api, 0).also { it.start(NanoHTTPD.SOCKET_READ_TIMEOUT, true) }
+            }
+        }.also { LocalServer.running = it }
+        getSharedPreferences("muzix", MODE_PRIVATE).edit().putInt("local_port", srv.listeningPort).apply()
+        // the account stays the server's, while there's one
+        srv.server = Server.last(this).takeIf { Server.addresses().isNotEmpty() }.orEmpty()
+        api.withServer = srv.server.isNotEmpty()
+        Server.address = srv.origin
+        Server.cookie = "${LocalServer.COOKIE}=${srv.secret}"
+        CookieManager.getInstance().setCookie(srv.origin, "${LocalServer.COOKIE}=${srv.secret}; Path=/; HttpOnly")
+        if (!api.withServer) thread { runCatching { api.shows.refresh() } }       // this phone's podcasts: their new episodes
+        if (firstRead || library.db.compileStatement("SELECT count(*) FROM tracks").simpleQueryForLong() == 0L) {
+            showConnect("", "Reading this phone's music…")
+            thread {
+                val n = runCatching { library.scan() }.getOrDefault(0)
+                runOnUiThread { if (Server.local) showWeb(srv.origin).also { if (n == 0) Toast.makeText(this, "No songs found in those folders", Toast.LENGTH_LONG).show() } }
+            }
+        } else {
+            showWeb(srv.origin)
+            thread { runCatching { library.scan() } }       // what changed since, read in the background
+        }
+    }
+
+    /** Signed in to a server: the podcasts and stations this phone kept with no server move into the account (step 6). */
+    private var moving = false
+    private var movedFor = ""          // the login it was last done for
+
+    private fun moveShows() {
+        val cookie = Server.cookie
+        if (Server.local || moving || !cookie.contains("muzix_session=") || cookie == movedFor) return
+        moving = true
+        movedFor = cookie
+        val address = server
+        thread {
+            val shows = LocalShows(applicationContext)
+            val n = if (shows.any()) runCatching { shows.moveTo(address, cookie) }.getOrDefault(0) else 0
+            runOnUiThread {
+                moving = false
+                if (n > 0) {
+                    Toast.makeText(this, "Moved $n podcasts and stations into your account", Toast.LENGTH_LONG).show()
+                    web?.reload()
+                }
+            }
+        }
+    }
+
+    private fun closeLocal() {
+        LocalServer.running?.stop()
+        LocalServer.running = null
+        Server.local = false
+    }
+
+    /** With this phone's library on: the server's address that answers, for the account's parts. */
+    private fun pickAccount() = thread {
+        val found = Server.addresses().firstOrNull { a -> check(a, if (a == Server.home && Server.away.isNotEmpty()) 2_500 else 8_000).isSuccess }
+        if (found != null) LocalServer.running?.server = found
+    }
+
     // ------------------------------------------------------------ at home and away
 
     private fun soon() {
@@ -367,6 +472,10 @@ class MainActivity : ComponentActivity() {
      * its API's version (the server may have been updated): the page moves there, or to the interface that fits. */
     private val choose = Runnable {
         if (server.isEmpty()) return@Runnable
+        if (Server.local) {
+            pickAccount()
+            return@Runnable
+        }
         thread {
             val found = Server.addresses().firstNotNullOfOrNull { a ->
                 check(a, if (a == Server.home && Server.away.isNotEmpty()) 2_500 else 8_000).getOrNull()?.let { a to it.first }
@@ -415,7 +524,8 @@ class MainActivity : ComponentActivity() {
         stale = null
         server = address
         Server.address = address
-        val own = WebUi.fits(Server.api)       // the app's web interface, or the server's own
+        // the app's web interface, or the server's own (this phone's library serves the app's itself)
+        val own = !Server.local && WebUi.fits(Server.api)
         WebUi.why(Server.api)?.let { Toast.makeText(this, it, Toast.LENGTH_LONG).show() }
         dropWeb()
         val w = WebView(this)
@@ -436,6 +546,7 @@ class MainActivity : ComponentActivity() {
                 val data = message.data
                 if (isMainFrame && data != null) {
                     Server.cookie = CookieManager.getInstance().getCookie(address) ?: ""
+                    if (!Server.local && Server.cookie != movedFor) moveShows()     // signed in now, inside the page
                     bridge.onMessage(data, reply)
                 }
             }
@@ -471,7 +582,8 @@ class MainActivity : ComponentActivity() {
             }
 
             override fun onPageFinished(view: WebView, url: String) {
-                Server.cookie = CookieManager.getInstance().getCookie(server) ?: ""
+                if (!Server.local) Server.cookie = CookieManager.getInstance().getCookie(server) ?: ""
+                moveShows()
                 Crashes.report(this@MainActivity)
             }
 

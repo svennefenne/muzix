@@ -14,7 +14,12 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.cache.CacheDataSource
+import android.content.Context
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.audio.TeeAudioProcessor
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.CacheBitmapLoader
@@ -61,7 +66,14 @@ class PlaybackService : MediaSessionService() {
         // what's downloaded comes first (Downloads.kt), found by the song's address on the server
         val downloaded = CacheDataSource.Factory().setCache(Downloads.cache(this)).setCacheKeyFactory(Downloads.keys)
             .setUpstreamDataSourceFactory(reading).setCacheWriteDataSinkFactory(null).setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-        val local = ExoPlayer.Builder(this)
+        // the sound on its way to the speaker, teed off for the visualizer's spectrum (Spectrum.kt)
+        val renderers = object : DefaultRenderersFactory(this) {
+            override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink? =
+                DefaultAudioSink.Builder(context).setEnableFloatOutput(enableFloatOutput)
+                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                    .setAudioProcessors(arrayOf(TeeAudioProcessor(Spectrum))).build()
+        }
+        val local = ExoPlayer.Builder(this, renderers)
             .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this, downloaded))
                 .setLoadErrorHandlingPolicy(PatientLoading()))
             // a long buffer rides out a weak mobile connection (an audiobook, which isn't downloaded ahead)

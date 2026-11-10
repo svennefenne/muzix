@@ -324,7 +324,10 @@ episodes and the liked songs download to the phone (Download on their pages;
 Settings → Downloads for the format, Smaller or Original, and wifi only).
 Offline, the app shows what's downloaded and plays it from the phone. Admin
 pages are the web version's: the app's Admin and the wrench open them in the
-browser. Each phone is its own login, with settings of its own.
+browser. Each phone is its own login, with settings of its own. From 0.10.0 the
+app also plays the phone's own music, with no server at all: "Play this phone's
+music" on its address screen picks the folders, and the app reads their tags
+itself (the files are only read).
 
 Install it from <https://github.com/svennefenne/muzix/releases/latest/download/muzix-android.apk>
 (the phone asks once to allow installs from the browser); later versions install

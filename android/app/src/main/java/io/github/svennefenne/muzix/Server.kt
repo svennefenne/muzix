@@ -48,6 +48,19 @@ object Server {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, address).putInt(API, api).apply()
     }
 
+    /** The library the app shows: the server's, or this phone's music (LocalLibrary). */
+    @Volatile var local = false
+
+    fun library(context: Context): String = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("library", "server")!!
+
+    fun setLibrary(context: Context, which: String) {
+        local = which == "local"
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("library", which).apply()
+    }
+
+    /** The server's address last used (also while the library is this phone's: the account is there). */
+    fun last(context: Context): String = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null).orEmpty()
+
     /** Where to look for the server, the one at home first. */
     fun addresses(): List<String> = listOf(home, away).filter { it.isNotEmpty() }.distinct()
 

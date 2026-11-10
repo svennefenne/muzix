@@ -59,6 +59,17 @@ class PlayerBridge(
             if (i.getIntExtra("android.media.EXTRA_VOLUME_STREAM_TYPE", -1) == AudioManager.STREAM_MUSIC) sendVolume()
         }
     }
+    /** The visualizer's spectrum (Spectrum.kt), 30 times a second while the page shows and the music plays. */
+    private val spectrum = object : Runnable {
+        override fun run() {
+            val bands = Spectrum.bands
+            if (bands != null && System.currentTimeMillis() - Spectrum.when_ < 300) {
+                send(JSONObject().put("t", "spectrum").put("bands", android.util.Base64.encodeToString(bands, android.util.Base64.NO_WRAP)))
+            }
+            main.postDelayed(this, 33L)
+        }
+    }
+
     private val tick = object : Runnable {
         override fun run() {
             sendState()
@@ -123,6 +134,7 @@ class PlayerBridge(
 
     fun inView(visible: Boolean) {
         inView = visible
+        ticking(player?.isPlaying == true)
         if (visible) sendState()
     }
 
@@ -260,7 +272,10 @@ class PlayerBridge(
 
     private fun ticking(on: Boolean) {
         main.removeCallbacks(tick)
+        main.removeCallbacks(spectrum)
         if (on) main.post(tick)
+        if (on && inView) main.post(spectrum)
+        Spectrum.wanted = on && inView
     }
 
     // ------------------------------------------------------------ the player's side
