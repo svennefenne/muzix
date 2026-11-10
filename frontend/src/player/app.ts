@@ -108,6 +108,16 @@ class AppPlayer {
     this.send({ t: "server" });
   }
 
+  /** The user menu's switch: the music on this phone or computer (the app's own library), or the server's. */
+  useLibrary(which: "server" | "local") {
+    this.send({ t: "library", which });
+  }
+
+  /** Another folder for the phone's own library: Android's folder picker (Android 0.10.1 on). */
+  addFolder() {
+    this.send({ t: "folder" });
+  }
+
   /** A page of the server's web version, in the phone's browser: the app has no admin pages of its own. */
   openOnServer(path: string) {
     const url = location.origin + path;
@@ -346,10 +356,12 @@ class AppPlayer {
   /** The app answered: it plays from now on. If it already plays something (the page was
    * reloaded), its queue becomes ours. */
   private onHello(m: { queue: string[]; index: number; state: AppState; saves?: boolean; device?: string; volume?: number; updates?: boolean;
-                       downloads?: Downloaded[]; offline?: boolean; opens?: boolean; desktop?: { version: string; platform: string } }) {
+                       downloads?: Downloaded[]; offline?: boolean; opens?: boolean; desktop?: { version: string; platform: string };
+                       library?: Library }) {
     // an app that opens the web version's admin pages in the browser (Android 0.9 on, Muzix Desktop) has none of its own;
-    // Muzix Desktop says its version and system, for its updates (appUpdate.ts)
-    useShell.setState({ opens: !!m.opens || !!m.downloads, desktop: m.desktop ?? null });
+    // Muzix Desktop says its version and system, for its updates (appUpdate.ts); an app with a library of its
+    // own (Android 0.10.1, Muzix Desktop 0.3.1 on) says which one shows
+    useShell.setState({ opens: !!m.opens || !!m.downloads, desktop: m.desktop ?? null, library: m.library ?? null });
     // an app that downloads (0.9 on) says what it has
     if (m.downloads) this.onDownloads(m.downloads, !!m.offline);
     // the phone's media volume is the volume here, before anything is sent to the app
@@ -431,7 +443,11 @@ class AppPlayer {
   }
 }
 
+/** The music the app shows: the server's, or the one on this phone or computer. */
+export type Library = "server" | "local";
+
 /** What the app around the page does itself. */
-export const useShell = create<{ opens: boolean; desktop: { version: string; platform: string } | null }>(() => ({ opens: false, desktop: null }));
+export const useShell = create<{ opens: boolean; desktop: { version: string; platform: string } | null; library: Library | null }>(
+  () => ({ opens: false, desktop: null, library: null }));
 
 export const appPlayer = new AppPlayer();

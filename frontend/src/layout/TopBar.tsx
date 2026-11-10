@@ -1,6 +1,6 @@
 import {
-  Activity, BookOpen, Disc3, Download, Gamepad2, House, LogOut, Monitor, Moon, Podcast, Radio, Settings, Shield, Sun,
-  SunMoon, Wrench,
+  Activity, BookOpen, Disc3, Download, FolderPlus, Gamepad2, House, Laptop, LogOut, Monitor, Moon, Podcast, Radio, Settings, Shield,
+  Smartphone, Sun, SunMoon, Wrench,
 } from "lucide-react";
 import { useEffect } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
@@ -60,7 +60,7 @@ function LevelRing() {
 }
 
 export function TopBar() {
-  const { user, mode, setPref, setNowPlayingOpen, siteName } = useUi();
+  const { user, mode, setPref, setNowPlayingOpen, siteName, adminMode, setAdminMode } = useUi();
   const nav = useNavigate();
   const loc = useLocation();
   const atHome = loc.pathname === "/";
@@ -69,6 +69,9 @@ export function TopBar() {
   const shown = useShown(TABS);
   // the app (0.9 on) has no admin pages: its Admin is the server's web version
   const inApp = useShell((s) => s.opens);
+  // the app's own library (this phone's or computer's music) or the server's: a switch
+  const library = useShell((s) => s.library);
+  const computer = useShell((s) => !!s.desktop);
   const tabs = user?.is_admin && !inApp ? [...shown, { to: "/admin", label: "Admin" }] : shown;
 
   // Q / E step through the sections, like a console's shoulder buttons
@@ -89,12 +92,19 @@ export function TopBar() {
   const ModeIcon = mode === "system" ? SunMoon : mode === "dark" ? Moon : Sun;
   const userMenu = (e: React.MouseEvent) => showMenu(e, [
     { heading: user?.username || "" },
+    ...(library ? [{ label: computer ? "This computer's music" : "This phone's music", icon: computer ? <Laptop size={16} /> : <Smartphone size={16} />,
+                     checked: library === "local", onClick: () => appPlayer.useLibrary(library === "local" ? "server" : "local") },
+                   // the phone's library: its folders are the app's to pick (a computer's are in Muzix Desktop's Settings)
+                   ...(library === "local" && !computer ? [{ label: "Add a music folder", icon: <FolderPlus size={16} />, onClick: () => appPlayer.addFolder() }] : []),
+                   { sep: true }] : []),
     { label: "Settings", icon: <Settings size={16} />, onClick: () => nav("/settings") },
     ...(user?.is_admin ? [{ label: inApp ? "Admin on the server" : "Admin", icon: <Shield size={16} />,
                             onClick: () => (inApp ? appPlayer.openOnServer("/admin") : nav("/admin")) }] : []),
+    // admin mode: a cog on every item, to edit, hide or delete it (the app's are the web version's: Admin on the server)
+    ...(user?.is_admin && !inApp ? [{ label: "Admin mode", icon: <Wrench size={16} />, checked: adminMode, onClick: () => setAdminMode(!adminMode) }] : []),
     ...(update ? [{ label: `Update the app to ${update.version}`, icon: <Download size={16} />, onClick: () => appPlayer.update(update.url) }] : []),
-    { sep: true },
-    { label: "Sign out", icon: <LogOut size={16} />, onClick: () => api.post("/api/auth/logout").then(() => location.assign("/")) },
+    // the app's own library has no login
+    ...(library !== "local" ? [{ sep: true }, { label: "Sign out", icon: <LogOut size={16} />, onClick: () => api.post("/api/auth/logout").then(() => location.assign("/")) }] : []),
   ]);
 
   return (
@@ -111,7 +121,6 @@ export function TopBar() {
         <button className="iconbtn hide-sm" aria-label="Now playing" data-tip="Now playing: the full-screen player" onClick={() => setNowPlayingOpen(true)}>
           <LevelRing /><Activity size={15} />
         </button>
-        <AdminSwitch />
         <button className="iconbtn hide-sm" aria-label="Light or dark" data-tip={`${{ system: "Matching your system", dark: "Dark", light: "Light" }[mode]}: click for ${nextMode === "system" ? "your system's choice" : nextMode}`}
                 onClick={() => setPref("mode", nextMode)}>
           <ModeIcon size={15} />
@@ -129,31 +138,6 @@ export function TopBar() {
 
 /** Admin mode on and off (admins only): a cog on every item, to edit, hide or delete it. In the app,
  * which has no admin mode, the page in the server's web version, with admin mode on there. */
-function AdminSwitch() {
-  const admin = useUi((s) => !!s.user?.is_admin);
-  const on = useUi((s) => s.adminMode);
-  const setAdminMode = useUi((s) => s.setAdminMode);
-  const loc = useLocation();
-  const inApp = useShell((s) => s.opens);
-  if (!admin) return null;
-  if (inApp) {
-    const sep = loc.search ? "&" : "?";
-    return (
-      <button className="iconbtn admin-switch" aria-label="Edit on the server" data-tip="Edit on the server: this page in the web version, in admin mode"
-              onClick={() => appPlayer.openOnServer(`${loc.pathname}${loc.search}${sep}admin`)}>
-        <Wrench size={15} />
-      </button>
-    );
-  }
-  return (
-    <button className={`iconbtn admin-switch ${on ? "on" : ""}`} aria-pressed={on} aria-label="Admin mode"
-            data-tip={on ? "Admin mode is on: click to leave it" : "Admin mode: edit, hide or delete items"}
-            onClick={() => setAdminMode(!on)}>
-      <Wrench size={15} />
-    </button>
-  );
-}
-
 export function isTyping(e: KeyboardEvent) {
   const t = e.target as HTMLElement;
   return t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);

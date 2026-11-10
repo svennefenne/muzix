@@ -100,11 +100,12 @@ class Player(QObject):
     changed = Signal()          # what plays, or how (the system's player: mpris.py)
     command = Signal(str, dict)  # one that isn't for the player (the window's: another server, a link)
 
-    def __init__(self, headers, shown=lambda: True, for_speaker=lambda url: url, speakers=True):
+    def __init__(self, headers, shown=lambda: True, for_speaker=lambda url: url, speakers=True, library=lambda: "server"):
         super().__init__()
         self.headers = headers              # (url) → the headers the window's own server wants from the player
         self.shown = shown                  # () → whether the window shows (the visualizer's spectrum only then)
         self.for_speaker = for_speaker      # a speaker's link, on the server's own address (relay.py)
+        self.library = library              # () → the music the window shows: "server", or "local" (this computer's)
         self.bin = Gst.ElementFactory.make(_playbin(), "muzix")
         self.bin.set_property("flags", AUDIO | SOFT_VOLUME)
         if sink := os.environ.get("MUZIX_AUDIO_SINK"):      # another output (the tests: "fakesink sync=true")
@@ -149,7 +150,7 @@ class Player(QObject):
         try:
             if fn := getattr(self, "_on_" + t, None):
                 fn(m)
-            elif t in ("server", "open", "cast", "update"):
+            elif t in ("server", "open", "cast", "update", "library"):
                 self.command.emit(t, m)
         except Exception:       # a message that fails goes to the log; the window carries on
             log.exception("The page's %r failed", t)
@@ -159,7 +160,7 @@ class Player(QObject):
         system = "windows" if sys.platform == "win32" else "macos" if sys.platform == "darwin" else "linux"
         self._send(t="hello", version=f"MuzixDesktop/{__version__}", saves=False, updates=True, opens=True,
                    desktop={"version": __version__, "platform": system},
-                   device=platform.node() or "Computer", volume=self.level,
+                   device=platform.node() or "Computer", volume=self.level, library=self.library(),
                    queue=[it.get("muzix", "") for it in self.queue], index=self.index, state=self._state_msg())
         if self.caster:
             self.caster._tell()             # the Cast button: speakers about, or one playing

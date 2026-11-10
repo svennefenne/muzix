@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Play, Shuffle } from "lucide-react";
+import { FolderPlus, Play, Shuffle } from "lucide-react";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { ago, api, fmtLong, fmtNumber } from "../api";
@@ -7,6 +7,7 @@ import { playAlbum, playRandom } from "../actions";
 import { AlbumRow, GenreCard } from "../components/Cards";
 import { Art, Display, Kicker, Loading, NewDot, Section } from "../components/ui";
 import { useModules, useShown } from "../modules";
+import { appPlayer, useShell } from "../player/app";
 import { engine } from "../player/engine";
 import { fromEpisode, useStartedEpisodes } from "../store/player";
 import { useUi } from "../store/ui";
@@ -59,6 +60,8 @@ export default function Home() {
   const started = useStartedEpisodes();
   const sections = useShown(SECTIONS);
   const modules = useModules();
+  // the phone's own library with no folder picked yet: the app asks for one (a computer's are in Muzix Desktop's Settings)
+  const phone = useShell((s) => s.library === "local" && !s.desktop);
   if (!q.data) return <div className="page"><Loading /></div>;
   const d = q.data;
   const latest = d.recently_added[0];
@@ -103,6 +106,15 @@ export default function Home() {
           </Link>
         )}
       </div>
+
+      {phone && d.stats.tracks === 0 && (
+        <section className="panel home-empty">
+          <div className="kicker">This phone's music</div>
+          <div className="h2">No music here yet</div>
+          <p className="dim">Pick the folder on this phone that has your music; the app only reads it. Podcasts and radio play meanwhile.</p>
+          <button className="btn primary" onClick={() => appPlayer.addFolder()}><FolderPlus size={15} /> Choose a music folder</button>
+        </section>
+      )}
 
       <div className="quick-grid">
         {fresh.map((p) => (

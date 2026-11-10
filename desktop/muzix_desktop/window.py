@@ -117,7 +117,8 @@ class Window(QMainWindow):
         # the player, and the page's way to it
         self.player = None
         if player.available():
-            self.player = player.Player(self.relay.headers, lambda: self.isVisible() and not self.isMinimized(), self._for_speaker)
+            self.player = player.Player(self.relay.headers, lambda: self.isVisible() and not self.isMinimized(), self._for_speaker,
+                                        library=lambda: self.cfg.library)
             self.bridge = _Bridge(self.player.handle)
             self.player.sent.connect(self.bridge.message)
             self.player.command.connect(self._command)
@@ -262,6 +263,24 @@ class Window(QMainWindow):
         self.relay.use_local(self.library.address, self.library.token)
         self._show_web()
 
+    def _use_library(self, which):
+        """The user menu's switch: this computer's music, or the server's again (its address screen, if
+        there's none yet)."""
+        if which == "local":
+            if self.cfg.library != "local":
+                self._choose_local()
+            return
+        if self.cfg.library != "local":
+            return
+        if not self.relay.address:
+            self.ask()
+            return
+        self.cfg.library = "server"
+        config.save()
+        self.relay.use_local("", "")
+        self.library.stop()
+        self._show_web()
+
     def folders_changed(self):
         """Settings changed the folders: the library follows."""
         if self.cfg.library == "local" and self.library.ready.is_set():
@@ -313,6 +332,8 @@ class Window(QMainWindow):
             self._speakers()
         elif t == "server":
             self.ask()
+        elif t == "library":
+            self._use_library(m.get("which"))
         elif t == "open":
             url = QUrl(m.get("url") or "")
             if url.scheme() in ("http", "https"):

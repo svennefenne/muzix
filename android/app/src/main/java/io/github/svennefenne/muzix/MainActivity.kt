@@ -1,6 +1,7 @@
 package io.github.svennefenne.muzix
 
 import android.annotation.SuppressLint
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.graphics.Color
@@ -113,8 +114,8 @@ class MainActivity : ComponentActivity() {
             if (w != null && w.canGoBack()) w.goBack() else moveTaskToBack(true)   // the music goes on
         }
         val saved = Server.saved(this)
-        if (Server.library(this) == "local" && library.folders().isNotEmpty()) openLocal(firstRead = false)
-        else if (saved == null) showConnect("", null) else showWeb(saved)
+        // no server yet, or this phone's library chosen: this phone's music (a folder for it asked for first)
+        if (saved == null || Server.library(this) == "local") showLocal() else showWeb(saved)
         soon()          // with no network at all, nothing below calls
         // the network changes (wifi at home, mobile data outside): the address that answers (it runs once at the start, too)
         getSystemService(ConnectivityManager::class.java).registerDefaultNetworkCallback(networks)
@@ -156,6 +157,8 @@ class MainActivity : ComponentActivity() {
     private fun command(t: String, m: JSONObject) {
         when (t) {
             "server" -> showConnect(if (Server.local) Server.last(this) else server, null)
+            "library" -> useLibrary(m.optString("which"))
+            "folder" -> pickFolder.launch(null)
             "cast" -> chooseSpeaker()
             "bars" -> runCatching { Color.parseColor(m.optString("color")) }.getOrNull()?.let(::bars)
             "update" -> update(m.optString("url"))
@@ -318,7 +321,7 @@ class MainActivity : ComponentActivity() {
             text = if (library.folders().isEmpty()) "Play this phone's music" else "This phone's music"
             setTextColor(TEXT)
             setBackgroundColor(Color.TRANSPARENT)
-            setOnClickListener { if (library.folders().isEmpty()) pickFolder.launch(null) else openLocal(firstRead = false) }
+            setOnClickListener { showLocal() }
         }
         box.addView(here, LinearLayout.LayoutParams(dp(320), dp(48)).apply { topMargin = dp(12) })
         if (library.folders().isNotEmpty()) {
@@ -392,6 +395,24 @@ class MainActivity : ComponentActivity() {
 
     // ------------------------------------------------------------ this phone's music
 
+    /** This phone's library, and with no folder for it yet, the question which one. */
+    private fun showLocal() {
+        openLocal(firstRead = false)
+        if (library.folders().isEmpty()) askFolder()
+    }
+
+    /** No folder with music yet: picked first thing. Without one, podcasts and radio play (and the
+     * user menu's "Add a music folder" asks again). */
+    private fun askFolder() {
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Where's your music?")
+            .setMessage("Pick the folder on this phone that has your music. The app only reads it.\n\nWithout one, podcasts and radio still play.")
+            .setPositiveButton("Choose a folder") { _, _ -> pickFolder.launch(null) }
+            .setNegativeButton("Not now", null)
+            .setNeutralButton("Use a Muzix server") { _, _ -> showConnect(Server.last(this), null) }
+            .show()
+    }
+
     /** This phone's library: its little server started, its folders read (the first time before it shows). */
     private fun openLocal(firstRead: Boolean) {
         if (!Server.local) bridge.clear()          // the server's queue's links are gone
@@ -414,7 +435,8 @@ class MainActivity : ComponentActivity() {
         Server.cookie = "${LocalServer.COOKIE}=${srv.secret}"
         CookieManager.getInstance().setCookie(srv.origin, "${LocalServer.COOKIE}=${srv.secret}; Path=/; HttpOnly")
         if (!api.withServer) thread { runCatching { api.shows.refresh() } }       // this phone's podcasts: their new episodes
-        if (firstRead || library.db.compileStatement("SELECT count(*) FROM tracks").simpleQueryForLong() == 0L) {
+        // no folder yet: podcasts and radio, and nothing to read
+        if (library.folders().isNotEmpty() && (firstRead || library.db.compileStatement("SELECT count(*) FROM tracks").simpleQueryForLong() == 0L)) {
             showConnect("", "Reading this phone's music…")
             thread {
                 val n = runCatching { library.scan() }.getOrDefault(0)
@@ -424,6 +446,23 @@ class MainActivity : ComponentActivity() {
             showWeb(srv.origin)
             thread { runCatching { library.scan() } }       // what changed since, read in the background
         }
+    }
+
+    /** The user menu's switch: this phone's music (its folders, picked the first time), or the server's again
+     * (its address screen, if there's none yet). */
+    private fun useLibrary(which: String) {
+        if (which == "local") {
+            if (!Server.local) showLocal()
+            return
+        }
+        if (!Server.local) return
+        val last = Server.last(this)
+        if (last.isEmpty() || Server.addresses().isEmpty()) return showConnect("", null)
+        bridge.clear()          // this phone's queue's links are gone
+        closeLocal()
+        Server.setLibrary(this, "server")
+        showWeb(last)
+        soon()                  // the address that answers now
     }
 
     /** Signed in to a server: the podcasts and stations this phone kept with no server move into the account (step 6). */

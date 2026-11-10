@@ -135,6 +135,11 @@ export function Switch({ checked, onChange, label }: { checked: boolean; onChang
   );
 }
 
+/** A switch's look, inside something that's clicked itself (a menu's or sheet's item). */
+export function SwitchLook({ on }: { on: boolean }) {
+  return <span className={`switch switch-look ${on ? "on" : ""}`} aria-hidden="true"><span /></span>;
+}
+
 /** Calls back when the element scrolls into view (infinite lists). */
 export function useInView(cb: () => void, enabled = true) {
   const ref = useRef<HTMLDivElement>(null);
@@ -155,6 +160,7 @@ export interface MenuItem {
   onClick?: () => void;
   sep?: boolean;
   heading?: string;
+  checked?: boolean;     // a switch: the item turns it on or off
 }
 
 interface MenuState {
@@ -197,7 +203,11 @@ export function MenuHost() {
   if (!open) return null;
   return (
     <div className="menu" ref={ref} style={{ left: pos.x || open.x, top: pos.y || open.y }} role="menu">
-      {open.items.map((it, i) => it.sep ? <hr key={i} /> : it.heading ? <div className="label" key={i}>{it.heading}</div> : (
+      {open.items.map((it, i) => it.sep ? <hr key={i} /> : it.heading ? <div className="label" key={i}>{it.heading}</div> : it.checked !== undefined ? (
+        <button key={i} role="menuitemcheckbox" aria-checked={it.checked} onClick={() => { hide(); it.onClick?.(); }}>
+          {it.icon}{it.label}<SwitchLook on={it.checked} />
+        </button>
+      ) : (
         <button key={i} role="menuitem" onClick={() => { hide(); it.onClick?.(); }}>{it.icon}{it.label}</button>
       ))}
     </div>

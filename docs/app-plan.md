@@ -157,7 +157,8 @@ This computer's music in Muzix Desktop, with no server, or beside one.
   to the library's folders. Genres come from the files' tags; covers, artist pictures and lyrics from
   Deezer, MusicBrainz and LRCLIB, kept in its own data folder.
 - Casting: the app serves the songs to the speaker over the local network, its signed links only.
-- The address screen offers "Play this computer's music instead"; the tray's "Muzix library…" switches.
+- The address screen offers "Play this computer's music instead"; the tray's "Muzix library…" switches, and
+  from 0.3.1 the user menu's switch "This computer's music" too.
   The library's server goes when the app does.
 
 ## Step 5 in detail
@@ -166,6 +167,12 @@ This phone's music in the Android app (0.10.0), with no server, or beside one.
 
 - The address screen offers "Play this phone's music": the system's folder picker, and the app may read
   that folder from then on (more folders can be added there).
+- From 0.10.1 an app with no server starts with this phone's music, not the address screen. With no
+  folder yet it asks for one first ("Choose a folder", "Not now", "Use a Muzix server"), at each start
+  until there is one; without one, podcasts and radio play, and Home and the user menu offer "Add a music
+  folder".
+- The user menu (the More sheet on a phone) has a switch, "This phone's music": on, the phone's library;
+  off, the server's again (its address screen if there's none). The phone's library has no Sign out.
 - The app reads the folders itself (LocalLibrary.kt): each song's tags from the file (the system's
   MediaMetadataRetriever, not the phone's media index), the year from the folder's name when the tags
   have none, the cover from the folder's picture or the tags. A database of its own holds them, with
@@ -263,8 +270,10 @@ Server and web only, so it ships on its own.
   did before, and the app says which one to update (the server's own interface has the app's update
   button).
 - A server that doesn't answer: the app's interface says so, with Try again and Another server.
-- In the app there's no admin mode and no Admin page; admins get "Edit on the server", which opens that
-  item in the web version.
+- In the app there's no admin mode and no Admin page; admins get "Admin on the server" in the user menu,
+  which opens the web version's Admin. (Up to 0.10.0 a wrench beside the user menu opened the page shown,
+  in the web version in admin mode; in the web version the wrench turned admin mode on, now a switch in
+  the user menu.)
 - The sign-in tells the server the phone's name, so Settings → Devices tells two phones apart.
 
 ### 2.3 At home and away

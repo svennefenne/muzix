@@ -97,7 +97,7 @@ applies you choose from 98 colour schemes, each with a light and a dark version.
   Muzix, lossless where it can, and keeps going when your phone sleeps.
 - **Admin page**: library folders with a folder browser, scans and jobs with
   logs, users, and every setting with an explanation.
-- **Admin mode** (the wrench in the top bar, admins only): a cog on every album,
+- **Admin mode** (a switch in the user menu, admins only): a cog on every album,
   song, artist, audiobook, podcast, playlist and station, with
   - *Edit metadata*: the fields (an album with all its songs) side by side with
     what MusicBrainz, Discogs, Bandcamp, Deezer and iTunes
@@ -323,11 +323,14 @@ phone changes networks, the music playing on. Albums, playlists, audiobooks,
 episodes and the liked songs download to the phone (Download on their pages;
 Settings → Downloads for the format, Smaller or Original, and wifi only).
 Offline, the app shows what's downloaded and plays it from the phone. Admin
-pages are the web version's: the app's Admin and the wrench open them in the
+pages are the web version's: the app's "Admin on the server" opens them in the
 browser. Each phone is its own login, with settings of its own. From 0.10.0 the
 app also plays the phone's own music, with no server at all: "Play this phone's
 music" on its address screen picks the folders, and the app reads their tags
-itself (the files are only read).
+itself (the files are only read). From 0.10.1 the app starts with the phone's
+music when it has no server, asking first for the folder with the music
+(without one, podcasts and radio play), and a switch in the user menu, "This
+phone's music", goes between the phone's music and the server's.
 
 Install it from <https://github.com/svennefenne/muzix/releases/latest/download/muzix-android.apk>
 (the phone asks once to allow installs from the browser); later versions install

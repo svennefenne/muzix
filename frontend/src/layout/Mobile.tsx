@@ -2,8 +2,8 @@
  * mini-player and a bottom tab bar whose "More" sheet holds the other sections. */
 
 import {
-  BookOpen, Download, Gamepad2, Heart, House, Library, LogOut, MoreHorizontal, Pause, Play, Podcast, Radio, Search, Settings, Shield,
-  SkipForward, X,
+  BookOpen, Download, FolderPlus, Gamepad2, Heart, House, Laptop, Library, LogOut, MoreHorizontal, Pause, Play, Podcast, Radio, Search, Settings, Shield,
+  SkipForward, Smartphone, Wrench, X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
@@ -11,7 +11,7 @@ import { toggleQueuedLike } from "../actions";
 import { api } from "../api";
 import { appVersion, useAppUpdate } from "../appUpdate";
 import { CastButton, CastNote, usePlaysElsewhere } from "../components/CastButton";
-import { Art, NewDot } from "../components/ui";
+import { Art, NewDot, SwitchLook } from "../components/ui";
 import { appPlayer, useShell } from "../player/app";
 import { engine } from "../player/engine";
 import { usePlayer } from "../store/player";
@@ -108,6 +108,8 @@ export function TabBar() {
 function MoreSheet({ onClose }: { onClose: () => void }) {
   const nav = useNavigate();
   const user = useUi((s) => s.user);
+  const adminMode = useUi((s) => s.adminMode);
+  const setAdminMode = useUi((s) => s.setAdminMode);
   const update = useAppUpdate();
   const more = useShown(MORE);
   useEffect(() => {
@@ -117,6 +119,9 @@ function MoreSheet({ onClose }: { onClose: () => void }) {
   }, [onClose]);
   // the app (0.9 on) has no admin pages: its Admin is the server's web version, in the browser
   const inApp = useShell((s) => s.opens);
+  // the app's own library (this phone's or computer's music) or the server's: a switch
+  const library = useShell((s) => s.library);
+  const computer = useShell((s) => !!s.desktop);
   const go = (to: string) => { if (to === "/admin" && inApp) appPlayer.openOnServer(to); else nav(to); onClose(); };
   const items = [
     ...more,
@@ -131,21 +136,46 @@ function MoreSheet({ onClose }: { onClose: () => void }) {
           <b className="grow">{user?.username}</b>
           <button className="iconbtn" aria-label="Close" onClick={onClose}><X size={16} /></button>
         </div>
+        {library && (
+          <button className="sheet-item" role="switch" aria-checked={library === "local"}
+                  onClick={() => { appPlayer.useLibrary(library === "local" ? "server" : "local"); onClose(); }}>
+            {computer ? <Laptop size={22} /> : <Smartphone size={22} />}
+            <span><b>{computer ? "This computer's music" : "This phone's music"}</b>
+              <small>{library === "local" ? `On: the music in this ${computer ? "computer" : "phone"}'s folders` : "Off: the server's music"}</small></span>
+            <SwitchLook on={library === "local"} />
+          </button>
+        )}
+        {library === "local" && !computer && (
+          <button className="sheet-item" onClick={() => { appPlayer.addFolder(); onClose(); }}>
+            <FolderPlus size={22} />
+            <span><b>Add a music folder</b><small>The app only reads it</small></span>
+          </button>
+        )}
         {items.map(({ to, label, sub, icon: Icon }) => (
           <button key={to} className="sheet-item" onClick={() => go(to)}>
             <Icon size={22} />
             <span><b>{label}</b><small>{sub}</small></span>
           </button>
         ))}
+        {user?.is_admin && !inApp && (
+          <button className="sheet-item" role="switch" aria-checked={adminMode} onClick={() => { setAdminMode(!adminMode); onClose(); }}>
+            <Wrench size={22} />
+            <span><b>Admin mode</b><small>A cog on every item, to edit, hide or delete it</small></span>
+            <SwitchLook on={adminMode} />
+          </button>
+        )}
         {update && (
           <button className="sheet-item" onClick={() => { appPlayer.update(update.url); onClose(); }}>
             <Download size={22} />
             <span><b>Update the app to {update.version}</b><small>You have {appVersion()}</small></span>
           </button>
         )}
-        <button className="sheet-item" onClick={() => api.post("/api/auth/logout").then(() => location.assign("/"))}>
-          <LogOut size={22} /><span><b>Sign out</b></span>
-        </button>
+        {/* the phone's own library has no login */}
+        {library !== "local" && (
+          <button className="sheet-item" onClick={() => api.post("/api/auth/logout").then(() => location.assign("/"))}>
+            <LogOut size={22} /><span><b>Sign out</b></span>
+          </button>
+        )}
       </div>
     </div>
   );

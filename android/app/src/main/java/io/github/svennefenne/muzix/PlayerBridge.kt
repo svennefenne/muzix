@@ -159,7 +159,7 @@ class PlayerBridge(
         when (val t = m.optString("t")) {
             "hello" -> send(JSONObject().put("t", "hello").put("version", PlaybackService.USER_AGENT).put("saves", true).put("updates", true)
                 .put("downloads", Downloads.list()).put("offline", Downloads.offline)
-                .put("device", deviceName()).put("volume", mediaVolume())
+                .put("device", deviceName()).put("volume", mediaVolume()).put("library", if (Server.local) "local" else "server")
                 .put("queue", JSONArray((0 until c.mediaItemCount).map { c.getMediaItemAt(it).carried() }))
                 .put("index", c.currentMediaItemIndex).put("state", state(c))).also { onHello() }
             "load" -> {

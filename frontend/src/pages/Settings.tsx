@@ -7,7 +7,7 @@ import { appVersion } from "../appUpdate";
 import { castStatus } from "../components/CastButton";
 import { SEARCH_ENGINES } from "../components/StationHistory";
 import { Display, Kicker, Switch } from "../components/ui";
-import { appPlayer } from "../player/app";
+import { appPlayer, useShell } from "../player/app";
 import { usePlayer } from "../store/player";
 import { useUi } from "../store/ui";
 import { PALETTES, type Palette } from "../theme/palettes";
@@ -195,6 +195,7 @@ export function SchemePicker({ value, onChange, dark }: { value: string; onChang
 
 export default function Settings() {
   const ui = useUi();
+  const shell = useShell();
   const cast = usePlayer(castStatus);
   const dark = ui.mode === "dark" || (ui.mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
   const [pw, setPw] = useState({ current: "", next: "" });
@@ -314,17 +315,18 @@ export default function Settings() {
 
       {appPlayer.available && (
         <section className="panel">
-          <div className="panel-head"><div><div className="kicker">Android</div><div className="h2">The app</div></div></div>
+          <div className="panel-head"><div><div className="kicker">{shell.desktop ? "Muzix Desktop" : "Android"}</div><div className="h2">The app</div></div></div>
           <div className="field">
             <label>Server</label>
             <div className="row-actions">
-              <span className="dim">{location.host}</span>
+              {/* the app's own library is on 127.0.0.1, not a server's address */}
+              <span className="dim">{shell.library === "local" ? `Now: this ${shell.desktop ? "computer" : "phone"}'s music` : location.host}</span>
               <button className="btn" onClick={() => appPlayer.changeServer()}><Server size={16} /> Change server</button>
             </div>
           </div>
           <div className="field">
             <label>Version</label>
-            <span className="dim">Muzix for Android {appVersion()}. When a newer one is out, your menu offers it.</span>
+            <span className="dim">{shell.desktop ? "Muzix Desktop" : "Muzix for Android"} {appVersion()}. When a newer one is out, your menu offers it.</span>
           </div>
         </section>
       )}
