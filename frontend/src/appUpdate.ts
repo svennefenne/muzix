@@ -1,17 +1,21 @@
-/** A newer version of the Android app than the one this page is in, for Update in the user menu
- * (the server asks GitHub which is the newest: backend/muzix/api/android.py). Outside the app, none. */
+/** A newer version of the app this page is in, for Update in the user menu: the Android app's, or Muzix
+ * Desktop's for the computer's system (the server asks GitHub which is the newest:
+ * backend/muzix/api/android.py). In a browser, none. */
 
 import { useQuery } from "@tanstack/react-query";
 import { api } from "./api";
-import { appPlayer } from "./player/app";
+import { appPlayer, useShell } from "./player/app";
 
 interface Latest {
   version: string | null;
   url: string | null;
 }
 
-/** The app's own version, from its user agent ("MuzixApp/0.8.0 (Android)"). */
-export const appVersion = () => navigator.userAgent.match(/MuzixApp\/(\d+(?:\.\d+)*)/)?.[1] ?? "";
+/** The Android app's version, from its user agent ("MuzixApp/0.8.0 (Android)"). */
+const androidVersion = () => navigator.userAgent.match(/MuzixApp\/(\d+(?:\.\d+)*)/)?.[1] ?? "";
+
+/** The app's own version: the Android app's, or Muzix Desktop's (its hello). */
+export const appVersion = () => androidVersion() || useShell.getState().desktop?.version || "";
 
 function newer(a: string, b: string) {
   const x = a.split(".").map(Number);
@@ -21,12 +25,14 @@ function newer(a: string, b: string) {
 }
 
 export function useAppUpdate(): { version: string; url: string } | null {
+  const desktop = useShell((s) => s.desktop);
+  const mine = androidVersion() || desktop?.version || "";
   const q = useQuery({
-    queryKey: ["android-latest"],
-    queryFn: () => api.get<Latest>("/api/android/latest"),
-    enabled: appPlayer.available,
+    queryKey: ["app-latest", desktop?.platform ?? "android"],
+    queryFn: () => (desktop ? api.get<Latest>("/api/desktop/latest", { platform: desktop.platform }) : api.get<Latest>("/api/android/latest")),
+    enabled: appPlayer.available && !!mine,
     staleTime: 3600_000,
   });
   const { version, url } = q.data ?? {};
-  return version && url && newer(version, appVersion()) ? { version, url } : null;
+  return version && url && mine && newer(version, mine) ? { version, url } : null;
 }

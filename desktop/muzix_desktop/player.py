@@ -149,13 +149,16 @@ class Player(QObject):
         try:
             if fn := getattr(self, "_on_" + t, None):
                 fn(m)
-            elif t in ("server", "open", "cast"):
+            elif t in ("server", "open", "cast", "update"):
                 self.command.emit(t, m)
         except Exception:       # a message that fails goes to the log; the window carries on
             log.exception("The page's %r failed", t)
 
     def _on_hello(self, m):
-        self._send(t="hello", version=f"MuzixDesktop/{__version__}", saves=False, updates=False, opens=True,
+        # the page offers a newer Muzix Desktop for this system (frontend/src/appUpdate.ts), which opens in the browser
+        system = "windows" if sys.platform == "win32" else "macos" if sys.platform == "darwin" else "linux"
+        self._send(t="hello", version=f"MuzixDesktop/{__version__}", saves=False, updates=True, opens=True,
+                   desktop={"version": __version__, "platform": system},
                    device=platform.node() or "Computer", volume=self.level,
                    queue=[it.get("muzix", "") for it in self.queue], index=self.index, state=self._state_msg())
         if self.caster:

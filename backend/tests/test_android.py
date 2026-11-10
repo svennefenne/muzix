@@ -1,4 +1,4 @@
-"""The Android app's newest version, from the repository's android-v* releases."""
+"""The apps' newest versions, from the repository's android-v* and desktop-v* releases."""
 import httpx
 import pytest
 from fastapi import FastAPI
@@ -32,6 +32,7 @@ def client(monkeypatch):
     monkeypatch.setattr(android, "_next", 0.0)
     app = FastAPI()
     app.include_router(android.router)
+    app.include_router(android.desktop_router)
     app.dependency_overrides[current_user] = lambda: object()
     return TestClient(app)
 
@@ -59,3 +60,19 @@ def test_asked_once_and_kept_while_github_fails(client, monkeypatch):
 def test_nothing_published_yet(client, monkeypatch):
     monkeypatch.setattr(android, "_releases", lambda: [])
     assert client.get("/api/android/latest").json() == {"version": None, "url": None}
+
+
+def test_muzix_desktop_for_each_system(client, monkeypatch):
+    def desktop(tag, *files):
+        return {"tag_name": tag, "assets": [{"name": f, "browser_download_url": f"https://github.com/o/r/releases/download/{tag}/{f}"}
+                                            for f in files]}
+    monkeypatch.setattr(android, "_releases", lambda: [
+        release("android-v0.9.0"),
+        desktop("desktop-v0.2.0", *android.DESKTOP.values()),
+        desktop("desktop-v0.2.1", "muzix-desktop-linux-x86_64.AppImage"),     # the others still building
+    ])
+    got = client.get("/api/desktop/latest", params={"platform": "linux"}).json()
+    assert got == {"version": "0.2.1", "url": "https://github.com/o/r/releases/download/desktop-v0.2.1/muzix-desktop-linux-x86_64.AppImage"}
+    assert client.get("/api/desktop/latest", params={"platform": "windows"}).json()["version"] == "0.2.0"
+    assert client.get("/api/desktop/latest", params={"platform": "amiga"}).json() == {"version": None, "url": None}
+    assert client.get("/api/android/latest").json()["version"] == "0.9.0"

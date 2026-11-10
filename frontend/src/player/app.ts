@@ -346,9 +346,10 @@ class AppPlayer {
   /** The app answered: it plays from now on. If it already plays something (the page was
    * reloaded), its queue becomes ours. */
   private onHello(m: { queue: string[]; index: number; state: AppState; saves?: boolean; device?: string; volume?: number; updates?: boolean;
-                       downloads?: Downloaded[]; offline?: boolean; opens?: boolean }) {
-    // an app that opens the web version's admin pages in the browser (Android 0.9 on, Muzix Desktop) has none of its own
-    useShell.setState({ opens: !!m.opens || !!m.downloads });
+                       downloads?: Downloaded[]; offline?: boolean; opens?: boolean; desktop?: { version: string; platform: string } }) {
+    // an app that opens the web version's admin pages in the browser (Android 0.9 on, Muzix Desktop) has none of its own;
+    // Muzix Desktop says its version and system, for its updates (appUpdate.ts)
+    useShell.setState({ opens: !!m.opens || !!m.downloads, desktop: m.desktop ?? null });
     // an app that downloads (0.9 on) says what it has
     if (m.downloads) this.onDownloads(m.downloads, !!m.offline);
     // the phone's media volume is the volume here, before anything is sent to the app
@@ -431,6 +432,6 @@ class AppPlayer {
 }
 
 /** What the app around the page does itself. */
-export const useShell = create<{ opens: boolean }>(() => ({ opens: false }));
+export const useShell = create<{ opens: boolean; desktop: { version: string; platform: string } | null }>(() => ({ opens: false, desktop: null }));
 
 export const appPlayer = new AppPlayer();

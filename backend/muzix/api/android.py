@@ -1,7 +1,8 @@
-"""The Android app's newest version, for its Update in the user menu: the highest android-v*
-release on GitHub that has the APK (.github/workflows/android.yml publishes them). Asked for at
-most once an hour; while GitHub can't be reached, the last answer stands and it's asked again
-in ten minutes."""
+"""The apps' newest versions, for Update in the user menu: the highest android-v* release on GitHub
+that has the APK (.github/workflows/android.yml publishes them), and the highest desktop-v* release
+with Muzix Desktop's file for the computer's system (desktop.yml). GitHub's releases are asked for at
+most once an hour; while GitHub can't be reached, the last answer stands and it's asked again in ten
+minutes."""
 
 import logging
 import re
@@ -16,15 +17,17 @@ from ..models import User
 from ..security import current_user
 
 router = APIRouter(prefix="/api/android", tags=["android"])
+desktop_router = APIRouter(prefix="/api/desktop", tags=["desktop"])
 log = logging.getLogger(__name__)
 
 APK = "muzix-android.apk"
-TAG = re.compile(r"^android-v(\d+(?:\.\d+)*)$")
+DESKTOP = {"linux": "muzix-desktop-linux-x86_64.AppImage", "windows": "muzix-desktop-windows-x64-setup.exe",
+           "macos": "muzix-desktop-macos-arm64.zip"}
 FRESH = 3600        # seconds an answer is kept
 RETRY = 600         # seconds before GitHub is asked again after it failed
 
 _lock = threading.Lock()
-_latest: dict | None = None
+_latest: list[dict] | None = None     # GitHub's releases, as last heard
 _next = 0.0
 
 
@@ -32,14 +35,15 @@ def _version(v: str) -> tuple[int, ...]:
     return tuple(int(x) for x in v.split("."))
 
 
-def newest(releases: list[dict]) -> dict | None:
-    """{version, url} of the highest android-v* release with the APK, drafts and pre-releases left out."""
+def newest(releases: list[dict], app: str = "android", file: str = APK) -> dict | None:
+    """{version, url} of the highest `app`-v* release with `file`, drafts and pre-releases left out."""
+    tag = re.compile(rf"^{app}-v(\d+(?:\.\d+)*)$")
     best = None
     for r in releases:
-        m = TAG.match(r.get("tag_name") or "")
+        m = tag.match(r.get("tag_name") or "")
         if not m or r.get("draft") or r.get("prerelease"):
             continue
-        asset = next((a for a in r.get("assets") or [] if a.get("name") == APK), None)
+        asset = next((a for a in r.get("assets") or [] if a.get("name") == file), None)
         if asset and (best is None or _version(m[1]) > _version(best["version"])):
             best = {"version": m[1], "url": asset["browser_download_url"]}
     return best
@@ -53,19 +57,30 @@ def _releases() -> list[dict]:
         return r.json()
 
 
-def latest() -> dict | None:
+def _known() -> list[dict]:
     global _latest, _next
     with _lock:
         if time.time() >= _next:
             try:
-                _latest = newest(_releases())
+                _latest = _releases()
                 _next = time.time() + FRESH
             except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
-                log.warning("Couldn't ask GitHub for the Android app's newest version: %s", e)
+                log.warning("Couldn't ask GitHub for the apps' newest versions: %s", e)
                 _next = time.time() + RETRY
-        return _latest
+        return _latest or []
+
+
+def latest() -> dict | None:
+    return newest(_known())
 
 
 @router.get("/latest")
 def latest_app(user: User = Depends(current_user)):
     return latest() or {"version": None, "url": None}
+
+
+@desktop_router.get("/latest")
+def latest_desktop(platform: str, user: User = Depends(current_user)):
+    """Muzix Desktop's newest version for a system: linux, windows or macos."""
+    file = DESKTOP.get(platform)
+    return (newest(_known(), "desktop", file) if file else None) or {"version": None, "url": None}

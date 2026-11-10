@@ -6,6 +6,7 @@ playing on."""
 
 import asyncio
 import logging
+import re
 import sys
 
 import httpx
@@ -252,7 +253,13 @@ class Window(QMainWindow):
         menu.popup(QCursor.pos())
 
     def _command(self, t: str, m: dict):
-        if t == "cast":
+        if t == "update":
+            # a newer Muzix Desktop: one of its releases on GitHub (the server says which: backend/muzix/api/android.py),
+            # downloaded by the browser
+            url = m.get("url") or ""
+            if re.fullmatch(r"https://github\.com/[\w.-]+/[\w.-]+/releases/download/desktop-v[\w.-]+/muzix-desktop-[\w.-]+", url):
+                QDesktopServices.openUrl(QUrl(url))
+        elif t == "cast":
             self._speakers()
         elif t == "server":
             self.ask()

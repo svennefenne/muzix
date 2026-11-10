@@ -37,6 +37,10 @@ Download the file for your system from the newest `desktop-v…` release on the
   add it to the menu. On GNOME, tray icons need the *AppIndicator and
   KStatusNotifierItem Support* extension.
 
+When a newer version is out, the Muzix window's account menu offers *Update the
+app*: it downloads the new file for your system in your browser (the server asks
+GitHub once an hour). Install it as above, over the old one.
+
 *Settings → Sharing → Start Muzix Desktop minimized when I log in* keeps it
 running: at login it opens no window, only its tray icon. The icon is grey while
 nobody listens to your music and in colour while someone does; hovering over it

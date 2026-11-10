@@ -56,6 +56,7 @@ def create_app() -> FastAPI:
         app.include_router(mod.router, dependencies=needs)
         if hasattr(mod, "art_router"):
             app.include_router(mod.art_router, dependencies=needs)
+    app.include_router(android.desktop_router)
 
     @app.get("/api/health")
     def health():
