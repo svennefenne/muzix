@@ -8,7 +8,9 @@ albums' tags and covers. The tray's menu has:
 - **Open Muzix**: the window. Its web interface comes with the app; a small server
   inside it, on 127.0.0.1, serves that and passes everything else on to your Muzix
   server, at its address at home while that answers and its public address
-  otherwise (the server's *Public URL*). The first start asks for the address.
+  otherwise (the server's *Public URL*). With no server yet it shows this computer's
+  music, asking first for the folder that has it (*Use a Muzix server* there, or the
+  user menu's switch, asks for the server's address).
 - **Muzix library…**: another server, or this computer's music: the folders in
   *Settings → Sharing*, played with no server at all (Muzix's own server code runs
   inside the app for them, on 127.0.0.1, and never changes the files). With a server

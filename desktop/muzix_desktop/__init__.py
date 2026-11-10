@@ -2,4 +2,4 @@
 computer with Muzix servers (the Library Network) and fixes albums' metadata and artwork. It stays in
 the system tray."""
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"

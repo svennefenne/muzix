@@ -159,6 +159,10 @@ This computer's music in Muzix Desktop, with no server, or beside one.
 - Casting: the app serves the songs to the speaker over the local network, its signed links only.
 - The address screen offers "Play this computer's music instead"; the tray's "Muzix library…" switches, and
   from 0.3.1 the user menu's switch "This computer's music" too.
+- From 0.3.2 the window with no server starts with this computer's music, not the address screen, as the
+  Android app does: with no music folder yet it asks for one first ("Choose a folder", "Not now", "Use a
+  Muzix server"; not when it starts in the tray), and Home and the user menu offer "Add a music folder"
+  (it lands in Settings' folders, shared too while sharing is on).
   The library's server goes when the app does.
 
 ## Step 5 in detail

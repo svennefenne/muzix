@@ -105,6 +105,7 @@ class App:
 
         from .window import Window
         self.window = Window(self.cfg)
+        self.window.folder_added.connect(self._folder_added)
         if not minimized:
             self.window.bring()
 
@@ -328,6 +329,12 @@ class App:
         if done.moves:
             self.catalog.moved(done.moves)
         self.scan()
+
+    def _folder_added(self):
+        """A music folder added from the window: shared too (while sharing is on), and in Settings if it's open."""
+        self.scan()
+        if self.settings is not None:
+            self.settings._fill_folders()
 
     def open_settings(self):
         if self.settings is None:

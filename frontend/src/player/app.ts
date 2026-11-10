@@ -113,7 +113,7 @@ class AppPlayer {
     this.send({ t: "library", which });
   }
 
-  /** Another folder for the phone's own library: Android's folder picker (Android 0.10.1 on). */
+  /** Another folder for the app's own library: the system's folder picker (Android 0.10.1, Muzix Desktop 0.3.2 on). */
   addFolder() {
     this.send({ t: "folder" });
   }

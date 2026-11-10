@@ -94,11 +94,12 @@ export function TopBar() {
     { heading: user?.username || "" },
     ...(library ? [{ label: computer ? "This computer's music" : "This phone's music", icon: computer ? <Laptop size={16} /> : <Smartphone size={16} />,
                      checked: library === "local", onClick: () => appPlayer.useLibrary(library === "local" ? "server" : "local") },
-                   // the phone's library: its folders are the app's to pick (a computer's are in Muzix Desktop's Settings)
-                   ...(library === "local" && !computer ? [{ label: "Add a music folder", icon: <FolderPlus size={16} />, onClick: () => appPlayer.addFolder() }] : []),
+                   // the app's own library: its folders are the app's to pick
+                   ...(library === "local" ? [{ label: "Add a music folder", icon: <FolderPlus size={16} />, onClick: () => appPlayer.addFolder() }] : []),
                    { sep: true }] : []),
     { label: "Settings", icon: <Settings size={16} />, onClick: () => nav("/settings") },
-    ...(user?.is_admin ? [{ label: inApp ? "Admin on the server" : "Admin", icon: <Shield size={16} />,
+    // the app's own library's admin is the app's (Muzix Desktop's own server signs in as one): no server's Admin
+    ...(user?.is_admin && library !== "local" ? [{ label: inApp ? "Admin on the server" : "Admin", icon: <Shield size={16} />,
                             onClick: () => (inApp ? appPlayer.openOnServer("/admin") : nav("/admin")) }] : []),
     // admin mode: a cog on every item, to edit, hide or delete it (the app's are the web version's: Admin on the server)
     ...(user?.is_admin && !inApp ? [{ label: "Admin mode", icon: <Wrench size={16} />, checked: adminMode, onClick: () => setAdminMode(!adminMode) }] : []),

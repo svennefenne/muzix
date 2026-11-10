@@ -150,7 +150,7 @@ class Player(QObject):
         try:
             if fn := getattr(self, "_on_" + t, None):
                 fn(m)
-            elif t in ("server", "open", "cast", "update", "library"):
+            elif t in ("server", "open", "cast", "update", "library", "folder"):
                 self.command.emit(t, m)
         except Exception:       # a message that fails goes to the log; the window carries on
             log.exception("The page's %r failed", t)

@@ -60,8 +60,8 @@ export default function Home() {
   const started = useStartedEpisodes();
   const sections = useShown(SECTIONS);
   const modules = useModules();
-  // the phone's own library with no folder picked yet: the app asks for one (a computer's are in Muzix Desktop's Settings)
-  const phone = useShell((s) => s.library === "local" && !s.desktop);
+  // the app's own library with no folder picked yet: the app asks for one
+  const own = useShell((s) => (s.library === "local" ? (s.desktop ? "computer" : "phone") : null));
   if (!q.data) return <div className="page"><Loading /></div>;
   const d = q.data;
   const latest = d.recently_added[0];
@@ -107,11 +107,11 @@ export default function Home() {
         )}
       </div>
 
-      {phone && d.stats.tracks === 0 && (
+      {own && d.stats.tracks === 0 && (
         <section className="panel home-empty">
-          <div className="kicker">This phone's music</div>
+          <div className="kicker">This {own}'s music</div>
           <div className="h2">No music here yet</div>
-          <p className="dim">Pick the folder on this phone that has your music; the app only reads it. Podcasts and radio play meanwhile.</p>
+          <p className="dim">Pick the folder on this {own} that has your music; the app only reads it. Podcasts and radio play meanwhile.</p>
           <button className="btn primary" onClick={() => appPlayer.addFolder()}><FolderPlus size={15} /> Choose a music folder</button>
         </section>
       )}

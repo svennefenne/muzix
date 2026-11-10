@@ -17,8 +17,8 @@ from PySide6.QtNetwork import QNetworkCookie, QNetworkInformation
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineScript
 from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtWidgets import (QApplication, QHBoxLayout, QLineEdit, QMainWindow, QMenu, QPushButton, QStackedWidget,
-                               QSystemTrayIcon, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QApplication, QFileDialog, QHBoxLayout, QLineEdit, QMainWindow, QMenu, QMessageBox,
+                               QPushButton, QStackedWidget, QSystemTrayIcon, QVBoxLayout, QWidget)
 
 from . import config, player
 from .library import Library
@@ -87,6 +87,7 @@ class _Bridge(QObject):
 
 class Window(QMainWindow):
     library_up = Signal(bool)       # this computer's library answers (or didn't start)
+    folder_added = Signal()         # a music folder added here, not in Settings (the page's "Add a music folder")
 
     def __init__(self, cfg: config.Config):
         super().__init__()
@@ -152,12 +153,11 @@ class Window(QMainWindow):
         self.stack.addWidget(self.address_page)
         self.stack.addWidget(self.web)
         self.setCentralWidget(self.stack)
-        if cfg.library == "local":
-            self._open_local()
-        elif self.relay.address:
-            self._show_web()
+        # no server yet, or this computer's library chosen: this computer's music (a folder for it asked for first)
+        if cfg.library == "local" or not self.relay.address:
+            self._choose_local()
         else:
-            self.ask()
+            self._show_web()
 
         # the network changed (another wifi, a cable, none): the address that answers
         self._repick = QTimer(self, singleShot=True, interval=1500, timeout=self.relay.pick)
@@ -247,6 +247,38 @@ class Window(QMainWindow):
         self.cfg.library = "local"
         config.save()
         self._open_local()
+        if not any(f.kind == "music" for f in self.cfg.folders):
+            QTimer.singleShot(300, self._ask_folder)        # once the window shows
+
+    def _ask_folder(self):
+        """No music folder yet: picked first thing. Without one, podcasts and radio play (and the user menu's
+        "Add a music folder" asks again). Not over a window that isn't open (started in the tray)."""
+        if not self.isVisible() or any(f.kind == "music" for f in self.cfg.folders):
+            return
+        box = QMessageBox(self)
+        box.setWindowTitle("Muzix")
+        box.setText("Where's your music?")
+        box.setInformativeText("Pick the folder on this computer that has your music. Muzix only reads it.\n\n"
+                               "Without one, podcasts and radio still play.")
+        choose = box.addButton("Choose a folder", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Not now", QMessageBox.ButtonRole.RejectRole)
+        server = box.addButton("Use a Muzix server", QMessageBox.ButtonRole.ActionRole)
+        box.exec()
+        if box.clickedButton() is choose:
+            self.add_folder()
+        elif box.clickedButton() is server:
+            self.ask()
+
+    def add_folder(self):
+        """Another music folder, as Settings adds one (shared too while sharing is on)."""
+        path = QFileDialog.getExistingDirectory(self, "A music folder")
+        if not path or any(f.path == path for f in self.cfg.folders):
+            return
+        with config._lock:
+            self.cfg.folders.append(config.Folder(path=path))
+            config.save()
+        self.folders_changed()
+        self.folder_added.emit()
 
     def _open_local(self):
         """This computer's library: its server started (library.py), then the window on it."""
@@ -334,6 +366,8 @@ class Window(QMainWindow):
             self.ask()
         elif t == "library":
             self._use_library(m.get("which"))
+        elif t == "folder":
+            self.add_folder()
         elif t == "open":
             url = QUrl(m.get("url") or "")
             if url.scheme() in ("http", "https"):

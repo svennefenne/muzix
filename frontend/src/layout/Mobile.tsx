@@ -126,7 +126,7 @@ function MoreSheet({ onClose }: { onClose: () => void }) {
   const items = [
     ...more,
     { to: "/settings", label: "Settings", sub: "Colours, playback and your account", icon: Settings },
-    ...(user?.is_admin ? [{ to: "/admin", label: inApp ? "Admin on the server" : "Admin", sub: "Library folders, uploads, users", icon: Shield }] : []),
+    ...(user?.is_admin && library !== "local" ? [{ to: "/admin", label: inApp ? "Admin on the server" : "Admin", sub: "Library folders, uploads, users", icon: Shield }] : []),
   ];
   return (
     <div className="sheet-bg" onClick={onClose}>
@@ -145,7 +145,7 @@ function MoreSheet({ onClose }: { onClose: () => void }) {
             <SwitchLook on={library === "local"} />
           </button>
         )}
-        {library === "local" && !computer && (
+        {library === "local" && (
           <button className="sheet-item" onClick={() => { appPlayer.addFolder(); onClose(); }}>
             <FolderPlus size={22} />
             <span><b>Add a music folder</b><small>The app only reads it</small></span>
