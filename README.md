@@ -10,7 +10,9 @@ frame and embers rising with the bass. Psytrance gets UV neon and a fractal
 mandala, chiptunes get pixel fonts, CRT scanlines and a warp starfield, jazz gets
 Blue Note colours and art deco type. The covers always stay as they are: a skin
 dresses the interface around them. There are 25 genre skins, and when none
-applies you choose from 98 colour schemes, each with a light and a dark version.
+applies you choose from 98 colour schemes, each with a light and a dark version,
+or make your own: its colours, fonts, frame, backdrop and a picture of yours,
+shared with the others on your server if you like.
 
 ## Features
 

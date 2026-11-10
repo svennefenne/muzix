@@ -74,6 +74,18 @@ The Muzix Library Network works as it does today.
   version gains too) and use QtWebEngine. If the artifacts stay with QtWebEngine as well, the UI becomes
   Qt Quick (QML), a second UI to keep up beside React. WebView2 (Chromium) on Windows is fine either way.
 
+### Color schemes of your own
+
+The user's own schemes, as in Hooden (decided 2026-11-10; api/schemes.py, theme/schemes.ts, pages/SchemeEditor.tsx):
+made from any scheme, with colours for the dark and the light version (or one of them), the titles' and
+the rest's fonts, titles in capitals or not, a genre skin's lettering, corners, glass, a frame, a backdrop
+and a picture (one for phones too, darkened and blurred as wished). The whole app shows it while it's
+made. They're the account's, on every device; a device uses one as its scheme ("custom:<id>"), kept in
+the browser for the first paint, and it shows when no genre skin does. Shared, everyone on the server can
+use it or copy it to change. With the app's own library they come from the server (an account path), and
+with no server there are none yet. The server keeps only colours, the app's own names, numbers in their
+ranges and pictures uploaded to it (WebP, at most 2560 px), since they're drawn on other people's devices.
+
 ### Distribution
 
 GitHub releases as today, with an in-app notice of new versions. Google Play maybe later.

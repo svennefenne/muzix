@@ -44,7 +44,8 @@ SECRET_HEADER = "x-muzix-window"        # the same, from the app's player (playe
 UA = f"MuzixDesktop/{__version__} ({platform.system() or 'Unknown'}; {platform.node() or 'Computer'})"
 # not passed on, either way
 # the account's, on the server, even while the library is this computer's
-ACCOUNT = ("/api/podcasts", "/api/radio", "/api/connect", "/api/me/devices", "/api/auth/logout", "/api/android", "/api/desktop")
+ACCOUNT = ("/api/podcasts", "/api/radio", "/api/connect", "/api/me/devices", "/api/auth/logout", "/api/android", "/api/desktop",
+           "/api/schemes")
 HOP = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailers",
        "transfer-encoding", "upgrade", "host", "user-agent", SECRET_HEADER}
 

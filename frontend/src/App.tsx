@@ -37,6 +37,7 @@ const PodcastPage = lazy(() => import("./pages/Podcasts").then((m) => ({ default
 const EpisodePage = lazy(() => import("./pages/Podcasts").then((m) => ({ default: m.EpisodePage })));
 const Radio = lazy(() => import("./pages/Radio"));
 const Settings = lazy(() => import("./pages/Settings"));
+const SchemeEditor = lazy(() => import("./pages/SchemeEditor"));
 const Admin = lazy(() => import("./pages/admin/Admin"));
 const Setup = lazy(() => import("./pages/Setup"));
 const Downloads = lazy(() => import("./pages/Downloads"));
@@ -240,6 +241,8 @@ function Shell() {
               <Route path="/podcasts/episode/:eid" element={<Gate module="podcasts"><EpisodePage /></Gate>} />
               <Route path="/radio" element={<Gate module="radio"><Radio /></Gate>} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/settings/schemes/new" element={<SchemeEditor key="new" />} />
+              <Route path="/settings/schemes/:id" element={<SchemeEditor />} />
               <Route path="/admin/*" element={<Admin />} />
               <Route path="*" element={<div className="page"><Display l1="Lost" l2="in space" /><p className="lede">That page doesn't exist.</p></div>} />
             </Routes>}

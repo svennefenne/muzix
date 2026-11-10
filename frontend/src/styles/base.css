@@ -47,6 +47,13 @@ img { display: block; }
 ::selection { background: var(--primary); color: var(--on-primary); }
 :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .backdrop { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: -1; pointer-events: none; }
+/* an own scheme's picture (theme/schemes.ts), in the backdrop's place: darkened towards the scheme's background, blurred if asked */
+.scheme-picture { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+.scheme-picture::before { content: ""; position: absolute; inset: calc(var(--pic-blur) * -2); background: var(--pic) center / cover no-repeat; filter: blur(var(--pic-blur)); }
+.scheme-picture.fit-contain::before { background-size: contain; }
+.scheme-picture.fit-tile::before { background-size: auto; background-repeat: repeat; }
+.scheme-picture::after { content: ""; position: absolute; inset: 0; background: var(--bg); opacity: var(--pic-dim); }
+@media (max-width: 720px) { .scheme-picture::before { background-image: var(--pic-phone); } }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
 /* scrollbars: thin ones with a mouse; none on touch screens, where a swipe does it (as on Spotify) */
@@ -839,10 +846,43 @@ a.stat-link.warn .v { color: var(--warning); }
 .scheme-head:hover .chev { color: var(--text); }
 .scheme-head .in-use { margin-left: auto; min-width: 0; font: 600 12.5px/1.2 var(--font-ui); letter-spacing: 0; text-transform: none; color: var(--text-faint); }
 @media (prefers-reduced-motion: reduce) { .scheme-head .chev { transition: none; } }
-.swatch { display: flex; flex-direction: column; justify-content: flex-start; padding: 10px; border-radius: 10px; border: 2px solid transparent; cursor: pointer; text-align: left; background: var(--surface-2); }
+.swatch { display: flex; flex-direction: column; justify-content: flex-start; border-radius: 10px; border: 2px solid transparent; background: var(--surface-2); }
+.swatch-pick { display: flex; flex-direction: column; align-items: stretch; width: 100%; flex: 1; padding: 10px; border: 0; border-radius: 8px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.swatch .sub { margin-top: 3px; font-size: 11.5px; color: var(--text-faint); }
+.swatch-actions { display: flex; gap: 2px; padding: 0 6px 6px; margin-top: -4px; }
 .swatch.active { border-color: var(--primary); }
 .swatch .strip { display: flex; height: 26px; border-radius: 6px; overflow: hidden; margin-bottom: 8px; }
 .swatch .strip span { flex: 1; }
+
+/* making a color scheme of your own (pages/SchemeEditor.tsx) */
+.color-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 6px 18px; }
+.color-row { display: flex; align-items: center; gap: 10px; min-height: 40px; font-size: 13.5px; color: var(--text-dim); }
+.color-row .grow { flex: 1; min-width: 0; }
+.color-row input[type="color"] { flex: none; width: 34px; height: 34px; padding: 0; border: 1px solid var(--border-strong); border-radius: 6px; background: none; cursor: pointer; }
+.color-row input[type="color"]::-webkit-color-swatch-wrapper { padding: 3px; }
+.color-row input[type="color"]::-webkit-color-swatch { border: none; border-radius: 4px; }
+.color-row input[type="color"]::-moz-color-swatch { border: none; border-radius: 4px; }
+.color-row .input { flex: none; width: 96px; height: 34px; font: 500 13px/1 var(--font-mono); }
+.font-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; }
+.font-pick.wide { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+.font-opt { display: grid; gap: 6px; justify-items: start; padding: 10px 12px; border: 2px solid transparent; border-radius: 10px; background: var(--surface-2); color: var(--text); text-align: left; cursor: pointer; }
+.font-opt:hover { background: var(--surface-3); }
+.font-opt.on { border-color: var(--primary); }
+.font-opt .font-sample { font-size: 22px; line-height: 1.1; }
+.font-opt .font-name { font-size: 11.5px; color: var(--text-faint); }
+.pic-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 0 18px; }
+.pic-pick { display: flex; align-items: center; gap: 14px; }
+.pic-thumb { flex: none; display: grid; place-items: center; width: 96px; height: 64px; border: 1px dashed var(--border-strong); border-radius: 8px; background: var(--surface-2) center / cover no-repeat; color: var(--text-faint); }
+/* the editor's buttons stay in reach while it scrolls */
+.scheme-save {
+  position: sticky; bottom: 12px; z-index: 2; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; padding: 10px;
+  border: 1px solid var(--border); border-radius: var(--radius); background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(8px);
+}
+@media (max-width: 720px) {
+  .scheme-save { bottom: 8px; flex-wrap: nowrap; }
+  .scheme-save .btn.primary { flex: 1; min-width: 0; }
+  .scheme-cancel span { display: none; }
+}
 /* two lines rather than cut off: on a phone there's no tooltip to read the rest in */
 .swatch .name { font-weight: 700; font-size: 12.5px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .status-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; background: var(--text-faint); }

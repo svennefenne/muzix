@@ -193,6 +193,20 @@ class Playlist(Base):
     hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # admin: hidden from everyone
 
 
+class Scheme(Base):
+    """A colour scheme a user made (api/schemes.py): its colours, fonts, frame, backdrop and picture, as
+    JSON; shared, everyone on the server can use it."""
+    __tablename__ = "schemes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(40))
+    data: Mapped[dict] = mapped_column(JSON, default=dict)
+    shared: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    user: Mapped[User] = relationship()
+
+
 class PlaylistItem(Base):
     __tablename__ = "playlist_items"
     id: Mapped[int] = mapped_column(primary_key=True)

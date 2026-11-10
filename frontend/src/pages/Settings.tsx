@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, LogOut, Network, Plus, Server, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { ChevronRight, Copy, LogOut, Network, Pencil, Plus, Server, Share2, Trash2, X } from "lucide-react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { queryClient } from "../actions";
 import { ago, api } from "../api";
 import { appVersion } from "../appUpdate";
@@ -10,7 +10,8 @@ import { Display, Kicker, Switch } from "../components/ui";
 import { appPlayer, useShell } from "../player/app";
 import { usePlayer } from "../store/player";
 import { useUi } from "../store/ui";
-import { PALETTES, type Palette } from "../theme/palettes";
+import { type Colors, PALETTES, type Palette } from "../theme/palettes";
+import { CUSTOM, type Scheme, type SchemeData, useSchemes } from "../theme/schemes";
 import { SKINS } from "../theme/skins";
 import { Link } from "react-router-dom";
 import { fmtBytes, useDownloads } from "../downloads";
@@ -198,46 +199,116 @@ function SkinRules() {
   );
 }
 
-/** The color schemes in groups that open and close: the one with the scheme in use is open to begin with, and
- * a filter opens every group it finds something in. */
+interface Tile { value: string; name: string; colors: Colors; sub?: string; actions?: ReactNode }
+
+/** The color schemes in groups that open and close: the user's own and the ones others share first (while
+ * the server has them), then the app's. The group with the scheme in use is open to begin with and names
+ * it, and a filter opens every group it finds something in. */
 export function SchemePicker({ value, onChange, dark }: { value: string; onChange: (slug: string) => void; dark: boolean }) {
   const [filter, setFilter] = useState("");
-  const list = useMemo(() => PALETTES.filter((p) => p.name.toLowerCase().includes(filter.toLowerCase())), [filter]);
-  const [open, setOpen] = useState(() => new Set<string>([PALETTES.find((p) => p.slug === value)?.category ?? "muzix"]));
-  const toggle = (cat: string) => setOpen((o) => new Set(o.has(cat) ? [...o].filter((c) => c !== cat) : [...o, cat]));
+  const notify = useUi((s) => s.notify);
+  const own = useQuery({
+    queryKey: ["schemes"], retry: false,
+    queryFn: async () => {
+      const r = await api.get<{ mine: Scheme[]; shared: Scheme[] }>("/api/schemes");
+      useSchemes.getState().meet([...r.mine, ...r.shared]);
+      return r;
+    },
+  });
+  const look = (d: SchemeData) => ((dark && d.modes !== "light") || d.modes === "dark" ? d.dark : d.light);
+  const save = async (s: Scheme, shared: boolean) => {
+    try {
+      await api.put(`/api/schemes/${s.id}`, { name: s.name, data: s.data, shared });
+      notify(shared ? `${s.name} is shared: everyone here can use it` : `${s.name} is only yours again`);
+    } catch (e) {
+      notify((e as Error).message, "error");
+    }
+    own.refetch();
+  };
+  const remove = async (s: Scheme) => {
+    if (!confirm(`Delete your color scheme "${s.name}"?${s.uses > (value === CUSTOM + s.id ? 1 : 0) ? " Devices that use it go back to Muzix's own." : ""}`)) return;
+    await api.del(`/api/schemes/${s.id}`).catch((e: Error) => notify(e.message, "error"));
+    if (value === CUSTOM + s.id) onChange(s.data.base);
+    own.refetch();
+  };
+  const groups: { key: string; label: string; tiles: Tile[] }[] = [
+    ...(own.data ? [
+      { key: "mine", label: "Your own", tiles: own.data.mine.map((s): Tile => ({
+        value: CUSTOM + s.id, name: s.name, colors: look(s.data),
+        sub: s.shared ? `Shared · on ${s.uses} device${s.uses === 1 ? "" : "s"}` : "Only you",
+        actions: <>
+          <Link className="mini" to={`/settings/schemes/${s.id}`} aria-label={`Change ${s.name}`} data-tip="Change it"><Pencil size={14} /></Link>
+          <button className={`mini ${s.shared ? "liked" : ""}`} aria-label={s.shared ? "Stop sharing it" : "Share it with everyone here"}
+                  aria-pressed={s.shared} data-tip={s.shared ? "Shared: click to stop" : "Share it with everyone here"} onClick={() => save(s, !s.shared)}>
+            <Share2 size={14} />
+          </button>
+          <button className="mini" aria-label={`Delete ${s.name}`} data-tip="Delete it" onClick={() => remove(s)}><Trash2 size={14} /></button>
+        </>,
+      })) },
+      { key: "shared", label: "Shared by others", tiles: own.data.shared.map((s): Tile => ({
+        value: CUSTOM + s.id, name: s.name, colors: look(s.data), sub: `by ${s.owner.name}`,
+        actions: <Link className="mini" to={`/settings/schemes/new?from=${s.id}`} aria-label={`Copy ${s.name} to change it`}
+                       data-tip="Make a copy to change"><Copy size={14} /></Link>,
+      })) },
+    ] : []),
+    ...GROUPS.map(([cat, label]) => ({
+      key: cat, label,
+      tiles: PALETTES.filter((p) => p.category === cat).map((p): Tile => ({ value: p.slug, name: p.name, colors: dark ? p.dark : p.light })),
+    })),
+  ];
+  const groupOf = (v: string) => groups.find((g) => g.tiles.some((t) => t.value === v))?.key;
+  const [open, setOpen] = useState(() => new Set<string>([PALETTES.find((p) => p.slug === value)?.category ?? (value.startsWith(CUSTOM) ? "mine" : "muzix")]));
+  // the user's own scheme in use is in the list once the server has said whose it is
+  const placed = useRef(false);
+  useEffect(() => {
+    const g = own.data && groupOf(value);
+    if (g && !placed.current) {
+      placed.current = true;
+      setOpen((o) => new Set([...o, g]));
+    }
+  });
+  const toggle = (key: string) => setOpen((o) => new Set(o.has(key) ? [...o].filter((k) => k !== key) : [...o, key]));
+  const q = filter.trim().toLowerCase();
   const find = (text: string) => {
     setFilter(text);
-    const q = text.trim().toLowerCase();
-    if (q) setOpen((o) => new Set([...o, ...PALETTES.filter((p) => p.name.toLowerCase().includes(q)).map((p) => p.category)]));
+    const f = text.trim().toLowerCase();
+    if (f) setOpen((o) => new Set([...o, ...groups.filter((g) => g.tiles.some((t) => t.name.toLowerCase().includes(f))).map((g) => g.key)]));
   };
-  const inUse = PALETTES.find((p) => p.slug === value);
+  const inUse = groups.flatMap((g) => g.tiles.map((t) => ({ g: g.key, t }))).find((x) => x.t.value === value);
+  const base = value.startsWith(CUSTOM) ? useSchemes.getState().known[Number(value.slice(CUSTOM.length))]?.data.base : value;
   return (
     <div>
-      <input className="input" style={{ maxWidth: 320, marginBottom: 10 }} placeholder={`Filter ${PALETTES.length} color schemes`}
-             value={filter} onChange={(e) => find(e.target.value)} />
-      {GROUPS.map(([cat, label]) => {
-        const items = list.filter((p) => p.category === cat);
-        if (!items.length) return null;
-        const shown = open.has(cat);
+      <div className="row-actions" style={{ marginBottom: 10 }}>
+        <input className="input" style={{ maxWidth: 320 }} placeholder={`Filter ${PALETTES.length} color schemes`}
+               value={filter} onChange={(e) => find(e.target.value)} />
+        {own.data && <Link className="btn small" to={`/settings/schemes/new?base=${base || "muzix"}`}><Plus size={14} /> Make your own</Link>}
+      </div>
+      {groups.map((g) => {
+        const tiles = q ? g.tiles.filter((t) => t.name.toLowerCase().includes(q)) : g.tiles;
+        if (!tiles.length && (q || g.key !== "mine")) return null;
+        const shown = open.has(g.key);
         return (
-          <div key={cat} className="scheme-group">
-            <button className="scheme-head" aria-expanded={shown} aria-controls={`schemes-${cat}`} onClick={() => toggle(cat)}>
+          <div key={g.key} className="scheme-group">
+            <button className="scheme-head" aria-expanded={shown} aria-controls={`schemes-${g.key}`} onClick={() => toggle(g.key)}>
               <ChevronRight size={14} className="chev" aria-hidden="true" />
-              <span>{label} · {items.length}</span>
-              {inUse?.category === cat && <span className="in-use ellipsis">{inUse.name}</span>}
+              <span>{g.label} · {tiles.length}</span>
+              {inUse?.g === g.key && <span className="in-use ellipsis">{inUse.t.name}</span>}
             </button>
-            <div className="swatches" id={`schemes-${cat}`} hidden={!shown}>
-              {items.map((p) => {
-                const c = dark ? p.dark : p.light;
-                return (
-                  <button key={p.slug} className={`swatch ${value === p.slug ? "active" : ""}`} onClick={() => onChange(p.slug)} data-tip={p.name}>
-                    <div className="strip" style={{ background: c.bg }}>
-                      {[c.bg, c.surface, c.primary, c.secondary, c.success, c.warning, c.error, c.text].map((x, i) => <span key={i} style={{ background: x }} />)}
+            <div className="swatches" id={`schemes-${g.key}`} hidden={!shown}>
+              {!tiles.length && <p className="dim" style={{ margin: 0, fontSize: 13 }}>None yet. Make one from any scheme: its colours, fonts, frame and a picture of your own.</p>}
+              {tiles.map((t) => (
+                <div key={t.value} className={`swatch ${value === t.value ? "active" : ""}`}>
+                  <button className="swatch-pick" onClick={() => onChange(t.value)} data-tip={t.name} aria-pressed={value === t.value}>
+                    <div className="strip" style={{ background: t.colors.bg }}>
+                      {[t.colors.bg, t.colors.surface, t.colors.primary, t.colors.secondary, t.colors.success, t.colors.warning, t.colors.error, t.colors.text]
+                        .map((x, i) => <span key={i} style={{ background: x }} />)}
                     </div>
-                    <div className="name">{p.name}</div>
+                    <div className="name">{t.name}</div>
+                    {t.sub && <div className="sub">{t.sub}</div>}
                   </button>
-                );
-              })}
+                  {t.actions && <div className="swatch-actions">{t.actions}</div>}
+                </div>
+              ))}
             </div>
           </div>
         );

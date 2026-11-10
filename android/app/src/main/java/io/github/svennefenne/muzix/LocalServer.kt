@@ -51,11 +51,11 @@ class LocalServer(private val context: Context, private val api: LocalApi, port:
         if (!path.startsWith("/api/")) return page(path)
         if (!allowed(session)) return newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "Only the Muzix app may use this")
         val method = session.method.name
-        val body = if (method in setOf("POST", "PUT", "PATCH")) read(session) else ""
+        val body = if (method in setOf("POST", "PUT", "PATCH")) read(session) else ByteArray(0)
         return try {
             if (server.isNotEmpty() && ACCOUNT.any { path.startsWith(it) }) return account(session, method, body)
             val query = session.parameters.mapValues { it.value.firstOrNull().orEmpty() }
-            val a = api.handle(method, path, query, body)
+            val a = api.handle(method, path, query, String(body, Charsets.UTF_8))
             // the sidebar's podcasts and stations are the account's
             if (path == "/api/sidebar" && a is LocalApi.Answer.Json && a.body is JSONObject) return json(a.status, mergeSidebar(a.body))
             answer(session, a)
@@ -70,8 +70,9 @@ class LocalServer(private val context: Context, private val api: LocalApi, port:
         return (cookie ?: s.headers[HEADER]) == secret
     }
 
-    private fun read(s: IHTTPSession): String {
-        val n = s.headers["content-length"]?.toIntOrNull() ?: return ""
+    /** A request's body as it came (a picture as well as JSON). */
+    private fun read(s: IHTTPSession): ByteArray {
+        val n = s.headers["content-length"]?.toIntOrNull() ?: return ByteArray(0)
         val buf = ByteArray(n)
         var at = 0
         while (at < n) {
@@ -79,7 +80,7 @@ class LocalServer(private val context: Context, private val api: LocalApi, port:
             if (got < 0) break
             at += got
         }
-        return String(buf, 0, at, Charsets.UTF_8)
+        return if (at == n) buf else buf.copyOf(at)
     }
 
     /** The interface's files, and its page (index.html) for every other address, as the server answers. */
@@ -149,7 +150,7 @@ class LocalServer(private val context: Context, private val api: LocalApi, port:
             return newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "Not for speakers")
         }
         return try {
-            if (server.isNotEmpty() && ACCOUNT.any { path.startsWith(it) }) return account(s, "GET", "")
+            if (server.isNotEmpty() && ACCOUNT.any { path.startsWith(it) }) return account(s, "GET", ByteArray(0))
             answer(s, api.handle("GET", path, s.parameters.mapValues { it.value.firstOrNull().orEmpty() }, ""))
         } catch (e: Exception) {
             Log.w("MuzixLocal", "A speaker's $path failed", e)
@@ -211,7 +212,7 @@ class LocalServer(private val context: Context, private val api: LocalApi, port:
         }
     }
 
-    private fun account(s: IHTTPSession, method: String, body: String): Response {
+    private fun account(s: IHTTPSession, method: String, body: ByteArray): Response {
         val url = server + s.uri + (s.queryParameterString?.let { "?$it" } ?: "")
         val req = Request.Builder().url(url).header("User-Agent", PlaybackService.USER_AGENT)
             .apply { CookieManager.getInstance().getCookie(server)?.let { header("Cookie", it) } }
@@ -260,7 +261,7 @@ class LocalServer(private val context: Context, private val api: LocalApi, port:
             return lan + url.substring(srv.origin.length)
         }
         // the account's, on the server, even while the library is this phone's (docs/app-plan.md)
-        val ACCOUNT = arrayOf("/api/podcasts", "/api/radio", "/api/me/devices")
+        val ACCOUNT = arrayOf("/api/podcasts", "/api/radio", "/api/me/devices", "/api/schemes")
         private val WEB_TYPES = mapOf("html" to "text/html", "js" to "text/javascript", "css" to "text/css", "svg" to "image/svg+xml",
             "png" to "image/png", "woff2" to "font/woff2", "json" to "application/json", "ico" to "image/x-icon")
     }
