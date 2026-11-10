@@ -202,8 +202,11 @@ This phone's music in the Android app (0.10.0), with no server, or beside one.
 - From 0.10.2 Settings' "The app" lists this library's folders, each with its songs, to take out again
   (the files stay on the phone; its songs leave the library with their likes, plays and places in
   playlists). A folder the phone can't read for now (a card taken out) keeps its songs till it can.
-- Not yet: Muzix Connect while the library is this phone's (its socket isn't passed on), and casting this
-  phone's songs.
+- Casting (0.10.4): a speaker can't reach 127.0.0.1, so the queue's links go to it on the phone's address
+  on the wifi, where a second listener gives out only the audio, by links signed with a token new for each
+  run (GET /api/cast/token); the account's episodes and stations are passed on to the server with the
+  app's login. The phone has to stay on that wifi while it casts its own songs.
+- Not yet: Muzix Connect while the library is this phone's (its socket isn't passed on).
 
 ## Step 6 and 7 in detail
 

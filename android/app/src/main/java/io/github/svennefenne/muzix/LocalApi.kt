@@ -65,6 +65,8 @@ class LocalApi(private val context: Context, private val lib: LocalLibrary) {
             method == "GET" && p.size == 2 && p[0] == "stream" && id != null -> stream(id)
             method == "GET" && p.size == 3 && p[0] == "tracks" && p[2] == "lyrics" && id != null -> ok(lyrics(id))
             method == "GET" && p.size >= 3 && p[0] == "art" -> picture(p[1], p[2].toLongOrNull() ?: -1)
+            // a Cast speaker's links to this library, played from the phone's address on the wifi (LocalServer)
+            method == "GET" && path == "/api/cast/token" -> ok(JSONObject().put("token", LocalServer.CAST_TOKEN).put("expires", System.currentTimeMillis() / 1000 + 86_400))
             method == "GET" && path == "/api/local/folders" -> ok(folders())
             method == "DELETE" && path == "/api/local/folders" -> removeFolder(q["uri"].orEmpty())
             method == "GET" && path in setOf("/api/file-playlists", "/api/vgm/systems", "/api/me/devices") -> ok(JSONArray())

@@ -1,6 +1,8 @@
 package io.github.svennefenne.muzix
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.util.Log
 import android.webkit.CookieManager
 import fi.iki.elonen.NanoHTTPD
@@ -11,6 +13,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.FileInputStream
+import java.net.Inet4Address
 import java.security.SecureRandom
 import java.util.Base64
 import java.util.concurrent.TimeUnit
@@ -20,7 +23,8 @@ import java.util.concurrent.TimeUnit
  * with the app (WebUi.kt's files), and this phone's library as the server's requests (LocalApi). With a
  * server too, what's the account's stays the server's (podcasts, radio, the account's devices), passed
  * on with the app's login there. Only the app may use it (other apps can reach 127.0.0.1): the web view
- * and the player carry a secret, new for each run.
+ * and the player carry a secret, new for each run. A Cast speaker gets the songs from the phone's address
+ * on the wifi instead, by their signed links only (forSpeakers).
  */
 class LocalServer(private val context: Context, private val api: LocalApi, port: Int) : NanoHTTPD("127.0.0.1", port) {
     val secret: String = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(24).also { SecureRandom().nextBytes(it) })
@@ -104,6 +108,57 @@ class LocalServer(private val context: Context, private val api: LocalApi, port:
         }
     }
 
+    // ------------------------------------------------------------ Cast speakers on the wifi
+
+    private var lan: NanoHTTPD? = null
+
+    /** Where a Cast speaker gets this library: the phone's address on the wifi (listened on from the first
+     * time, again when the address changes), or "" with no wifi. */
+    @Synchronized
+    fun forSpeakers(): String {
+        val ip = wifiAddress() ?: return ""
+        lan?.let { if (it.hostname == ip && it.isAlive) return "http://$ip:${it.listeningPort}" else it.stop() }
+        val srv = object : NanoHTTPD(ip, 0) {
+            override fun serve(session: IHTTPSession): Response = speaker(session)
+        }
+        srv.start(SOCKET_READ_TIMEOUT, true)
+        lan = srv
+        Log.i("MuzixLocal", "Cast speakers get this phone's music from http://$ip:${srv.listeningPort}")
+        return "http://$ip:${srv.listeningPort}"
+    }
+
+    /** What a speaker may have: the audio, by its signed links (the account's episodes and stations passed on
+     * to the server with the app's login), nothing else of the library. */
+    private fun speaker(s: IHTTPSession): Response {
+        val path = s.uri
+        val signed = SPEAKER.matches(path) && s.parameters["ct"]?.firstOrNull() == CAST_TOKEN
+        if (!signed || (s.method != Method.GET && s.method != Method.HEAD)) {
+            return newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "Not for speakers")
+        }
+        return try {
+            if (server.isNotEmpty() && ACCOUNT.any { path.startsWith(it) }) return account(s, "GET", "")
+            answer(s, api.handle("GET", path, s.parameters.mapValues { it.value.firstOrNull().orEmpty() }, ""))
+        } catch (e: Exception) {
+            Log.w("MuzixLocal", "A speaker's $path failed", e)
+            newFixedLengthResponse(Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, "")
+        }
+    }
+
+    private fun wifiAddress(): String? {
+        val cm = context.getSystemService(ConnectivityManager::class.java) ?: return null
+        @Suppress("DEPRECATION")
+        return cm.allNetworks.firstNotNullOfOrNull { n ->
+            val caps = cm.getNetworkCapabilities(n)
+            if (caps == null || !(caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) || caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET))) null
+            else cm.getLinkProperties(n)?.linkAddresses?.map { it.address }?.firstOrNull { it is Inet4Address && it.isSiteLocalAddress }?.hostAddress
+        }
+    }
+
+    override fun stop() {
+        lan?.stop()
+        super.stop()
+    }
+
     // ------------------------------------------------------------ the account's, on the server
 
     private fun account(s: IHTTPSession, method: String, body: String): Response {
@@ -142,6 +197,18 @@ class LocalServer(private val context: Context, private val api: LocalApi, port:
         @Volatile var running: LocalServer? = null
         const val COOKIE = "muzix_local"
         const val HEADER = "x-muzix-local"
+        /** The signature in a Cast speaker's links to this library (GET /api/cast/token, LocalApi): new for each run. */
+        val CAST_TOKEN: String = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(18).also { SecureRandom().nextBytes(it) })
+        private val SPEAKER = Regex("/api/(stream/\\d+|podcasts/episodes/\\d+/stream|radio/play)")
+
+        /** A link for a Cast speaker: one to this library (127.0.0.1, which the speaker can't reach) on the
+         * phone's address on the wifi; any other as it is. */
+        fun speakerLink(url: String): String {
+            val srv = running ?: return url
+            if (!url.startsWith(srv.origin + "/")) return url
+            val lan = srv.forSpeakers().ifEmpty { return url }
+            return lan + url.substring(srv.origin.length)
+        }
         // the account's, on the server, even while the library is this phone's (docs/app-plan.md)
         val ACCOUNT = arrayOf("/api/podcasts", "/api/radio", "/api/me/devices")
         private val WEB_TYPES = mapOf("html" to "text/html", "js" to "text/javascript", "css" to "text/css", "svg" to "image/svg+xml",

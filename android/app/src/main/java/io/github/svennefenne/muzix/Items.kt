@@ -64,7 +64,8 @@ class CastItems : MediaItemConverter {
         val offset = o.optDouble("offset", 0.0)
         val carried = JSONObject().put("offset", offset).put("app", o)
         runCatching { carried.put("muzix", JSONObject(o.optString("muzix"))) }
-        val info = MediaInfo.Builder(o.optString("cast").ifEmpty { mediaItem.localConfiguration?.uri.toString() })
+        // this phone's library on its wifi address, not 127.0.0.1 (LocalServer)
+        val info = MediaInfo.Builder(LocalServer.speakerLink(o.optString("cast").ifEmpty { mediaItem.localConfiguration?.uri.toString() }))
             .setStreamType(if (live) MediaInfo.STREAM_TYPE_LIVE else MediaInfo.STREAM_TYPE_BUFFERED)
             .setContentType(o.optString("castMime").ifEmpty { "audio/flac" })
             .setMetadata(md)
