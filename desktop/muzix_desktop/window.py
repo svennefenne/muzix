@@ -6,6 +6,7 @@ playing on."""
 
 import asyncio
 import logging
+import os
 import re
 import sys
 import threading
@@ -21,6 +22,7 @@ from PySide6.QtWidgets import (QApplication, QFileDialog, QHBoxLayout, QLineEdit
                                QPushButton, QStackedWidget, QSystemTrayIcon, QVBoxLayout, QWidget)
 
 from . import config, player
+from .downloads import Downloads
 from .library import Library
 from .relay import SECRET_COOKIE, Relay, health, local, normalize
 from .ui import theme
@@ -41,6 +43,13 @@ class _Page(QWebEnginePage):
             QDesktopServices.openUrl(url)
             return False
         return True
+
+    def javaScriptConfirm(self, origin, text: str) -> bool:
+        # the page's questions as Muzix's own, not under "Javascript Confirm - http://127.0.0.1:…"
+        box = QMessageBox(QMessageBox.Icon.Question, "Muzix", text,
+                          QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel, self.parent())
+        box.exec()
+        return box.clickedButton() is box.button(QMessageBox.StandardButton.Ok)
 
     def createWindow(self, kind):
         # a link to a new tab or window: the browser
@@ -88,6 +97,7 @@ class _Bridge(QObject):
 class Window(QMainWindow):
     library_up = Signal(bool)       # this computer's library answers (or didn't start)
     folder_added = Signal()         # a music folder added here, not in Settings (the page's "Add a music folder")
+    reached = Signal(bool)          # the server answers again (or not any more)
 
     def __init__(self, cfg: config.Config):
         super().__init__()
@@ -103,6 +113,11 @@ class Window(QMainWindow):
         if cfg.window_port != self.relay.port:
             cfg.window_port = self.relay.port
             config.save()
+        # what's downloaded to this computer, from the server: played from here, and offline the pages too
+        self.downloads = Downloads(os.path.join(config.DATA_DIR, "downloads"), self.relay.headers, self.relay.origin)
+        self.relay.downloads = self.downloads
+        self.relay.on_offline = lambda off: self.reached.emit(not off)
+        self.reached.connect(self._reached)
 
         # the window's browser: its own cookies and storage, kept between runs
         self.profile = QWebEngineProfile("muzix", self)
@@ -119,7 +134,8 @@ class Window(QMainWindow):
         self.player = None
         if player.available():
             self.player = player.Player(self.relay.headers, lambda: self.isVisible() and not self.isMinimized(), self._for_speaker,
-                                        library=lambda: self.cfg.library)
+                                        library=lambda: self.cfg.library, downloads=self.downloads,
+                                        downloaded=self._downloaded, offline=self._offline)
             self.bridge = _Bridge(self.player.handle)
             self.player.sent.connect(self.bridge.message)
             self.player.command.connect(self._command)
@@ -165,6 +181,7 @@ class Window(QMainWindow):
             QNetworkInformation.instance().reachabilityChanged.connect(lambda _: self._repick.start())
         self._home = QTimer(self, interval=5 * 60 * 1000, timeout=self.relay.pick)   # and back home now and then
         self._home.start()
+        self._again = QTimer(self, interval=30 * 1000, timeout=self.relay.pick)      # offline: whether it's back
 
     # ------------------------------------------------------------ the server's address
 
@@ -322,6 +339,28 @@ class Window(QMainWindow):
         self.stack.setCurrentWidget(self.web)
         self.web.load(QUrl(self.relay.origin + "/"))
 
+    # ------------------------------------------------------------ what's downloaded
+
+    def _downloaded(self, url: str) -> str | None:
+        """A song's downloaded file, for the player: the server's songs only (this computer's library has
+        its own, under the same addresses)."""
+        if not url.startswith(self.relay.origin + "/") or self.relay._target(url[len(self.relay.origin):].split("?")[0])[1]:
+            return None
+        return self.downloads.file(url)
+
+    def _offline(self) -> bool:
+        """The server can't be reached, while the window shows the server's music (this computer's library
+        plays on without it)."""
+        return self.relay.offline and self.cfg.library != "local"
+
+    def _reached(self, yes: bool):
+        if yes:
+            self._again.stop()
+        else:
+            self._again.start()
+        if self.player:
+            self.player.send_downloads()
+
     # ------------------------------------------------------------ the player's side
 
     def _for_speaker(self, url: str) -> str:
@@ -395,5 +434,6 @@ class Window(QMainWindow):
     def shutdown(self):
         if self.player:
             self.player.release()
+        self.downloads.stop()
         self.library.stop()
         self.relay.stop()

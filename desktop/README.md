@@ -10,7 +10,10 @@ albums' tags and covers. The tray's menu has:
   server, at its address at home while that answers and its public address
   otherwise (the server's *Public URL*). With no server yet it shows this computer's
   music, asking first for the folder that has it (*Use a Muzix server* there, or the
-  user menu's switch, asks for the server's address).
+  user menu's switch, asks for the server's address). Albums, playlists, audiobooks,
+  episodes and the liked songs download from their pages (the files as they are,
+  unless *Settings → Downloads* says smaller) and play from the computer; when the
+  server can't be reached, the window shows what's downloaded.
 - **Muzix library…**: another server, or this computer's music: the folders in
   *Settings → Sharing*, played with no server at all (Muzix's own server code runs
   inside the app for them, on 127.0.0.1, and never changes the files). With a server

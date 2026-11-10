@@ -58,10 +58,11 @@ function NetworkMusic() {
 
 interface Device { id: string; name: string; app: boolean; since: string | null; seen: string | null; current: boolean }
 
-/** Downloads in the app: their format, whether they wait for wifi, and what's on the phone. */
+/** Downloads in the app: their format, whether they wait for wifi (on the phone), and what's downloaded. */
 function DownloadSettings() {
   const ui = useUi();
   const { available, list } = useDownloads();
+  const desktop = useShell((s) => !!s.desktop);
   if (!available) return null;
   const total = list.reduce((n, d) => n + d.bytes, 0);
   return (
@@ -76,13 +77,15 @@ function DownloadSettings() {
         </select>
         <div className="help">For what's downloaded from now on.</div>
       </div>
+      {!desktop && (
+        <div className="field">
+          <label>Only on wifi</label>
+          <div className="row-actions"><Switch checked={ui.downloadWifi} onChange={(v) => ui.setPref("download_wifi", v)} label="Only on wifi" />
+            <span className="dim">Downloads wait for wifi instead of using mobile data.</span></div>
+        </div>
+      )}
       <div className="field">
-        <label>Only on wifi</label>
-        <div className="row-actions"><Switch checked={ui.downloadWifi} onChange={(v) => ui.setPref("download_wifi", v)} label="Only on wifi" />
-          <span className="dim">Downloads wait for wifi instead of using mobile data.</span></div>
-      </div>
-      <div className="field">
-        <label>On the phone</label>
+        <label>{desktop ? "On this computer" : "On the phone"}</label>
         <div className="row-actions">
           <span className="dim">{list.length ? `${list.length} downloaded, ${fmtBytes(total)}` : "Nothing yet"}</span>
           <Link className="btn small" to="/downloads">Your downloads</Link>

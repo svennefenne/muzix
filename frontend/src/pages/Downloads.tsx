@@ -2,21 +2,22 @@ import { CloudOff, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Art, Display, Empty, Kicker } from "../components/ui";
 import { fmtBytes, useDownloads } from "../downloads";
-import { appPlayer } from "../player/app";
+import { appPlayer, useShell } from "../player/app";
 
 const KIND: Record<string, string> = { album: "Album", playlist: "Playlist", book: "Audiobook", episode: "Episode", liked: "Liked songs" };
 
-/** What's on the phone, in the app: each download, how far it has come, its size, and removing it. Offline,
- * the app's home: only these play then. */
+/** What's on the phone or the computer, in the app: each download, how far it has come, its size, and
+ * removing it. Offline, the app's home: only these play then. */
 export default function Downloads() {
   const { list, offline } = useDownloads();
+  const here = useShell((s) => (s.desktop ? "this computer" : "the phone"));
   const total = list.reduce((n, d) => n + d.bytes, 0);
   return (
     <div className="page">
-      <Kicker parts={[offline ? "Offline" : "On the phone", list.length ? fmtBytes(total) : undefined]} />
+      <Kicker parts={[offline ? "Offline" : `On ${here}`, list.length ? fmtBytes(total) : undefined]} />
       <Display l1="Your" l2="downloads" small />
       {offline && (
-        <p className="lede row-actions"><CloudOff size={18} /> The server can't be reached: what's downloaded plays from the phone.</p>
+        <p className="lede row-actions"><CloudOff size={18} /> The server can't be reached: what's downloaded plays from {here}.</p>
       )}
       {list.length ? (
         <ul className="admin-list">
@@ -32,7 +33,7 @@ export default function Downloads() {
                   </div>
                 </div>
               </Link>
-              <button className="btn small" onClick={() => confirm(`Remove "${d.title}" from the phone?`) && appPlayer.undownload(d.id)}>
+              <button className="btn small" onClick={() => confirm(`Remove "${d.title}" from ${here}?`) && appPlayer.undownload(d.id)}>
                 <Trash2 size={14} /> Remove
               </button>
             </li>

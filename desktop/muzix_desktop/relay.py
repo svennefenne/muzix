@@ -6,7 +6,10 @@ use it: it carries a secret cookie, new for each run (window.py sets it).
 
 With this computer's library on (library.py), the library is the local server's, signed in with its
 token here; what's the account's stays the server's while there's one: podcasts, radio, the account's
-devices and Muzix Connect (docs/app-plan.md)."""
+devices and Muzix Connect (docs/app-plan.md).
+
+While neither address answers, what's downloaded answers for the server (downloads.py): the sign-in state,
+the downloaded pages' data and their covers."""
 
 import asyncio
 import logging
@@ -25,7 +28,7 @@ import websockets
 from starlette.applications import Starlette
 from starlette.background import BackgroundTask
 from starlette.requests import Request
-from starlette.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
+from starlette.responses import FileResponse, JSONResponse, PlainTextResponse, Response, StreamingResponse
 from starlette.routing import Route, WebSocketRoute
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
@@ -115,6 +118,9 @@ class Relay:
         self.signed_in = None                   # (session) → called when the window signs in to the server
         self.local, self.local_token = "", ""   # this computer's library, when it's the window's (library.py)
         self.lan = ""                           # this computer's library for Cast speakers (for_speakers)
+        self.offline = False                    # neither address answers: what's downloaded answers instead
+        self.on_offline = None                  # (offline) → called when that changes, from the relay's thread
+        self.downloads = None                   # downloads.py, for its answers offline
         self.web = web_dir()
         self.loop: asyncio.AbstractEventLoop | None = None
         self.client: httpx.AsyncClient | None = None
@@ -191,9 +197,10 @@ class Relay:
     # ------------------------------------------------------------ the server's address
 
     def use(self, home: str, away: str):
-        """Another server (or its addresses), from the address screen."""
+        """Another server (or its addresses), from the address screen, which has just heard from it."""
         self.home, self.away = home, away
         self.address = home or away
+        self._reached(True)
 
     def use_local(self, address: str, token: str):
         """This computer's library (library.py), or the server's again ("")."""
@@ -218,8 +225,28 @@ class Relay:
                 if a != self.address:
                     log.info("The server is at %s now", a)
                 self.address = a
+                self._reached(True)
                 return True
+        self._reached(not self.address)
         return False
+
+    def _reached(self, yes: bool):
+        if self.offline == (not yes):
+            return
+        self.offline = not yes
+        log.info("The server can't be reached: what's downloaded plays" if self.offline else "The server answers again")
+        if self.on_offline:
+            self.on_offline(self.offline)
+
+    def _offline_answer(self, request: Request):
+        """Offline, a GET of the API: what's downloaded has it, or it needs the server."""
+        path = request.url.path + (f"?{request.url.query}" if request.url.query else "")
+        got = self.downloads.answer(path) if self.downloads and request.method == "GET" else None
+        if got:
+            return Response(got[1], media_type=got[0])
+        if request.url.path == "/api/auth/state" or request.method != "GET":
+            return JSONResponse({"detail": "The server can't be reached"}, 502)
+        return JSONResponse({"detail": "Not downloaded: this needs the server"}, 404)
 
     async def _repick(self) -> bool:
         """One look at a time, however many requests failed together."""
@@ -265,6 +292,8 @@ class Relay:
         base, local = self._target(request.url.path)
         if not base:
             return JSONResponse({"detail": "No server yet"}, 502)
+        if self.offline and not local:
+            return self._offline_answer(request)
         path = request.url.path + (f"?{request.url.query}" if request.url.query else "")
         again = request.method in ("GET", "HEAD") and not local     # a body can't be sent twice
         for attempt in (0, 1):
@@ -276,7 +305,7 @@ class Relay:
             except httpx.TransportError:
                 # the server isn't at that address any more (left home): the other one, once
                 if attempt or not again or not await self._repick():
-                    return JSONResponse({"detail": "The server can't be reached"}, 502)
+                    return self._offline_answer(request) if self.offline else JSONResponse({"detail": "The server can't be reached"}, 502)
                 base = self.address
         resp = StreamingResponse(r.aiter_raw(), status_code=r.status_code, background=BackgroundTask(r.aclose))
         resp.raw_headers = [(k.encode("latin-1"), self._back(k, v, base).encode("latin-1"))

@@ -85,11 +85,16 @@ object Downloads {
     }
 
     /** A song's place in the downloads: its address on the server, without the host or the quality (a
-     * stream started part-way, with ?t=, is another thing and isn't looked for). */
+     * stream started part-way, with ?t=, is another thing and isn't looked for). This phone's library has
+     * songs under the same addresses (LocalServer), which aren't the server's: they're never looked for. */
     val keys = CacheKeyFactory { spec: DataSpec -> key(spec.uri) }
 
-    private fun key(uri: Uri): String =
-        if (uri.path?.startsWith("/api/") == true && uri.getQueryParameter("t") == null) "muzix:${uri.path}" else uri.toString()
+    private fun key(uri: Uri): String {
+        val path = uri.path.orEmpty()
+        val phones = LocalServer.running?.let { "${uri.scheme}://${uri.encodedAuthority}" == it.origin } == true &&
+            LocalServer.ACCOUNT.none { path.startsWith(it) }
+        return if (!phones && path.startsWith("/api/") && uri.getQueryParameter("t") == null) "muzix:$path" else uri.toString()
+    }
 
     // ------------------------------------------------------------ what the page asks
 

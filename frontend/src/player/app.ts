@@ -362,8 +362,10 @@ class AppPlayer {
     // Muzix Desktop says its version and system, for its updates (appUpdate.ts); an app with a library of its
     // own (Android 0.10.1, Muzix Desktop 0.3.1 on) says which one shows
     useShell.setState({ opens: !!m.opens || !!m.downloads, desktop: m.desktop ?? null, library: m.library ?? null });
-    // an app that downloads (0.9 on) says what it has
+    // an app that downloads (Android 0.9 on, Muzix Desktop 0.4 on) says what it has; the computer downloads the
+    // files as they are, unless this device chose otherwise (its prefs, when they come, have the last word)
     if (m.downloads) this.onDownloads(m.downloads, !!m.offline);
+    if (m.desktop && !useUi.getState().user?.prefs?.download_format) useUi.setState({ downloadFormat: "original" });
     // the phone's media volume is the volume here, before anything is sent to the app
     if (typeof m.volume === "number") usePlayer.getState().set({ volume: m.volume });
     this.connected = true;

@@ -141,6 +141,16 @@ builds the web interface first.
 - `--check` (run on each build) asks for the web interface, QtWebEngine, GStreamer with the decoders of
   the common formats, the Cast speakers' library and the system's media controls.
 
+### 3.6 Downloads (0.4.0)
+
+As on the phone (2.4): the page hands over a collection and downloads.py keeps its songs as files in the
+data folder, through the window's own server with its login, and its page's data and cover. The player
+plays a song from its file whenever it's there, by its address on the server without the host or the
+quality (from part-way too: the file, from there); this computer's own library, under the same
+addresses, is never looked up. When neither address answers, the window's server answers for the server
+with what's downloaded (the sign-in state, the pages, the covers) and says so to the page, looking again
+every 30 seconds. The original files by default; no wifi setting.
+
 ## Step 4 in detail
 
 This computer's music in Muzix Desktop, with no server, or beside one.
@@ -187,6 +197,8 @@ This phone's music in the Android app (0.10.0), with no server, or beside one.
   artist pictures from Deezer, shown only. Only the app gets in: a secret for each run.
 - With a server too, podcasts, radio and the account's devices stay the server's: passed on with the
   app's login there, and the sidebar's podcasts and stations come from there.
+- The downloads (2.4) are only the server's: no Download buttons while the library is this phone's, and
+  from 0.10.3 its songs are never taken for a downloaded server song under the same address.
 - From 0.10.2 Settings' "The app" lists this library's folders, each with its songs, to take out again
   (the files stay on the phone; its songs leave the library with their likes, plays and places in
   playlists). A folder the phone can't read for now (a card taken out) keeps its songs till it can.

@@ -21,7 +21,7 @@ import {
   AlbumPage, ArtistPage, FilePlaylistPage, GenrePage, TagPage, LibraryAlbums, LibraryArtistAlbums, LibraryArtists, LibraryGenreArtists, LibraryGenres,
   LibraryHome, Liked, PlaylistPage, Playlists, SearchPage,
 } from "./pages/Library";
-import { appPlayer } from "./player/app";
+import { appPlayer, useShell } from "./player/app";
 import { engine } from "./player/engine";
 import { usePlayer } from "./store/player";
 import { useUi } from "./store/ui";
@@ -269,14 +269,18 @@ function Shell() {
 /** The server doesn't answer. In the app, whose pages come with it, that's said here (a browser has no
  * page without the server). */
 function Unreachable({ retry }: { retry: () => void }) {
+  // Muzix Desktop's pages are on 127.0.0.1, not the server's address
+  const desktop = useShell((s) => !!s.desktop);
   return (
     <div className="auth">
       <ThemeApplier />
       <div className="auth-card">
         <div className="logo" style={{ marginBottom: 26 }}><Logo name="Muzix" /></div>
-        <Kicker parts={["No answer", location.host]} />
+        <Kicker parts={["No answer", desktop ? undefined : location.host]} />
         <Display l1="Can't reach" l2="the server" small />
-        <p className="lede">Muzix at {location.host} doesn't answer. Check the phone's connection, or that the server is up.</p>
+        {desktop
+          ? <p className="lede">Your Muzix server doesn't answer. Check this computer's connection, or that the server is up.</p>
+          : <p className="lede">Muzix at {location.host} doesn't answer. Check the phone's connection, or that the server is up.</p>}
         <div className="row-actions">
           <button className="btn primary" onClick={retry}>Try again</button>
           {appPlayer.available && <button className="btn ghost" onClick={() => appPlayer.changeServer()}>Another server</button>}

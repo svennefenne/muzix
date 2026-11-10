@@ -7,6 +7,7 @@ import base64
 import json
 import logging
 import os
+import pathlib
 import platform
 import re
 import sys
@@ -100,12 +101,16 @@ class Player(QObject):
     changed = Signal()          # what plays, or how (the system's player: mpris.py)
     command = Signal(str, dict)  # one that isn't for the player (the window's: another server, a link)
 
-    def __init__(self, headers, shown=lambda: True, for_speaker=lambda url: url, speakers=True, library=lambda: "server"):
+    def __init__(self, headers, shown=lambda: True, for_speaker=lambda url: url, speakers=True, library=lambda: "server",
+                 downloads=None, downloaded=lambda url: None, offline=lambda: False):
         super().__init__()
         self.headers = headers              # (url) → the headers the window's own server wants from the player
         self.shown = shown                  # () → whether the window shows (the visualizer's spectrum only then)
         self.for_speaker = for_speaker      # a speaker's link, on the server's own address (relay.py)
         self.library = library              # () → the music the window shows: "server", or "local" (this computer's)
+        self.downloads = downloads          # what's downloaded to this computer (downloads.py)
+        self.downloaded = downloaded        # (url) → the song's downloaded file, if it's here
+        self.offline = offline              # () → whether the server can't be reached (relay.py)
         self.bin = Gst.ElementFactory.make(_playbin(), "muzix")
         self.bin.set_property("flags", AUDIO | SOFT_VOLUME)
         if sink := os.environ.get("MUZIX_AUDIO_SINK"):      # another output (the tests: "fakesink sync=true")
@@ -138,6 +143,10 @@ class Player(QObject):
             self.caster.finished.connect(self._cast_next)
         QTimer(self, interval=40, timeout=self._messages).start()
         self.ticking = QTimer(self, interval=500, timeout=self._state)
+        # what's downloaded, told to the page once things settle (a song done, two more begun)
+        self._telling = QTimer(self, singleShot=True, interval=500, timeout=self.send_downloads)
+        if downloads:
+            downloads.changed.connect(self._downloads_changed)
 
     # ------------------------------------------------------------ the page's messages
 
@@ -158,10 +167,11 @@ class Player(QObject):
     def _on_hello(self, m):
         # the page offers a newer Muzix Desktop for this system (frontend/src/appUpdate.ts), which opens in the browser
         system = "windows" if sys.platform == "win32" else "macos" if sys.platform == "darwin" else "linux"
+        has = {"downloads": self.downloads.list(), "offline": self.offline()} if self.downloads else {}
         self._send(t="hello", version=f"MuzixDesktop/{__version__}", saves=False, updates=True, opens=True,
                    desktop={"version": __version__, "platform": system},
                    device=platform.node() or "Computer", volume=self.level, library=self.library(),
-                   queue=[it.get("muzix", "") for it in self.queue], index=self.index, state=self._state_msg())
+                   queue=[it.get("muzix", "") for it in self.queue], index=self.index, state=self._state_msg(), **has)
         if self.caster:
             self.caster._tell()             # the Cast button: speakers about, or one playing
 
@@ -232,6 +242,29 @@ class Player(QObject):
     def _on_meta(self, m):
         self.meta = {"title": m.get("title") or "", "artist": m.get("artist") or ""}
         self.changed.emit()
+
+    # downloads (downloads.py): a collection to have here, or not any more; the page's sign-in state, for
+    # opening offline
+
+    def _on_download(self, m):
+        if self.downloads and isinstance(m.get("collection"), dict):
+            self.downloads.add(m["collection"])
+
+    def _on_undownload(self, m):
+        if self.downloads:
+            self.downloads.remove(str(m.get("id") or ""))
+
+    def _on_signedIn(self, m):
+        if self.downloads and isinstance(m.get("state"), dict):
+            self.downloads.keep_state(m["state"])
+
+    def _downloads_changed(self):
+        self._telling.start()
+
+    def send_downloads(self):
+        """Everything downloaded, and whether the server can't be reached, for the page."""
+        if self.downloads:
+            self._send(t="downloads", list=self.downloads.list(), offline=self.offline())
 
     def _on_stop(self, m):
         if self.casting:
@@ -330,10 +363,22 @@ class Player(QObject):
                              dict(it, art=self.for_speaker(it.get("art") or "")), at, play, live)
             self._item()
             return self._state()
-        self.bin.set_property("uri", it["url"])
+        self.bin.set_property("uri", self._uri(index))
         self.bin.set_state(Gst.State.PLAYING if play else Gst.State.PAUSED)
         self._item()
         self._state()
+
+    def _uri(self, index: int) -> str:
+        """Where the song at `index` plays from: its file, if it's downloaded (downloads.py), else the server."""
+        it = self.queue[index]
+        f = self.downloaded(it["url"])
+        if not f:
+            return it["url"]
+        if float(it.get("offset") or 0) > 0:
+            # a stream from part-way (?t=): the file, from there, its times the song's own
+            self.start_at = max(self.start_at, float(it["offset"]))
+            self.queue[index] = dict(it, offset=0.0)
+        return pathlib.Path(f).as_uri()
 
     def _next_index(self) -> int | None:
         if self.repeat == "one":
@@ -347,7 +392,7 @@ class Player(QObject):
         nxt = self._next_index()
         if nxt is not None:
             self.lined_up = nxt
-            self.bin.set_property("uri", self.queue[nxt]["url"])
+            self.bin.set_property("uri", self._uri(nxt))
 
     def _source_setup(self, _bin, source):
         """The window's own server (relay.py) takes the window's secret as a header: GStreamer before 1.22 runs
