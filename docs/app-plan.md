@@ -141,6 +141,57 @@ builds the web interface first.
 - `--check` (run on each build) asks for the web interface, QtWebEngine, GStreamer with the decoders of
   the common formats, the Cast speakers' library and the system's media controls.
 
+## Step 4 in detail
+
+This computer's music in Muzix Desktop, with no server, or beside one.
+
+- Muzix's own server code runs as a process of the app's (library.py), on 127.0.0.1, with a data
+  folder of its own, over the folders in Settings (one list: each also has a Share switch for the
+  servers). Game music needs a server for now, so VGM folders are for sharing only.
+- It has one account, made the first time (named after the computer's user) and used only by the app;
+  the window's own server (relay.py) signs its requests in with that account's token.
+- With a server too, what's the account's stays the server's: podcasts, radio, the account's devices and
+  Muzix Connect (relay.py's ACCOUNT); the rest is this computer's: the library, its likes, playlists
+  and history.
+- It never changes the music files: the window has no admin pages, and nothing else in the server writes
+  to the library's folders. Genres come from the files' tags; covers, artist pictures and lyrics from
+  Deezer, MusicBrainz and LRCLIB, kept in its own data folder.
+- Casting: the app serves the songs to the speaker over the local network, its signed links only.
+- The address screen offers "Play this computer's music instead"; the tray's "Muzix library…" switches.
+  The library's server goes when the app does.
+
+## Step 5 in detail
+
+This phone's music in the Android app (0.10.0), with no server, or beside one.
+
+- The address screen offers "Play this phone's music": the system's folder picker, and the app may read
+  that folder from then on (more folders can be added there).
+- The app reads the folders itself (LocalLibrary.kt): each song's tags from the file (the system's
+  MediaMetadataRetriever, not the phone's media index), the year from the folder's name when the tags
+  have none, the cover from the folder's picture or the tags. A database of its own holds them, with
+  this library's likes, playlists, plays and recent searches. The files are only read.
+- A little web server inside the app, on 127.0.0.1 (LocalServer.kt), serves the web interface and this
+  library in the server's own requests and answers (LocalApi.kt): home, albums, artists, genres,
+  search, songs (a range of the file), covers, likes, playlists, autoplay. Lyrics come from LRCLIB and
+  artist pictures from Deezer, shown only. Only the app gets in: a secret for each run.
+- With a server too, podcasts, radio and the account's devices stay the server's: passed on with the
+  app's login there, and the sidebar's podcasts and stations come from there.
+- Not yet: Muzix Connect while the library is this phone's (its socket isn't passed on), casting this
+  phone's songs, and taking a folder away again.
+
+## Step 6 and 7 in detail
+
+- 6, the computer: with no server, this computer's library (step 4) keeps the podcasts and stations itself
+  (it's Muzix's own server code); when the window signs in to a server, they move into the account
+  there (subscribed and saved there, then gone here, so nothing moves twice: library.py).
+- 6, Android: with no server, the app keeps them itself (LocalShows.kt, in the server's own requests):
+  podcasts found through Apple's directory and read from their feeds on the phone, episodes and stations
+  played from their own addresses, the places in episodes kept. Signed in to a server later, they move
+  into the account the same way; one the server can't take stays on the phone.
+- 7: the Android app's player tees off the sound on its way to the speaker (Spectrum.kt) and works out
+  the analyser's 256 bands 30 times a second, while the page shows; the page's visualizer takes them as
+  it takes Muzix Desktop's.
+
 ## Supporter
 
 Not decided in full yet: the price and the shop come first. The idea, from 2026-11-09:
