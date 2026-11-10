@@ -20,7 +20,7 @@ from PySide6.QtGui import QAction
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
-from . import autostart, config
+from . import __version__, autostart, config
 from .catalog import Catalog
 from .sharing import Sharing
 from .shared import use_keys
@@ -381,16 +381,73 @@ class App:
         self.qt.quit()
 
 
+def _version(v: str) -> tuple[int, ...]:
+    return tuple(int(x) for x in v.split(".") if x.isdigit())
+
+
 def _already_running() -> bool:
-    """Another Muzix Desktop of this user is running: it's asked to show its window instead."""
+    """Another Muzix Desktop of this user is running. An older one (an update was just started) makes way
+    for this one; the same version, or a newer one, shows its window instead."""
     s = QLocalSocket()
     s.connectToServer(SOCKET)
-    if s.waitForConnected(300):
-        s.write(b"show")
-        s.waitForBytesWritten(300)
+    if not s.waitForConnected(300):
+        return False
+    s.write(f"hello {__version__}\n".encode())
+    s.waitForBytesWritten(300)
+    answer = bytes(s.readAll().data()) if s.waitForReadyRead(1500) else b""
+    if answer.startswith(b"quit"):
+        log.info("An older Muzix Desktop makes way for %s", __version__)
+        s.waitForDisconnected(8000)
+        time.sleep(0.5)         # its window's own server lets go of its port too
+        return False
+    if answer.startswith(b"show"):
         s.disconnectFromServer()
         return True
+    # one from before 0.4.5 says nothing (and shows its window): it's older, so it's ended instead
+    return not _end_older(s.fullServerName())
+
+
+def _end_older(path: str) -> bool:
+    """An older Muzix Desktop, which can't be asked to go, ended (on Linux: the program at the other end of
+    its socket, if it's Muzix Desktop). Whether it went."""
+    if not sys.platform.startswith("linux"):
+        return False
+    import signal
+    import socket
+    import struct
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            s.connect(path)
+            pid = struct.unpack("3i", s.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i")))[0]
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            if b"muzix" not in f.read().lower():
+                return False
+        log.info("Ending the older Muzix Desktop (pid %s) for %s", pid, __version__)
+        os.kill(pid, signal.SIGTERM)
+        for _ in range(80):
+            if not os.path.exists(f"/proc/{pid}"):
+                return True
+            time.sleep(0.1)
+    except OSError:
+        pass
     return False
+
+
+def _knocked(conn: QLocalSocket, app: "App"):
+    """Muzix Desktop started again: a newer version takes over (this one goes), the same or an older one
+    shows this window."""
+    def read():
+        said = bytes(conn.readAll().data()).decode(errors="ignore").strip()
+        if said.startswith("hello ") and _version(said[6:]) > _version(__version__):
+            log.info("Muzix Desktop %s is starting: %s makes way", said[6:], __version__)
+            conn.write(b"quit\n")
+            conn.waitForBytesWritten(300)
+            app.quit()
+            return
+        conn.write(b"show\n")
+        conn.flush()
+        app.window.bring()
+    conn.readyRead.connect(read)
 
 
 def check() -> int:
@@ -472,7 +529,7 @@ def main():
     server = QLocalServer()
     QLocalServer.removeServer(SOCKET)
     server.listen(SOCKET)
-    server.newConnection.connect(lambda: (server.nextPendingConnection(), app.window.bring()))
+    server.newConnection.connect(lambda: _knocked(server.nextPendingConnection(), app))
     if not minimized and not QSystemTrayIcon.isSystemTrayAvailable():
         log.warning("No system tray here: closing the window quits")
     return qt.exec()

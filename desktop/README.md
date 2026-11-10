@@ -47,7 +47,10 @@ Download the file for your system from the newest `desktop-v…` release on the
 
 When a newer version is out, the Muzix window's account menu offers *Update the
 app*: it downloads the new file for your system in your browser (the server asks
-GitHub once an hour). Install it as above, over the old one.
+GitHub once an hour). Install it as above, over the old one, and start it: a
+newer version starting while the old one runs in the tray takes over from it
+(from 0.4.5; on Linux it also ends an older one, which can't be asked to go).
+Until then, choose *Quit* in the tray's menu before you start the new one.
 
 *Settings → Sharing → Start Muzix Desktop minimized when I log in* keeps it
 running: at login it opens no window, only its tray icon. The icon is grey while
