@@ -3,6 +3,7 @@ import { ChevronDown, Heart, History, ListMusic, MicVocal, Pause, Play, Plus, Re
 import { Fragment, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, fmtNumber, fmtTime } from "../api";
+import { useAppVersion } from "../appUpdate";
 import { useBackCloses } from "../backCloses";
 import { playTracks, queryClient, toggleQueuedLike, usePlaylistPicker } from "../actions";
 import { CastButton, CastNote } from "../components/CastButton";
@@ -31,9 +32,10 @@ export function Footer() {
   const castDevice = usePlayer((s) => s.castDevice);
   const lastScan = (jobs.data || []).find((j) => j.type === "scan");
   const vgm = useUi((s) => s.modules.vgm);
+  const version = useAppVersion();      // Muzix Desktop's (and an Android tablet's)
   return (
     <footer className="footer">
-      <span>Muzix</span><span className="sep">·</span>
+      <span data-tip={version ? "This app's version" : undefined}>Muzix{version && ` v${version}`}</span><span className="sep">·</span>
       <span className="hide-sm" data-tip="The server Muzix plays from">Node {location.hostname}</span><span className="sep hide-sm">·</span>
       <Link to="/settings" data-tip="Your settings">{user?.username}</Link>
       {home.data && <><span className="sep hide-sm">·</span><span className="hide-sm" data-tip="Everything in the library">{fmtNumber(home.data.stats.tracks)} tracks{vgm && ` · ${fmtNumber(home.data.stats.vgm_tracks)} chiptunes`} · {home.data.stats.hours} h</span></>}

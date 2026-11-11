@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
-import { useAppUpdate } from "../appUpdate";
+import { useAppUpdate, useAppVersion } from "../appUpdate";
 import { Logo } from "../components/Logo";
 import { useShown } from "../modules";
 import { NewDot, useMenu } from "../components/ui";
@@ -100,6 +100,7 @@ export function TopBar() {
   const atHome = loc.pathname === "/";
   const showMenu = useMenu((s) => s.show);
   const update = useAppUpdate();
+  const version = useAppVersion();
   const shown = useShown(TABS);
   // the app (0.9 on) has no admin pages: its Admin is the server's web version
   const inApp = useShell((s) => s.opens);
@@ -140,6 +141,8 @@ export function TopBar() {
     ...(update ? [{ label: `Update the app to ${update.version}`, icon: <Download size={16} />, onClick: () => appPlayer.update(update.url) }] : []),
     // the app's own library has no login
     ...(library !== "local" ? [{ sep: true }, { label: "Sign out", icon: <LogOut size={16} />, onClick: () => api.post("/api/auth/logout").then(() => location.assign("/")) }] : []),
+    // the app's own version, in small print at the end
+    ...(version ? [{ sep: true }, { foot: `Muzix v${version}` }] : []),
   ]);
 
   return (

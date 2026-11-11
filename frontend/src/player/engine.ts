@@ -231,7 +231,7 @@ class Engine {
         appPlayer.standby = false;
         usePlayer.getState().set({ playing: false, buffering: false });
         // another library's queue doesn't play here: its songs aren't in this one
-        if (usePlayer.getState().current()?.foreign) return usePlayer.getState().set({ queue: [], index: -1, position: 0, duration: 0 });
+        if (usePlayer.getState().current()?.foreign) return usePlayer.getState().set({ queue: [], index: -1, position: 0, duration: 0, ordered: null });
         if (usePlayer.getState().current()) this.begin(false, pos);
       },
       onTakeover: (pos, play) => {
@@ -283,7 +283,7 @@ class Engine {
         const queue = c.queue as PlayItem[];
         const index = Number(c.index) || 0;
         if (!queue?.length || (c.library && c.library !== connect.mine())) return;
-        s.set({ queue, index });
+        s.set({ queue, index, ordered: null });
         this.begin(c.play !== false, Number(c.position) || queue[index]?.resume || 0);
         break;
       }
@@ -293,7 +293,7 @@ class Engine {
         if (c.library && c.library !== connect.mine()) return;
         const key = s.current()?.key;
         const at = queue.findIndex((it) => it.key === key);
-        s.set({ queue, index: at >= 0 ? at : Math.min(Number(c.index) || 0, queue.length - 1) });
+        s.set({ queue, index: at >= 0 ? at : Math.min(Number(c.index) || 0, queue.length - 1), ordered: null });
         if (this.remote) this.remote.syncUpcoming();
         break;
       }
@@ -327,7 +327,7 @@ class Engine {
       connect.claim();
       appPlayer.standby = false;
     }
-    usePlayer.getState().set({ queue: items, index: start });
+    usePlayer.getState().set({ queue: items, index: start, ordered: null });
     if (this.remote) return this.remote.loadQueue(start, items[start]?.resume ?? 0);
     this.load(true);
   }
@@ -377,7 +377,7 @@ class Engine {
   clear() {
     if (this.remote) this.remote.stopMedia();
     this.stop();
-    usePlayer.getState().set({ queue: [], index: -1, position: 0, duration: 0 });
+    usePlayer.getState().set({ queue: [], index: -1, position: 0, duration: 0, ordered: null });
   }
 
   toggle() {
@@ -863,7 +863,7 @@ class Engine {
    * on from there, playing if it played. Not in the app: its own player plays on through a reload. */
   private acrossReloads() {
     if (appPlayer.available) return;
-    const queue = kept<{ user: number; queue: PlayItem[] }>(KEPT_QUEUE);
+    const queue = kept<{ user: number; queue: PlayItem[]; ordered?: string[] | null }>(KEPT_QUEUE);
     const at = kept<Kept>(KEPT_AT);
     const start = (user: User) => {
       this.carryOn(user, queue, at);
@@ -876,7 +876,7 @@ class Engine {
                         counted: this.scrobbled } satisfies Kept);
       };
       usePlayer.subscribe((s, prev) => {
-        if (s.queue !== prev.queue) keep(KEPT_QUEUE, { user: user.id, queue: s.queue });
+        if (s.queue !== prev.queue || s.ordered !== prev.ordered) keep(KEPT_QUEUE, { user: user.id, queue: s.queue, ordered: s.ordered });
         if (s.index !== prev.index || s.playing !== prev.playing || Date.now() - last > 3000) where();
       });
       window.addEventListener("pagehide", where);
@@ -892,12 +892,12 @@ class Engine {
     });
   }
 
-  private carryOn(user: User, saved: { user: number; queue: PlayItem[] } | null, at: Kept | null) {
+  private carryOn(user: User, saved: { user: number; queue: PlayItem[]; ordered?: string[] | null } | null, at: Kept | null) {
     const s = usePlayer.getState();
     const item = at && saved?.queue[at.index];
     if (!item || saved.user !== user.id || at.user !== user.id || s.queue.length) return;
     const pos = item.kind === "radio" ? 0 : at.position;
-    s.set({ queue: saved.queue, index: at.index });
+    s.set({ queue: saved.queue, index: at.index, ordered: saved.ordered ?? null });
     // a speaker that played may still play: it says what (player/cast.ts), and the queue is in place meanwhile
     const here = !at.remote && !this.remote;
     if (here && at.playing) {

@@ -108,6 +108,8 @@ interface PlayerState {
   volume: number;
   muted: boolean;
   shuffle: boolean;
+  /** the queue's order, by key, before shuffle mixed it (player/cast.ts shuffleUpcoming), to go back to when it's off */
+  ordered: string[] | null;
   repeat: Repeat;
   speed: number;
   liveTitle: string;          // radio "now playing"
@@ -139,6 +141,7 @@ export const usePlayer = create<PlayerState>((set, get) => ({
   volume: saved.volume ?? 0.8,
   muted: false,
   shuffle: saved.shuffle ?? false,
+  ordered: null,
   repeat: saved.repeat ?? "off",
   speed: 1,
   liveTitle: "",

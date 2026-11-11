@@ -17,6 +17,12 @@ const androidVersion = () => navigator.userAgent.match(/MuzixApp\/(\d+(?:\.\d+)*
 /** The app's own version: the Android app's, or Muzix Desktop's (its hello). */
 export const appVersion = () => androidVersion() || useShell.getState().desktop?.version || "";
 
+/** The same, as it becomes known (Muzix Desktop says it once the page has said hello); "" in a browser. */
+export function useAppVersion() {
+  const desktop = useShell((s) => s.desktop);
+  return androidVersion() || desktop?.version || "";
+}
+
 function newer(a: string, b: string) {
   const x = a.split(".").map(Number);
   const y = b.split(".").map(Number);

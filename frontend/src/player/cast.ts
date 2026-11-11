@@ -74,7 +74,26 @@ export function shuffleUpcoming() {
     const j = Math.floor(Math.random() * (i + 1));
     [rest[i], rest[j]] = [rest[j], rest[i]];
   }
-  s.set({ queue: [cur, ...rest], index: 0 });
+  // the order it had, to go back to when shuffle is off (the first order, if it's mixed again)
+  s.set({ queue: [cur, ...rest], index: 0, ordered: s.ordered ?? s.queue.map((it) => it.key) });
+}
+
+/** Shuffle off: the queue back in the order it had before shuffleUpcoming mixed it, on from the song that
+ * plays; what was added meanwhile comes last. False when there's nothing to put back (it was never mixed). */
+export function unshuffle(): boolean {
+  const s = usePlayer.getState();
+  if (!s.ordered) return false;
+  const left = new Map<string, PlayItem[]>();
+  for (const it of s.queue) left.set(it.key, [...(left.get(it.key) ?? []), it]);
+  const queue: PlayItem[] = [];
+  for (const key of s.ordered) {
+    const it = left.get(key)?.shift();
+    if (it) queue.push(it);
+  }
+  for (const rest of left.values()) queue.push(...rest);
+  const cur = s.current();
+  s.set({ queue, index: cur ? queue.indexOf(cur) : s.index, ordered: null });
+  return true;
 }
 
 /** Callback-style Cast calls as promises. */
@@ -136,6 +155,8 @@ class Caster {
       if (s.shuffle && !prev.shuffle) {
         shuffleUpcoming();
         this.syncUpcoming();
+      } else if (!s.shuffle && prev.shuffle && unshuffle()) {
+        this.syncUpcoming();
       }
     });
   }
@@ -196,7 +217,7 @@ class Caster {
     if (!m?.items?.length) return;
     const queue = m.items.map((i) => carried(i.media)?.muzix).filter(Boolean) as PlayItem[];
     const cur = carried(m.media);
-    usePlayer.getState().set({ queue, index: Math.max(0, queue.findIndex((i) => i.key === cur?.muzix.key)) });
+    usePlayer.getState().set({ queue, index: Math.max(0, queue.findIndex((i) => i.key === cur?.muzix.key)), ordered: null });
   }
 
   // ------------------------------------------------------------ handing the queue over

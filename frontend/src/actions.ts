@@ -24,21 +24,24 @@ engine.onSaved = (item) => {
 export async function playAlbum(id: number, opts: { shuffle?: boolean; startTrack?: number; queue?: boolean } = {}) {
   const a = await queryClient.fetchQuery({ queryKey: ["album", id], queryFn: () => api.get<AlbumDetail>(`/api/albums/${id}`) });
   if (opts.shuffle && a.track_count > a.tracks.length) return playRandom({ album_id: id, kind: "all", n: 300 });
-  let tracks = a.tracks;
-  if (opts.shuffle) tracks = [...tracks].sort(() => Math.random() - 0.5);
+  const tracks = a.tracks;
   const items = tracks.map(fromTrack);
   if (opts.queue) return engine.enqueue(items);
+  if (opts.shuffle) return shuffled(items);
   const start = opts.startTrack ? Math.max(0, tracks.findIndex((t) => t.id === opts.startTrack)) : 0;
   engine.play(items, start);
 }
 
+/** Shuffle, as on Spotify: the songs in their order from a random one, with shuffle on, so it can be turned
+ * off again (the rest then plays in order: player/cast.ts unshuffle). */
+function shuffled(items: PlayItem[]) {
+  engine.play(items, Math.floor(Math.random() * items.length));
+  usePlayer.getState().set({ shuffle: true });
+}
+
 export function playTracks(tracks: Track[], index = 0, shuffle = false) {
-  let list = tracks;
-  if (shuffle) {
-    list = [...tracks].sort(() => Math.random() - 0.5);
-    index = 0;
-  }
-  engine.play(list.map(fromTrack), index);
+  if (shuffle) return shuffled(tracks.map(fromTrack));
+  engine.play(tracks.map(fromTrack), index);
 }
 
 export async function playRandom(params: Record<string, string | number | undefined>) {

@@ -10,7 +10,7 @@ import { type Collection, type Downloaded, useDownloads } from "../downloads";
 import { report } from "../components/ErrorBoundary";
 import { usePlayer, type PlayItem } from "../store/player";
 import { useUi } from "../store/ui";
-import { type CastHooks, type CastState, type Slim, castLink, castMime, castUrl, shuffleUpcoming, slim } from "./cast";
+import { type CastHooks, type CastState, type Slim, castLink, castMime, castUrl, shuffleUpcoming, slim, unshuffle } from "./cast";
 
 interface Bridge {
   postMessage(data: string): void;
@@ -78,6 +78,8 @@ class AppPlayer {
       if (s.shuffle && !prev.shuffle) {
         shuffleUpcoming();
         this.syncUpcoming();
+      } else if (!s.shuffle && prev.shuffle && unshuffle()) {
+        this.syncUpcoming();      // shuffle off: the queue in its order again
       }
     });
     // the status and navigation bars follow the skin's background
@@ -386,7 +388,7 @@ class AppPlayer {
       }
     }).filter(Boolean) as PlayItem[];
     if (queue.length && !s.queue.length) {
-      s.set({ queue, index: Math.max(0, m.index) });
+      s.set({ queue, index: Math.max(0, m.index), ordered: null });
       this.handed = new Set(queue.map((it) => it.key));
       const cur = queue[Math.max(0, m.index)];
       if (cur) this.hooks?.onItem(cur.key);
@@ -405,7 +407,7 @@ class AppPlayer {
     }).filter(Boolean) as PlayItem[];
     if (!queue.length) return;
     this.handed = new Set(queue.map((it) => it.key));
-    usePlayer.getState().set({ queue, index: Math.max(0, Math.min(index, queue.length - 1)) });
+    usePlayer.getState().set({ queue, index: Math.max(0, Math.min(index, queue.length - 1)), ordered: null });
   }
 
   private onItem(key: string, offset: number, carried: string) {

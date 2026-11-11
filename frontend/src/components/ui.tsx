@@ -163,6 +163,7 @@ export interface MenuItem {
   checked?: boolean;     // a switch: the item turns it on or off
   disabled?: boolean;    // shown, not chosen: `note` says why
   note?: string;
+  foot?: string;         // a line of small print at the menu's end (the app's version)
 }
 
 interface MenuState {
@@ -205,7 +206,8 @@ export function MenuHost() {
   if (!open) return null;
   return (
     <div className="menu" ref={ref} style={{ left: pos.x || open.x, top: pos.y || open.y }} role="menu">
-      {open.items.map((it, i) => it.sep ? <hr key={i} /> : it.heading ? <div className="label" key={i}>{it.heading}</div> : it.checked !== undefined ? (
+      {open.items.map((it, i) => it.sep ? <hr key={i} /> : it.foot ? <div className="menu-foot" key={i}>{it.foot}</div>
+        : it.heading ? <div className="label" key={i}>{it.heading}</div> : it.checked !== undefined ? (
         <button key={i} role="menuitemcheckbox" aria-checked={it.checked} onClick={() => { hide(); it.onClick?.(); }}>
           {it.icon}{it.label}<SwitchLook on={it.checked} />
         </button>
