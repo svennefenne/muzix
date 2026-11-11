@@ -29,6 +29,9 @@ def web(monkeypatch, tmp_path):
     answers, asked = {}, []
 
     class Client:
+        def __init__(self, timeout=15):
+            pass
+
         def __enter__(self):
             return self
 
@@ -128,3 +131,18 @@ def test_an_older_answer_stands_while_a_source_is_down(web, monkeypatch):
     answers.clear()                                      # Apple away
     monkeypatch.setattr(d, "APPLE_TTL", -1)              # and the hour is up
     assert d.browse("", "national")["sections"][0]["items"][0]["title"] == "Pod 3"
+
+
+def test_each_list_by_itself(web):
+    values, answers, asked = web
+    values.update(podcastindex_key="KEY", podcastindex_secret="SECRET")
+    assert d.where("1509", "national") == {"country": "se", "languages": "sv", "sources": ["apple", "podcastindex"],
+                                          "missing": ["listennotes"]}
+    assert d.where("pi-110", "international")["sources"] == ["podcastindex"]
+    assert not asked                                    # nothing fetched to say so
+    answers[d.PI + "/podcasts/trending"] = Answer({"feeds": []})
+    assert d.section("", "national", "podcastindex") == {"source": "podcastindex", "items": []}
+    assert "since" not in asked[-1][1]                  # all of them: as they trend now, not a month of everything
+    assert d.section("1509", "national", "listennotes") is None
+    with pytest.raises(httpx.HTTPError):
+        d.section("1509", "national", "apple")          # Apple away, and nothing kept

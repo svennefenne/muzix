@@ -225,8 +225,8 @@ def _kept(key: str, ttl: float, fetch):
     return data
 
 
-def _client() -> httpx.Client:
-    return httpx.Client(headers={"User-Agent": enrich.UA}, timeout=15, follow_redirects=True)
+def _client(timeout: float = 15) -> httpx.Client:
+    return httpx.Client(headers={"User-Agent": enrich.UA}, timeout=timeout, follow_redirects=True)
 
 
 def _hit(title, author, url, image, genre, source) -> dict:
@@ -274,7 +274,7 @@ def apple_search(q: str, country: str) -> list[dict]:
 def _pi_get(path: str, params: dict) -> dict:
     key, secret = settings.get("podcastindex_key"), settings.get("podcastindex_secret")
     now = str(int(time.time()))
-    with _client() as c:
+    with _client(25) as c:          # its trending can take a while
         r = c.get(PI + path, params=params, headers={
             "X-Auth-Key": key, "X-Auth-Date": now,
             "Authorization": hashlib.sha1((key + secret + now).encode()).hexdigest()})
@@ -289,9 +289,11 @@ def _pi_hits(feeds: list) -> list[dict]:
 
 
 def pi_trending(langs: str, cats: str) -> list[dict]:
-    """What's trended on Podcast Index this month in these languages, in these of its categories (ids; or all)."""
+    """What's trended on Podcast Index this month in these languages, in these of its categories (ids); or all
+    of them, as they trend now (a month of everything takes it longer than anyone waits)."""
     def fetch():
-        params = {"max": 60, "lang": langs, "since": int(time.time()) - TRENDING_DAYS * 86400, **({"cat": cats} if cats else {})}
+        since = {"since": int(time.time()) - TRENDING_DAYS * 86400} if cats else {}
+        params = {"max": 60, "lang": langs, **since, **({"cat": cats} if cats else {})}
         return _pi_hits(_pi_get("/podcasts/trending", params).get("feeds") or [])
     return _kept(f"pi:{langs}:{cats}", PI_TTL, fetch)
 
@@ -347,33 +349,56 @@ def ln_best(region: str, name: str | None) -> list[dict]:
 
 # ---------------------------------------------------------------- together
 
-def browse(genre: str, scope: str) -> dict:
-    """The lists for a category (or overall, ""), national or international: Apple's chart, and with their
-    keys Podcast Index's trending and Listen Notes' best; a source that fails is left out."""
+def _jobs(genre: str, scope: str) -> dict:
+    """The lists there are for a category (or overall, ""), national or international, by source: Apple's chart,
+    and with their keys Podcast Index's trending (or what it has about one of its own categories) and Listen
+    Notes' best, as (what fetches it, its section's extra)."""
     country, langs = place(scope)
     found = _find(genre) if genre else None
     gid, name, pi = found if found else (None, None, "")
     jobs = {}
     if not isinstance(gid, str):        # Apple has no chart for Podcast Index's own categories
-        jobs["apple"] = lambda: apple_chart(country, gid)
+        jobs["apple"] = (lambda: apple_chart(country, gid), {})
     if _pi_on() and isinstance(gid, str):
-        jobs["podcastindex"] = lambda: pi_about(name)
+        jobs["podcastindex"] = (lambda: pi_about(name), {"about": name})
     elif _pi_on() and (pi or not genre):
-        jobs["podcastindex"] = lambda: pi_trending(langs, pi)
+        jobs["podcastindex"] = (lambda: pi_trending(langs, pi), {})
     if settings.get("listennotes_key") and not isinstance(gid, str):
-        jobs["listennotes"] = lambda: ln_best(country, name)
+        jobs["listennotes"] = (lambda: ln_best(country, name), {})
+    return jobs
+
+
+def where(genre: str, scope: str) -> dict:
+    """What a category's lists are (without fetching them): the country and language, the sources that have
+    one, and the ones without a key yet."""
+    country, langs = place(scope)
+    missing = [src for src, on in (("podcastindex", _pi_on()), ("listennotes", bool(settings.get("listennotes_key")))) if not on]
+    return {"country": country, "languages": langs.split(",")[0], "sources": list(_jobs(genre, scope)), "missing": missing}
+
+
+def section(genre: str, scope: str, source: str) -> dict | None:
+    """One source's list for a category (raises when the source can't be reached and nothing was kept)."""
+    job = _jobs(genre, scope).get(source)
+    if job is None:
+        return None
+    fetch, extra = job
+    return {"source": source, "items": fetch(), **extra}
+
+
+def browse(genre: str, scope: str) -> dict:
+    """Every source's list for a category together (Android 0.10.18, Muzix Desktop 0.4.17; later ones ask for
+    each by itself, so a slow one doesn't hold the others up); a source that fails is left out."""
     sections = []
+    jobs = _jobs(genre, scope)
     with ThreadPoolExecutor(len(jobs) or 1) as pool:
-        futures = {src: pool.submit(fn) for src, fn in jobs.items()}
+        futures = {src: pool.submit(fetch) for src, (fetch, _) in jobs.items()}
         for src, fut in futures.items():
             try:
-                items = fut.result()
+                sections.append({"source": src, "items": fut.result(), **jobs[src][1]})
             except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
                 log.info("podcast directory, %s: %s", src, e)
-                continue
-            sections.append({"source": src, "items": items, **({"about": name} if src == "podcastindex" and isinstance(gid, str) else {})})
-    missing = [src for src, on in (("podcastindex", _pi_on()), ("listennotes", bool(settings.get("listennotes_key")))) if not on]
-    return {"country": country, "languages": langs.split(",")[0], "sections": sections, "missing": missing}
+    info = where(genre, scope)
+    return {"country": info["country"], "languages": info["languages"], "sections": sections, "missing": info["missing"]}
 
 
 def search(q: str, scope: str) -> list[dict]:

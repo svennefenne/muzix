@@ -157,9 +157,22 @@ def genres(user: User = Depends(current_user)):
 
 
 @router.get("/browse")
-def browse(genre: str = "", scope: str = "national", user: User = Depends(current_user)):
-    """A category's lists (overall, with no genre), from each source there's a key for: national or international."""
-    return podcast_directory.browse(genre, scope)
+def browse(genre: str = "", scope: str = "national", source: str = "", user: User = Depends(current_user)):
+    """A category's lists (overall, with no genre), national or international (podcast_directory.py): with
+    `source`, that source's alone, or with "where", which sources have one; without, every list together (as
+    Android 0.10.18 and Muzix Desktop 0.4.17 ask)."""
+    if not source:
+        return podcast_directory.browse(genre, scope)
+    if source == "where":
+        return podcast_directory.where(genre, scope)
+    try:
+        got = podcast_directory.section(genre, scope, source)
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
+        log.info("podcast directory, %s: %s", source, e)
+        raise HTTPException(502, "That list can't be reached right now")
+    if got is None:
+        raise HTTPException(404, "No such list here")
+    return got
 
 
 @router.get("/top")

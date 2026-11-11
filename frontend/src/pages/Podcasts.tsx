@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { Check, CircleCheck, Download, ListChecks, MoreHorizontal, Pause, Play, Plus, RefreshCw, Rss, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -141,10 +141,19 @@ export default function Podcasts() {
   const genres = useQuery({ queryKey: ["podcast-genres"], queryFn: () => api.get<Category[]>("/api/podcasts/genres"), staleTime: 3600_000 });
   const scope = useUi((s) => s.browse["podcasts-browse"]?.scope) ?? "national";
   const asked = sub ?? (genre ? String(genre.id) : "");
-  const browsed = useQuery({
-    queryKey: ["podcasts-browse", asked, scope], staleTime: 3600_000,
-    queryFn: () => api.get<Browsed>("/api/podcasts/browse", { genre: asked, scope }),
+  // which sources have a list here, then each list by itself: a slow source doesn't hold the others up
+  const where = useQuery({
+    queryKey: ["podcasts-where", asked, scope], staleTime: 3600_000,
+    queryFn: () => api.get<Where>("/api/podcasts/browse", { genre: asked, scope, source: "where" }),
   });
+  const lists = useQueries({
+    queries: (where.data?.sources ?? []).map((source) => ({
+      queryKey: ["podcasts-browse", source, asked, scope], staleTime: 3600_000, retry: false,
+      queryFn: () => api.get<BrowseList>("/api/podcasts/browse", { genre: asked, scope, source }),
+    })),
+  });
+  const shown = lists.filter((l) => l.data?.items.length);
+  const waiting = where.isLoading || lists.some((l) => l.isLoading);
   const admin = useUi((s) => !!s.user?.is_admin);
   const inApp = useShell((s) => s.opens);     // the apps have no admin pages: the server's, in the browser
   const [term, setTerm] = useState("");
@@ -281,17 +290,16 @@ export default function Podcasts() {
             ))}
           </div>
         )}
-        {browsed.isLoading ? <Loading /> : browsed.data?.sections.some((s) => s.items.length) ? (
-          browsed.data.sections.filter((s) => s.items.length).map((s) => (
-            <div key={s.source} className="browse-source">
-              <h3 className="h3">{sourceTitle(s.source, browsed.data, s.about)}</h3>
-              <HitGrid list={s.items} />
-            </div>
-          ))
-        ) : <Empty title="Nothing in this chart right now" />}
-        {admin && browsed.data && browsed.data.missing.length > 0 && (
+        {shown.map(({ data: s }) => s && where.data && (
+          <div key={s.source} className="browse-source">
+            <h3 className="h3">{sourceTitle(s.source, where.data, s.about)}</h3>
+            <HitGrid list={s.items} />
+          </div>
+        ))}
+        {waiting ? <Loading /> : !shown.length && <Empty title="Nothing in this chart right now" />}
+        {admin && where.data && where.data.missing.length > 0 && (
           <p className="dim browse-more">
-            More lists from {browsed.data.missing.map((m) => SOURCES[m]).join(" and ")}: their keys go under
+            More lists from {where.data.missing.map((m) => SOURCES[m]).join(" and ")}: their keys go under
             {" "}{inApp
               ? <a href="/admin/settings" onClick={(e) => { e.preventDefault(); appPlayer.openOnServer("/admin/settings"); }}>Admin → Settings</a>
               : <Link to="/admin/settings">Admin → Settings</Link>}, Podcasts &amp; radio.
@@ -314,19 +322,20 @@ export default function Podcasts() {
 }
 
 interface Category { id: number; name: string; subs: { id: number | string; name: string }[] }
-interface Browsed {
+interface Where {
   country: string;          // two letters
   languages: string;        // Podcast Index's, the first
-  sections: { source: "apple" | "podcastindex" | "listennotes"; items: PodcastHit[]; about?: string }[];
+  sources: BrowseList["source"][];      // the ones with a list here
   missing: string[];        // the sources without a key yet
 }
+interface BrowseList { source: "apple" | "podcastindex" | "listennotes"; items: PodcastHit[]; about?: string }
 
 const SCOPES = [{ value: "national", label: "National" }, { value: "international", label: "International" }] as const;
 const SOURCES: Record<string, string> = { apple: "Apple Podcasts", podcastindex: "Podcast Index", listennotes: "Listen Notes" };
 
 /** "Apple Podcasts · Sweden", "Trending on Podcast Index · Swedish", "Best on Listen Notes · Sweden";
  * Podcast Index's own categories, found by search: "On Podcast Index · Tabletop". */
-function sourceTitle(source: string, b: Browsed, about?: string) {
+function sourceTitle(source: string, b: Where, about?: string) {
   const name = (type: "region" | "language", code: string) => {
     try {
       return new Intl.DisplayNames(["en"], { type }).of(type === "region" ? code.toUpperCase() : code) || code;
