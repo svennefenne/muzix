@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { ChevronRight, Disc3, Heart, ListPlus, MessageCircle, Mic2, Play, Plus, Shuffle, Tags, Trash2, UserRound } from "lucide-react";
+import { ChevronRight, Disc3, Heart, ListPlus, MessageCircle, Mic2, Pause, Play, Plus, Shuffle, Tags, Trash2, UserRound } from "lucide-react";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Link, Navigate, NavLink, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, fmtLong, fmtNumber, sized } from "../api";
@@ -12,7 +12,8 @@ import { linkData, shareInChat, useChatOn } from "../chat/store";
 import { AdminCog } from "../components/AdminMode";
 import { DownloadButton } from "../components/DownloadButton";
 import { likedCollection } from "../downloads";
-import { fromTrack } from "../store/player";
+import { engine } from "../player/engine";
+import { fromTrack, usePlayer } from "../store/player";
 import { AlbumCard, ArtistCard, MosaicCard, PlaylistCard } from "../components/Cards";
 import { RecentSearches, rememberSearch } from "../components/RecentSearches";
 import { TrackList } from "../components/TrackList";
@@ -459,6 +460,9 @@ export function AlbumPage() {
   const chat = useChatOn();
   const [liked, setLiked] = useState<boolean | null>(null);
   const [extra, setExtra] = useState<Track[]>([]);
+  // one of its songs is the player's: Play pauses and continues it instead of starting the album again
+  const here = usePlayer((s) => s.current()?.albumId === Number(id));
+  const playing = usePlayer((s) => s.current()?.albumId === Number(id) && (s.playing || s.buffering));
   useEffect(() => { setLiked(null); setExtra([]); }, [id]);
   if (!q.data) return <div className="page"><Loading /></div>;
   const a = q.data;
@@ -481,7 +485,9 @@ export function AlbumPage() {
           </div>
           {a.artist_tags.length > 0 && <TagLinks tags={a.artist_tags.slice(0, 6)} />}
           <div className="row-actions">
-            <button className="btn accent" onClick={() => playAlbum(a.id)}><Play size={15} fill="currentColor" /> Play</button>
+            <button className="btn accent" onClick={() => (here ? engine.toggle() : playAlbum(a.id))}>
+              {playing ? <><Pause size={15} fill="currentColor" /> Pause</> : <><Play size={15} fill="currentColor" /> {here ? "Continue" : "Play"}</>}
+            </button>
             <button className="btn" data-tip="Play the album in random order" onClick={() => playAlbum(a.id, { shuffle: true })}><Shuffle size={15} /> Shuffle</button>
             <button className={`btn ${isLiked ? "accent" : ""}`} data-tip={isLiked ? "Saved in your library: click to remove it" : "Save the album to your library"}
                     onClick={async () => setLiked(await toggleLike("album", a.id, isLiked))}>

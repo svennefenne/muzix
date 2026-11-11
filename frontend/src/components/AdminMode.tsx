@@ -6,6 +6,7 @@ import { Combine, EyeOff, Pencil, Settings, Tags, Trash2 } from "lucide-react";
 import { create } from "zustand";
 import { queryClient } from "../actions";
 import { api } from "../api";
+import { useShell } from "../player/app";
 import { useUi } from "../store/ui";
 import type { Job } from "../types";
 import { EditDialog } from "./EditDialog";
@@ -84,8 +85,11 @@ export const useAdminDialogs = create<AdminDialogs>((set) => ({
   setMerge: (merge) => set({ merge }),
 }));
 
+/** On for an admin who turned it on, on the server's music: the apps' own library has nothing to edit. */
 export function useAdminMode() {
-  return useUi((s) => s.adminMode && !!s.user?.is_admin);
+  const on = useUi((s) => s.adminMode && !!s.user?.is_admin);
+  const local = useShell((s) => s.library === "local");
+  return on && !local;
 }
 
 /** Everything shown may have changed. */

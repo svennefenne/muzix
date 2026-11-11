@@ -6,6 +6,7 @@ import { api } from "./api";
 import { ChatHost, ChatPanel } from "./chat/Chat";
 import { useChat } from "./chat/store";
 import { AdminHost } from "./components/AdminMode";
+import { useAccountLook } from "./components/Avatar";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Logo } from "./components/Logo";
 import { StationHistory } from "./components/StationHistory";
@@ -202,6 +203,7 @@ function Shell() {
   const away = offline && loc.pathname !== "/" && loc.pathname !== "/downloads" && loc.pathname !== "/settings"
     && !downloaded.some((d) => d.path === loc.pathname);
   useLikedKept();
+  useAccountLook();
   const scroll = useRef<HTMLDivElement>(null);
   const [drawn, setDrawn] = useState(0);
   useScrollMemory(scroll);

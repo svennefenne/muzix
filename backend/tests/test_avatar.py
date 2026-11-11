@@ -47,6 +47,7 @@ def test_a_letter_on_a_colour(c):
     got = c.put("/api/me/avatar", json={"letter": "AF", "color": "#FF8800"}).json()
     assert got == {"picture": None, "letter": "AF", "color": "#ff8800"}
     assert c.get("/api/me").json()["avatar"] == got
+    assert c.get("/api/me/avatar").json() == got
     assert c.put("/api/me/avatar", json={"color": "orange"}).status_code == 422
     assert c.put("/api/me/avatar", json={"letter": "TOO LONG TO FIT"}).status_code == 422
     assert c.delete("/api/me/avatar").json()["letter"] == "A"

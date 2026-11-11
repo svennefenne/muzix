@@ -45,7 +45,7 @@ UA = f"MuzixDesktop/{__version__} ({platform.system() or 'Unknown'}; {platform.n
 # not passed on, either way
 # the account's, on the server, even while the library is this computer's
 ACCOUNT = ("/api/podcasts", "/api/radio", "/api/connect", "/api/me/devices", "/api/auth/logout", "/api/android", "/api/desktop",
-           "/api/schemes")
+           "/api/schemes", "/api/me/avatar", "/api/avatars/")
 HOP = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailers",
        "transfer-encoding", "upgrade", "host", "user-agent", SECRET_HEADER}
 

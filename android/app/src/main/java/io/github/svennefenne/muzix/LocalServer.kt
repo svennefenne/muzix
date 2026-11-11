@@ -261,7 +261,7 @@ class LocalServer(private val context: Context, private val api: LocalApi, port:
             return lan + url.substring(srv.origin.length)
         }
         // the account's, on the server, even while the library is this phone's (docs/app-plan.md)
-        val ACCOUNT = arrayOf("/api/podcasts", "/api/radio", "/api/me/devices", "/api/schemes")
+        val ACCOUNT = arrayOf("/api/podcasts", "/api/radio", "/api/me/devices", "/api/schemes", "/api/me/avatar", "/api/avatars/")
         private val WEB_TYPES = mapOf("html" to "text/html", "js" to "text/javascript", "css" to "text/css", "svg" to "image/svg+xml",
             "png" to "image/png", "woff2" to "font/woff2", "json" to "application/json", "ico" to "image/x-icon")
     }

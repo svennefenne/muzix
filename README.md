@@ -114,8 +114,9 @@ shared with the others on your server if you like.
   and songs it leaves out, and names the biggest artists among them.
 - **Your icon** (Settings → Your icon): a picture of your own, cropped to the
   circle (Muzix keeps a small WebP of it), or a letter or two on a colour. It
-  shows in the top bar, the phone's menu and the admin's list of users.
-- **Admin mode** (a switch in the user menu, admins only): a cog on every album,
+  shows in the top bar, the phone's menu and the admin's list of users. It's the
+  account's, the same on every device, also in the apps' own library.
+- **Admin mode** (a switch in the user menu, admins only, in the apps too): a cog on every album,
   song, artist, audiobook, podcast, playlist and station, with
   - *Edit metadata*: the fields (an album with all its songs) side by side with
     what MusicBrainz, Discogs, Bandcamp, Deezer and iTunes

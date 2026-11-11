@@ -1,10 +1,12 @@
 /** Each account's icon (backend api/me.py): a picture of its own, cropped to a circle here and kept
  * as a small WebP by the server, or a letter or two on a colour; until it's changed, the first
- * letter of the name on the scheme's colours. */
+ * letter of the name on the scheme's colours. It's the account's on every device: in the app's own
+ * library too, where the page's account is the phone's or the computer's (useAccountLook). */
 
 import { ImagePlus, RotateCcw } from "lucide-react";
 import { type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react";
 import { api } from "../api";
+import { useShell } from "../player/app";
 import { useUi } from "../store/ui";
 import type { AvatarLook } from "../types";
 import { Modal } from "./ui";
@@ -30,18 +32,37 @@ export function Avatar({ user, className = "" }: { user: { username: string; ava
   return <span className={`avatar ${className}`} style={style} data-long={Array.from(letter).length > 1 || undefined}>{letter}</span>;
 }
 
+/** The server account's icon in the app's own library: /api/me/avatar and the pictures are the
+ * account's there (desktop relay.py, Android LocalServer.kt). With no server the phone has no icon of
+ * its own to change; the computer's library has its own account. */
+export function useAccountLook() {
+  const local = useShell((s) => s.library === "local");
+  useEffect(() => {
+    useUi.setState({ accountLook: null });
+    if (local) api.get<AvatarLook>("/api/me/avatar").then(account, () => {});
+  }, [local]);
+}
+
+/** The account's icon, as the server has it now. */
+function account(avatar: AvatarLook) {
+  const user = useUi.getState().user;
+  useUi.setState({ user: user && { ...user, avatar }, accountLook: useShell.getState().library === "local" ? avatar : null });
+}
+
 /** Settings → Your icon. */
 export function AvatarSettings() {
   const user = useUi((s) => s.user);
   const notify = useUi((s) => s.notify);
+  const local = useShell((s) => s.library === "local");
+  const ours = useUi((s) => !!s.accountLook);
   const [letter, setLetter] = useState("");
   const [picked, setPicked] = useState<string | null>(null);   // a picture chosen, to crop
   const file = useRef<File | null>(null);
   const look = user?.avatar;
   useEffect(() => setLetter(look?.letter || ""), [look?.letter]);
-  if (!user) return null;
+  if (!user || (local && !ours)) return null;
 
-  const saved = (avatar: AvatarLook) => useUi.setState({ user: { ...user, avatar } });
+  const saved = account;
   const put = async (body: Partial<AvatarLook>) => {
     try {
       saved(await api.put<AvatarLook>("/api/me/avatar", body));

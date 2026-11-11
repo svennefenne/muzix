@@ -1,11 +1,12 @@
 import { create } from "zustand";
 import { api } from "../api";
-import type { BrowsePref, LibraryView, Modules, Prefs, User } from "../types";
+import type { AvatarLook, BrowsePref, LibraryView, Modules, Prefs, User } from "../types";
 
 type Mode = "system" | "light" | "dark";
 
 interface UiState {
   user: User | null;
+  accountLook: AvatarLook | null;  // the server account's icon, in the app's own library (Avatar.tsx)
   siteName: string;
   modules: Modules;              // the server's (modules.ts)
   scheme: string;
@@ -76,6 +77,7 @@ const initial = localPrefs();
 
 export const useUi = create<UiState>((set, get) => ({
   user: null,
+  accountLook: null,
   siteName: "Muzix",
   modules: { vgm: true, audiobooks: true, podcasts: true, radio: true, network: true },
   scheme: initial.scheme || "muzix",
@@ -114,7 +116,8 @@ export const useUi = create<UiState>((set, get) => ({
   })(),
   toast: null,
   setUser: (u) => {
-    set({ user: u });
+    const look = get().accountLook;
+    set({ user: u && look ? { ...u, avatar: look } : u });
     const p = u?.prefs || {};
     set({
       scheme: p.scheme ?? get().scheme,

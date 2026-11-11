@@ -167,7 +167,7 @@ function MoreSheet({ onClose }: { onClose: () => void }) {
             <span><b>{label}</b><small>{sub}</small></span>
           </button>
         ))}
-        {user?.is_admin && !inApp && (
+        {user?.is_admin && library !== "local" && (
           <button className="sheet-item" role="switch" aria-checked={adminMode} onClick={() => { setAdminMode(!adminMode); onClose(); }}>
             <Wrench size={22} />
             <span><b>Admin mode</b><small>A cog on every item, to edit, hide or delete it</small></span>

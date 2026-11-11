@@ -146,6 +146,12 @@ async def avatar_picture(file: UploadFile = File(...), x: float = Form(0.5), y: 
     return {"picture": name, "url": f"/api/avatars/{name}"}
 
 
+@router.get("/me/avatar")
+def get_avatar(user: User = Depends(current_user)):
+    """The account's icon on its own: the app's own library asks the server for it (it has no account)."""
+    return serial.avatar(user)
+
+
 @router.put("/me/avatar")
 def set_avatar(body: AvatarLook, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
     u = db.get(User, user.id)

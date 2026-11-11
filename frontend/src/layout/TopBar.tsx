@@ -141,8 +141,8 @@ export function TopBar() {
     // the app's own library's admin is the app's (Muzix Desktop's own server signs in as one): no server's Admin
     ...(user?.is_admin && library !== "local" ? [{ label: inApp ? "Admin on the server" : "Admin", icon: <Shield size={16} />,
                             onClick: () => (inApp ? appPlayer.openOnServer("/admin") : nav("/admin")) }] : []),
-    // admin mode: a cog on every item, to edit, hide or delete it (the app's are the web version's: Admin on the server)
-    ...(user?.is_admin && !inApp ? [{ label: "Admin mode", icon: <Wrench size={16} />, checked: adminMode, onClick: () => setAdminMode(!adminMode) }] : []),
+    // admin mode: a cog on every item, to edit, hide or delete it (in the apps too, on the server's music)
+    ...(user?.is_admin && library !== "local" ? [{ label: "Admin mode", icon: <Wrench size={16} />, checked: adminMode, onClick: () => setAdminMode(!adminMode) }] : []),
     ...(update ? [{ label: `Update the app to ${update.version}`, icon: <Download size={16} />, onClick: () => appPlayer.update(update.url) }] : []),
     // the app's own library has no login
     ...(library !== "local" ? [{ sep: true }, { label: "Sign out", icon: <LogOut size={16} />, onClick: () => api.post("/api/auth/logout").then(() => location.assign("/")) }] : []),
@@ -180,8 +180,6 @@ export function TopBar() {
   );
 }
 
-/** Admin mode on and off (admins only): a cog on every item, to edit, hide or delete it. In the app,
- * which has no admin mode, the page in the server's web version, with admin mode on there. */
 export function isTyping(e: KeyboardEvent) {
   const t = e.target as HTMLElement;
   return t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);

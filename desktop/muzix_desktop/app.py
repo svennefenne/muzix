@@ -157,8 +157,6 @@ class App:
         self.scan()
         if self.cfg.sharing:
             self.sharing.start()
-        if not minimized and self.cfg.servers and not self.cfg.folders:
-            QTimer.singleShot(400, self.open_settings)      # sharing set up, but nothing to share yet
         # Update in the account menu: the new version downloaded in the background, put in and started (updater.py)
         self.updater = Updater(lambda: self.window.isVisible() and not self.window.isMinimized(), self.window.handover,
                                self.quit, self.window.notify)

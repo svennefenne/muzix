@@ -330,10 +330,11 @@ Server and web only, so it ships on its own.
   did before, and the app says which one to update (the server's own interface has the app's update
   button).
 - A server that doesn't answer: the app's interface says so, with Try again and Another server.
-- In the app there's no admin mode and no Admin page; admins get "Admin on the server" in the user menu,
-  which opens the web version's Admin. (Up to 0.10.0 a wrench beside the user menu opened the page shown,
-  in the web version in admin mode; in the web version the wrench turned admin mode on, now a switch in
-  the user menu.)
+- In the app there's no Admin page; admins get "Admin on the server" in the user menu, which opens the
+  web version's Admin. Admin mode (the cog on every item) is a switch in the user menu, in the apps too
+  (from Android 0.10.16 and desktop 0.4.15), on the server's music only: the app's own library has
+  nothing to edit. (Up to 0.10.0 a wrench beside the user menu opened the page shown, in the web
+  version in admin mode; from then until 0.10.15 the apps had no admin mode.)
 - The sign-in tells the server the phone's name, so Settings → Devices tells two phones apart.
 
 ### 2.3 At home and away
