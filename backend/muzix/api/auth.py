@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import __version__, modules, settings
+from .. import __version__, modules, serial, settings
 from ..db import get_db
 from ..models import User
 from ..security import (check_password, end_session, has_users, hash_password, login_token, new_login,
@@ -24,7 +24,8 @@ def user_json(db: Session, u: User | None, token: str | None):
     """The account as the UI knows it, with the settings of the device signed in with `token`."""
     if u is None:
         return None
-    return {"id": u.id, "username": u.username, "is_admin": u.is_admin, "prefs": device_prefs(db, u, token)}
+    return {"id": u.id, "username": u.username, "is_admin": u.is_admin, "avatar": serial.avatar(u),
+            "prefs": device_prefs(db, u, token)}
 
 
 @router.get("/state")
@@ -33,7 +34,7 @@ def state(request: Request, db: Session = Depends(get_db), user: User | None = D
         "needs_setup": not has_users(db),
         # the admin account is there; the rest of the setup isn't done (api/setup.py)
         "setup": bool(user and user.is_admin and first_setup.pending()),
-        "modules": modules.states(),
+        "modules": modules.states_for(user),
         "user": user_json(db, user, login_token(request)),
         "site_name": settings.get("site_name"),
         "allow_signup": settings.get("allow_signup"),

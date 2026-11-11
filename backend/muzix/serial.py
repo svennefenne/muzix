@@ -32,6 +32,14 @@ def peer(peer_id: int | None) -> str | None:
     return names.get(peer_id) or "another server"
 
 
+def avatar(u) -> dict:
+    """An account's icon: its picture, or a letter on a colour (None: the scheme's)."""
+    look = getattr(u, "avatar", None) or {}
+    if look.get("picture"):
+        return {"picture": f"/api/avatars/{look['picture']}", "letter": None, "color": None}
+    return {"picture": None, "letter": look.get("letter") or (u.username or "?")[0].upper(), "color": look.get("color")}
+
+
 def art_url(kind: str, id_: int | None) -> str | None:
     return art.url(kind, id_) if id_ else None
 

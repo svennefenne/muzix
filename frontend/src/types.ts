@@ -2,7 +2,15 @@ export interface User {
   id: number;
   username: string;
   is_admin: boolean;
+  avatar?: AvatarLook;
   prefs: Prefs;
+}
+
+/** An account's icon: its picture, or a letter or two on a colour (null: the scheme's). */
+export interface AvatarLook {
+  picture: string | null;
+  letter: string | null;
+  color: string | null;
 }
 
 export interface Prefs {

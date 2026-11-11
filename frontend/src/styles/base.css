@@ -139,10 +139,17 @@ img { display: block; }
 }
 .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); box-shadow: 0 0 8px var(--success); }
 .avatar {
-  width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+  width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; flex: none; overflow: hidden;
   background: linear-gradient(135deg, var(--primary), var(--secondary)); color: var(--on-primary);
   font: 800 11px/1 var(--font-ui);
 }
+.avatar[data-long] { font-size: 9px; letter-spacing: -.02em; }
+.avatar.pic { background: var(--surface-3); }
+.avatar.pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.avatar.big { width: 72px; height: 72px; font-size: 32px; }
+.avatar.big[data-long] { font-size: 26px; }
+.list-row > .avatar { width: 32px; height: 32px; font-size: 14px; }
+.list-row > .avatar[data-long] { font-size: 12px; }
 
 /* the workspace: your library, the page, and what's playing, side by side */
 .workspace { display: grid; grid-template-columns: var(--side-w) minmax(0, 1fr); gap: 8px; padding: 0 8px; min-height: 0; }
@@ -1741,3 +1748,46 @@ button.lyr:hover { color: var(--lyr-now); text-decoration: underline; text-decor
 .admin-list li { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); }
 .admin-list .grow { flex: 1; min-width: 0; }
 .admin-list li.undone { opacity: .6; }
+
+/* Settings → Your icon, and cropping a picture for it */
+.avatar-settings { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+.avatar-choices { display: grid; gap: 16px; flex: 1 1 280px; min-width: 0; }
+.avatar-letter { width: 64px; text-align: center; font-weight: 800; }
+.avatar-swatches { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.avatar-swatches > button, .avatar-own-color {
+  width: 26px; height: 26px; padding: 0; border-radius: 50%; border: 1px solid var(--border-strong); cursor: pointer;
+}
+.avatar-swatches > button.on { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--text); }
+.avatar-own-color { position: relative; overflow: hidden; display: inline-block;
+  background: conic-gradient(#e05f8a, #f2a93b, #9bc53d, #2bb3a8, #4a7fc1, #7a5f8f, #e05f8a); }
+.avatar-own-color input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.modal.avatar-crop { width: min(360px, 100%); }
+.crop-stage { position: relative; margin: 0 auto; overflow: hidden; border-radius: 12px; background: var(--surface-3);
+  cursor: grab; touch-action: none; user-select: none; }
+.crop-stage:active { cursor: grabbing; }
+.crop-stage img { position: absolute; max-width: none; pointer-events: none; }
+.crop-ring { position: absolute; inset: 0; border-radius: 50%; box-shadow: 0 0 0 999px #000a; outline: 1px solid #fff8; pointer-events: none; }
+.crop-zoom { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+.crop-zoom input { flex: 1; accent-color: var(--primary); }
+
+/* Admin → Users: who's on the server, and what each one doesn't see */
+.user-sub { font-size: 12px; overflow-wrap: anywhere; }
+.user-sub .limited { color: var(--text); }
+.modal.limits-editor { width: min(720px, 100%); }
+.limits-editor .field { margin-bottom: 20px; }
+.limits-editor .tags { margin: 2px 0 0; }
+.limits-editor .tag-add .input { max-width: 320px; }
+.limit-picks { max-height: 168px; overflow-y: auto; }
+.limit-artists { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
+.limit-artists .tag-group-label { min-width: 84px; }
+.limit-artists .tag-artist-search { width: min(220px, 100%); }
+.limit-artists .tag-artist-search .input { height: 32px; }
+.link-btn { justify-self: start; padding: 0; border: 0; background: none; color: var(--text-dim); font: 600 12px/1.4 var(--font-ui);
+  text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.link-btn:hover { color: var(--primary); }
+.limits-preview { padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; line-height: 1.5; min-height: 46px;
+  background: color-mix(in srgb, var(--surface-2) 60%, transparent); }
+@media (max-width: 640px) {
+  .user-row { flex-wrap: wrap; }
+  .user-row .grow { flex-basis: calc(100% - 44px); }
+}

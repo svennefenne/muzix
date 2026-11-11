@@ -99,6 +99,22 @@ shared with the others on your server if you like.
   Muzix, lossless where it can, and keeps going when your phone sleeps.
 - **Admin page**: library folders with a folder browser, scans and jobs with
   logs, users, and every setting with an explanation.
+- **Limits per user** (Admin → Users → Limits): music someone shouldn't come
+  across, left out for that account only. Leave out genre tags (a tag takes its
+  subgenres along: *death metal* also leaves out *melodic death metal*; it
+  counts when it's one of an artist's main tags, or any of their tags if you
+  say so), whole genre folders, music without a genre, the untagged artists of
+  a genre folder, or single artists, and let artists through that those would
+  leave out. VGM, Audiobooks, Podcasts and Radio can be turned off for the
+  account too. The server leaves it all out of everything that account asks
+  for: the library, search, Home, genres and counts, radio, shuffle and
+  autoplay, other people's playlists, the linked libraries, streams, covers
+  and lyrics. Nothing tells the account something is missing, and only an
+  admin can change it. While you choose, Muzix says how many artists, albums
+  and songs it leaves out, and names the biggest artists among them.
+- **Your icon** (Settings → Your icon): a picture of your own, cropped to the
+  circle (Muzix keeps a small WebP of it), or a letter or two on a colour. It
+  shows in the top bar, the phone's menu and the admin's list of users.
 - **Admin mode** (a switch in the user menu, admins only): a cog on every album,
   song, artist, audiobook, podcast, playlist and station, with
   - *Edit metadata*: the fields (an album with all its songs) side by side with

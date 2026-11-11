@@ -130,16 +130,18 @@ def _without_hidden(state: ORMExecuteState):
     so as the request comes in), only this server's own library is there, every copy of it; so
     it is for everyone while the Library Network is off. What a module that's off holds isn't
     there either (modules.py), nor what's only on a computer of the Library Network that's off
-    (tunnel.py)."""
+    (tunnel.py), nor what an admin left out for the account asking (limits.py), with the
+    sections turned off for it."""
     if not state.is_select or not state.session.info.get("hide") or state.execution_options.get("include_hidden"):
         return
-    from . import modules
+    from . import limits, modules
     from .models import HIDEABLE, SHADOWABLE, Album, Artist, Book, Feed, Station, Track
-    off = modules.off()
+    viewer = state.session.info.get("viewer")
+    lim = getattr(viewer, "limits", None)
+    off = modules.off() | (lim.sections if lim else set())
     gone = {model for model, key in ((Book, "audiobooks"), (Feed, "podcasts"), (Station, "radio")) if key in off}
     no_vgm = "vgm" in off
     copies = state.session.info.get("copies") or state.execution_options.get("include_copies")
-    viewer = state.session.info.get("viewer")
     ours = "network" in off or viewer is not None and getattr(viewer, "network", True) is False
     for model in HIDEABLE:
         music = no_vgm and model in (Album, Track)
@@ -157,6 +159,9 @@ def _without_hidden(state: ORMExecuteState):
         if computers_away and model not in gone and (model is Artist or hasattr(model, "peer_id")):
             away = _present_artist if model is Artist else _present
             state.statement = state.statement.options(with_loader_criteria(model, away, include_aliases=True))
+    if lim is not None and lim.music:
+        for model, crit in limits.criteria(lim).items():
+            state.statement = state.statement.options(with_loader_criteria(model, crit, include_aliases=True))
 
 
 def get_db(conn: HTTPConnection):

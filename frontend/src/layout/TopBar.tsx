@@ -15,6 +15,7 @@ import { freshPodcasts, usePlayer, useStartedEpisodes } from "../store/player";
 import { useUi } from "../store/ui";
 import type { Home } from "../types";
 import { QuickSearch } from "./QuickSearch";
+import { Avatar } from "../components/Avatar";
 
 export const TABS = [
   { to: "/", label: "Home", end: true },
@@ -166,7 +167,7 @@ export function TopBar() {
         </button>
         <button className="iconbtn hide-sm trim-2" aria-label="Fullscreen" data-tip="Fill the whole screen" data-tip-key="F11" onClick={toggleFullscreen}><Monitor size={15} /></button>
         <button className="pill userpill" onClick={userMenu} aria-label={`Account: ${user?.username}`} data-tip="Settings, admin and signing out">
-          <span className="avatar">{(user?.username || "?")[0].toUpperCase()}</span>
+          <Avatar user={user} />
           <span className="uname">{user?.username}</span>
           {update && <NewDot label={`Version ${update.version} of the app is out`} />}
         </button>

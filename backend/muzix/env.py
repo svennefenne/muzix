@@ -25,11 +25,12 @@ PODCAST_DIR = DATA_DIR / "podcasts"     # downloaded episodes
 UPLOAD_DIR = DATA_DIR / "uploads"       # staging area for the upload pipeline
 BEETS_DIR = DATA_DIR / "beets"          # beets config/db used by uploads
 SCHEME_DIR = DATA_DIR / "schemes"       # pictures for users' own colour schemes
+AVATAR_DIR = DATA_DIR / "avatars"       # users' own pictures for their icon
 SECRET_FILE = DATA_DIR / "secret.key"
 
 
 def ensure_dirs():
-    for d in (DATA_DIR, CACHE_DIR, ART_DIR, PODCAST_DIR, UPLOAD_DIR, BEETS_DIR, SCHEME_DIR):
+    for d in (DATA_DIR, CACHE_DIR, ART_DIR, PODCAST_DIR, UPLOAD_DIR, BEETS_DIR, SCHEME_DIR, AVATAR_DIR):
         d.mkdir(parents=True, exist_ok=True)
 
 

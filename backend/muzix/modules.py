@@ -7,7 +7,7 @@ again, everything is back as it was."""
 
 from dataclasses import dataclass
 
-from fastapi import HTTPException
+from fastapi import Depends, HTTPException
 
 from . import settings
 
@@ -63,10 +63,26 @@ def kinds() -> set[str]:
 
 
 def needed(key: str):
-    """A FastAPI dependency: the request is for a module that's on."""
+    """A FastAPI dependency: the request is for a module that's on, for whoever asks (an admin can
+    turn a section off for one account: limits.py)."""
+    from . import limits
+    from .models import User
+    from .security import optional_user
     label = BY_KEY[key].label
 
     def check():
         if not on(key):
             raise HTTPException(404, f"The {label} module is turned off on this server")
-    return check
+
+    def check_for(user: User | None = Depends(optional_user)):
+        check()
+        if user is not None and (lim := limits.of(user)) and key in lim.sections:
+            raise HTTPException(404, f"The {label} module is turned off on this server")
+    return check_for if key in limits.SECTIONS else check
+
+
+def states_for(user) -> dict[str, bool]:
+    """The modules as an account sees them: those turned off for it are off."""
+    from . import limits
+    lim = limits.of(user) if user is not None else None
+    return {k: v and not (lim and k in lim.sections) for k, v in states().items()}

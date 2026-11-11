@@ -4,6 +4,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { queryClient } from "../actions";
 import { ago, api } from "../api";
 import { appVersion } from "../appUpdate";
+import { AvatarSettings } from "../components/Avatar";
 import { castStatus } from "../components/CastButton";
 import { SEARCH_ENGINES } from "../components/StationHistory";
 import { Display, Kicker, Switch } from "../components/ui";
@@ -417,6 +418,8 @@ export default function Settings() {
       <DownloadSettings />
 
       <NetworkMusic />
+
+      <AvatarSettings />
 
       <section className="panel">
         <div className="panel-head"><div><div className="kicker">Account</div><div className="h2">Password</div></div></div>

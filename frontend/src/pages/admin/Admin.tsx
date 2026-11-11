@@ -15,6 +15,7 @@ import { FolderBrowser, SettingField, type SettingSpec } from "./fields";
 import { Modules } from "./Modules";
 import { LibraryNetwork } from "./Network";
 import { Tags } from "./Tags";
+import { AdminUsers } from "./Users";
 
 interface Root { id: number; path: string; kind: string; name: string; enabled: boolean; upload_target: boolean; excludes: string[]; items: number; exists: boolean; writable: boolean; last_scan: string | null }
 interface Status {
@@ -790,60 +791,6 @@ function AdminSettings() {
           {error && <span className="error-text">{error}</span>}
         </div>
       </div>
-    </>
-  );
-}
-
-// ---------------------------------------------------------------- users
-
-function AdminUsers() {
-  const me = useUi((s) => s.user);
-  const q = useQuery({ queryKey: ["users"], queryFn: () => api.get<{ id: number; username: string; is_admin: boolean; created_at: string }[]>("/api/admin/users") });
-  const [form, setForm] = useState({ username: "", password: "", is_admin: false });
-  const [err, setErr] = useState("");
-  const add = async () => {
-    setErr("");
-    try {
-      await api.post("/api/admin/users", form);
-      setForm({ username: "", password: "", is_admin: false });
-      q.refetch();
-    } catch (e) {
-      setErr((e as Error).message);
-    }
-  };
-  return (
-    <>
-      <section className="panel">
-        <div className="panel-head"><div className="h3">Add a user</div></div>
-        <div className="row-actions">
-          <input className="input" style={{ maxWidth: 200 }} placeholder="Username" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
-          <input className="input" style={{ maxWidth: 220 }} type="password" placeholder="Password (6+)" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
-          <label className="row-actions dim" style={{ gap: 6 }}><Switch checked={form.is_admin} onChange={(v) => setForm({ ...form, is_admin: v })} /> Admin</label>
-          <button className="btn accent" onClick={add}><Plus size={15} /> Add</button>
-        </div>
-        {err && <p className="error-text">{err}</p>}
-      </section>
-      <section className="panel">
-        <div className="panel-head"><div className="h3">Users</div></div>
-        <div className="list">
-          {(q.data || []).map((u) => (
-            <div key={u.id} className="list-row">
-              <span className="avatar">{u.username[0].toUpperCase()}</span>
-              <div className="grow"><b>{u.username}</b><div className="dim" style={{ fontSize: 12 }}>since {new Date(u.created_at).toLocaleDateString()}</div></div>
-              <label className="row-actions dim" style={{ gap: 6 }}>
-                <Switch checked={u.is_admin} onChange={async (v) => { await api.put(`/api/admin/users/${u.id}`, { username: u.username, is_admin: v }); q.refetch(); }} /> Admin
-              </label>
-              <button className="btn small" onClick={async () => {
-                const pw = prompt(`New password for ${u.username} (6+ characters)`);
-                if (pw) { await api.put(`/api/admin/users/${u.id}`, { username: u.username, is_admin: u.is_admin, password: pw }); }
-              }}>Reset password</button>
-              {u.id !== me?.id && <button className="mini" aria-label="Delete" onClick={async () => {
-                if (confirm(`Delete ${u.username}?`)) { await api.del(`/api/admin/users/${u.id}`); q.refetch(); }
-              }}><Trash2 size={15} /></button>}
-            </div>
-          ))}
-        </div>
-      </section>
     </>
   );
 }

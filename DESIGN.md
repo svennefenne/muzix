@@ -341,7 +341,7 @@ Small, outlined and exact; they recede until you need them.
 - **Switches and ranges:** a 40×22px track that fills Marigold when on. Range sliders have 4px tracks and a 13px Bone thumb; seek bars turn Marigold on hover and show a striped Coral Red fill when the stream is live.
 
 ### Navigation
-- **Top bar:** cassette logo (links Home), the section pills (13px semibold on Bone at 10%, the current section solid Marigold), a round home button (Marigold when you're home) beside the search, and on the right a now-playing button with a progress ring, the light/dark toggle, fullscreen and the account pill (avatar plus name; Settings, Admin and Sign out live in its menu).
+- **Top bar:** cassette logo (links Home), the section pills (13px semibold on Bone at 10%, the current section solid Marigold), a round home button (Marigold when you're home) beside the search, and on the right a now-playing button with a progress ring, the light/dark toggle, fullscreen and the account pill (avatar plus name; Settings, Admin and Sign out live in its menu). The avatar is the account's own icon: its picture, cropped to the circle, or a letter or two on a colour the account picked (black or white ink, whichever reads), and by default the first letter of the name on the primary-to-secondary gradient.
 - **Your library (left dock):**
   - Header row with a panel title and a "+" for a new playlist, then filter chips, then rows.
   - Each row is a 48px cover with a 14px bold title and a 12.5px dim subtitle ("Playlist · 12 songs").

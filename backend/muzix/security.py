@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.requests import HTTPConnection
 
-from . import env
+from . import env, limits
 from .db import get_db
 from .models import AuthSession, User
 
@@ -99,8 +99,9 @@ def optional_user(request: Request, db: Session = Depends(get_db)) -> User | Non
 
 def viewing(request: Request, user: User):
     """Whose request it is, for what the pages show them (db.py): with their "network" preference
-    off, only this server's own library."""
+    off, only this server's own library; and never what an admin left out for them (limits.py)."""
     request.state.network = (user.prefs or {}).get("network", True) is not False
+    request.state.limits = limits.of(user)
 
 
 def session_user(db: Session, token: str | None) -> User | None:

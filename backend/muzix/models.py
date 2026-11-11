@@ -23,6 +23,10 @@ class User(Base):
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     prefs: Mapped[dict] = mapped_column(JSON, default=dict)   # theme, volume, ...
+    # what an admin leaves out for this account (limits.py); None: nothing
+    limits: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # the account's icon: {"color", "letter"} or {"picture": a file in env.AVATAR_DIR}; None: the first letter
+    avatar: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
 class AuthSession(Base):

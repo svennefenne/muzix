@@ -3,7 +3,7 @@ import random
 import re
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import case, delete, func, or_, select, text, true
@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from .. import art, lyrics, mirror, serial, tagging
 from ..db import get_db, get_db_with_copies
 from ..models import Album, Artist, Book, FilePlaylist, FilePlaylistItem, Like, PlayEvent, RecentSearch, Track, User
-from ..security import current_user
+from ..security import current_user, optional_user
 from .podcasts import whats_new
 
 router = APIRouter(prefix="/api", tags=["library"])
@@ -25,7 +25,7 @@ ALBUM_SORTS = {
     "year_asc": (case((Album.year > 0, 0), else_=1), Album.year, func.lower(Album.title)),
     "tracks": (Album.track_count.desc(), func.lower(Album.title)),
 }
-GENRE_SORTS = {"albums": "n DESC", "name": "lower(genre)", "artists": "a DESC, n DESC"}
+GENRE_SORTS = {"albums": ("n",), "name": ("name",), "artists": ("a", "n")}
 NO_SYSTEM = "Game soundtracks"   # VGM without a chip system: ordinary soundtrack albums
 
 
@@ -82,13 +82,13 @@ def home(db: Session = Depends(get_db), user: User = Depends(current_user)):
     rnd = db.scalars(select(Album).where(Album.kind == "music", Album.art != "")
                      .order_by(func.random()).limit(14))
     vgm = db.scalars(select(Album).where(Album.kind == "vgm").order_by(func.random()).limit(14))
-    stats = db.execute(text(
-        "SELECT (SELECT count(*) FROM tracks WHERE kind='music'), (SELECT count(*) FROM albums WHERE kind='music'),"
-        " (SELECT count(*) FROM artists), (SELECT count(*) FROM tracks WHERE kind='vgm'),"
-        " (SELECT coalesce(sum(duration),0) FROM tracks WHERE kind='music')")).one()
+    music, seconds = db.execute(select(func.count(), func.coalesce(func.sum(Track.duration), 0))
+                                .where(Track.kind == "music")).one()
     return {
-        "stats": {"tracks": stats[0], "albums": stats[1], "artists": stats[2], "vgm_tracks": stats[3],
-                  "hours": round(stats[4] / 3600)},
+        "stats": {"tracks": music, "albums": db.scalar(select(func.count()).select_from(Album).where(Album.kind == "music")),
+                  "artists": db.scalar(select(func.count()).select_from(Artist)),
+                  "vgm_tracks": db.scalar(select(func.count()).select_from(Track).where(Track.kind == "vgm")),
+                  "hours": round(seconds / 3600)},
         "recently_played": [serial.album(played[i], lk) for i in played_ids if i in played],
         "recently_added": [serial.album(a, lk) for a in recent],
         "most_played": [serial.album(top[i], lk) for i in top_ids if i in top],
@@ -102,10 +102,11 @@ def home(db: Session = Depends(get_db), user: User = Depends(current_user)):
 @router.get("/genres")
 def genres(db: Session = Depends(get_db), user: User = Depends(current_user), limit: int = 100,
            sort: str = "albums"):
-    order = GENRE_SORTS.get(sort, GENRE_SORTS["albums"])
-    rows = db.execute(text(
-        "SELECT genre, count(*) n, sum(track_count) t, count(DISTINCT artist_id) a FROM albums "
-        f"WHERE kind='music' AND genre != '' GROUP BY genre ORDER BY {order} LIMIT :l"), {"l": limit}).all()
+    n, t, a = func.count().label("n"), func.sum(Album.track_count).label("t"), func.count(Album.artist_id.distinct()).label("a")
+    order = {"n": n.desc(), "a": a.desc(), "name": func.lower(Album.genre)}
+    rows = db.execute(select(Album.genre, n, t, a).where(Album.kind == "music", Album.genre != "")
+                      .group_by(Album.genre).order_by(*(order[k] for k in GENRE_SORTS.get(sort, GENRE_SORTS["albums"])))
+                      .limit(limit)).all()
     out = []
     for g, n, t, a in rows:
         arts = db.scalars(select(Album.id).where(Album.genre == g, Album.art != "")
@@ -469,18 +470,20 @@ def fts_query(q: str) -> str:
 
 
 @router.get("/search")
-def search(q: str, db: Session = Depends(get_db), user: User = Depends(current_user),
+def search(q: str, request: Request, db: Session = Depends(get_db), user: User = Depends(current_user),
            limit: int = Query(20, le=100)):
     fq = fts_query(q)
     if not fq:
         return {"artists": [], "albums": [], "tracks": [], "books": []}
     out = {}
+    # what's hidden from this account isn't found: ask the index for more, to have enough of the rest
+    ask = limit * 5 if getattr(request.state, "limits", None) else limit
     for kind, model in (("artist", Artist), ("album", Album), ("track", Track)):
         ids = [int(r[0]) for r in db.execute(text(
             "SELECT ref FROM search_fts WHERE search_fts MATCH :q AND kind = :k ORDER BY rank LIMIT :l"),
-            {"q": fq, "k": kind, "l": limit})]
+            {"q": fq, "k": kind, "l": ask})]
         rows = {x.id: x for x in db.scalars(select(model).where(model.id.in_(ids)))}
-        out[kind] = [rows[i] for i in ids if i in rows]
+        out[kind] = [rows[i] for i in ids if i in rows][:limit]
     like = f"%{q.strip()}%"
     books = db.scalars(select(Book).where(Book.title.ilike(like) | Book.author.ilike(like) | Book.series.ilike(like))
                        .order_by(func.lower(Book.title)).limit(min(limit, 10)))
@@ -558,9 +561,9 @@ def clear_searches(db: Session = Depends(get_db_with_copies), user: User = Depen
 
 @router.get("/vgm/systems")
 def vgm_systems(db: Session = Depends(get_db), user: User = Depends(current_user)):
-    rows = db.execute(text(
-        "SELECT coalesce(json_extract(extra, '$.system'), ''), count(*), count(DISTINCT album_id) "
-        "FROM tracks WHERE kind = 'vgm' GROUP BY 1 ORDER BY 2 DESC")).all()
+    system, n = func.coalesce(func.json_extract(Track.extra, "$.system"), ""), func.count()
+    rows = db.execute(select(system, n, func.count(Track.album_id.distinct())).where(Track.kind == "vgm")
+                      .group_by(system).order_by(n.desc())).all()
     return [{"system": s or NO_SYSTEM, "tracks": n, "albums": a} for s, n, a in rows]
 
 
@@ -590,7 +593,8 @@ def _resolved(ref: str, db: Session):
 
 
 @router.get("/art/album/{album_id}")
-def album_art(album_id: int, s: int = 300, db: Session = Depends(get_db_with_copies)):
+def album_art(album_id: int, s: int = 300, db: Session = Depends(get_db_with_copies),
+              user: User | None = Depends(optional_user)):
     a = db.get(Album, album_id)
     if a is None or not a.art:
         return Response(status_code=404)
@@ -604,7 +608,8 @@ def album_art(album_id: int, s: int = 300, db: Session = Depends(get_db_with_cop
 
 
 @router.get("/art/artist/{artist_id}")
-def artist_art(artist_id: int, s: int = 300, db: Session = Depends(get_db_with_copies)):
+def artist_art(artist_id: int, s: int = 300, db: Session = Depends(get_db_with_copies),
+               user: User | None = Depends(optional_user)):
     a = db.get(Artist, artist_id)
     if a is None:
         return Response(status_code=404)

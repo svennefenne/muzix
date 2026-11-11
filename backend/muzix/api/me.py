@@ -1,12 +1,19 @@
+import hashlib
+import io
 import logging
+import os
+import re
+import time
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse
+from PIL import Image, ImageOps
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.orm import Session
 
-from .. import serial
+from .. import env, serial
 from ..db import get_db_with_copies
 from ..models import (Album, Artist, AuthSession, Book, BookProgress, Feed, Like, Playlist, PlaylistItem, Station,
                       Subscription, Track, User)
@@ -61,7 +68,7 @@ def device_prefs(db: Session, user: User, token: str | None) -> dict:
 
 @router.get("/me")
 def me(request: Request, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
-    return {"id": user.id, "username": user.username, "is_admin": user.is_admin,
+    return {"id": user.id, "username": user.username, "is_admin": user.is_admin, "avatar": serial.avatar(user),
             "prefs": device_prefs(db, user, login_token(request))}
 
 
@@ -92,6 +99,93 @@ def change_password(body: PasswordChange, db: Session = Depends(get_db_with_copi
     u.password_hash = hash_password(body.new)
     db.commit()
     return {"ok": True}
+
+
+# ---------------------------------------------------------------- the account's icon
+
+AVATAR_SIDE = 256
+MAX_AVATAR = 16 * 1024 * 1024
+AVATAR_FILE = r"^[0-9a-f]{24}\.webp$"
+
+
+class AvatarLook(BaseModel):
+    """A picture uploaded first (POST /me/avatar/picture), or a letter or two on a colour."""
+    picture: str | None = Field(default=None, pattern=AVATAR_FILE)
+    letter: str | None = Field(default=None, min_length=1, max_length=8)   # an emoji takes a few code points
+    color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
+
+
+@router.post("/me/avatar/picture")
+async def avatar_picture(file: UploadFile = File(...), x: float = Form(0.5), y: float = Form(0.5),
+                         size: float = Form(1.0), user: User = Depends(current_user)):
+    """A picture for the icon: the square around (x, y) (fractions of the picture's width and height),
+    `size` of its shorter side, as a WebP of 256 px. Kept by its contents; PUT /me/avatar uses it."""
+    data = await file.read(MAX_AVATAR + 1)
+    if len(data) > MAX_AVATAR:
+        raise HTTPException(413, "That picture is too big (16 MB at most)")
+    try:
+        img = ImageOps.exif_transpose(Image.open(io.BytesIO(data)))
+        w, h = img.size
+        side = max(1, round(min(w, h) * min(max(size, 0.05), 1)))
+        left = min(max(round(x * w - side / 2), 0), w - side)
+        top = min(max(round(y * h - side / 2), 0), h - side)
+        img = img.crop((left, top, left + side, top + side)).resize((AVATAR_SIDE, AVATAR_SIDE), Image.LANCZOS)
+        if img.mode not in ("RGB", "RGBA"):
+            img = img.convert("RGBA" if "A" in img.getbands() else "RGB")
+        out = io.BytesIO()
+        img.save(out, "WEBP", quality=86, method=4)
+    except Exception:
+        raise HTTPException(400, "That isn't a picture Muzix can read")
+    name = hashlib.sha256(out.getvalue()).hexdigest()[:24] + ".webp"
+    path = env.AVATAR_DIR / name
+    if not path.exists():
+        env.AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_bytes(out.getvalue())
+        os.replace(tmp, path)
+    return {"picture": name, "url": f"/api/avatars/{name}"}
+
+
+@router.put("/me/avatar")
+def set_avatar(body: AvatarLook, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+    u = db.get(User, user.id)
+    if body.picture:
+        if not (env.AVATAR_DIR / body.picture).is_file():
+            raise HTTPException(400, "Upload the picture first")
+        u.avatar = {"picture": body.picture}
+    elif body.letter or body.color:
+        u.avatar = {k: v for k, v in (("letter", (body.letter or "").strip()), ("color", (body.color or "").lower())) if v} or None
+    else:
+        u.avatar = None
+    db.commit()
+    _tidy_avatars(db)
+    return serial.avatar(u)
+
+
+@router.delete("/me/avatar")
+def reset_avatar(db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+    """Back to the first letter of the name, on the scheme's colours."""
+    u = db.get(User, user.id)
+    u.avatar = None
+    db.commit()
+    _tidy_avatars(db)
+    return serial.avatar(u)
+
+
+def _tidy_avatars(db: Session):
+    """Pictures no account uses any more, an hour after they were uploaded (one may be on its way)."""
+    used = {(a or {}).get("picture") for a in db.scalars(select(User.avatar))}
+    for f in env.AVATAR_DIR.glob("*.webp"):
+        if f.name not in used and time.time() - f.stat().st_mtime > 3600:
+            f.unlink(missing_ok=True)
+
+
+@router.get("/avatars/{name}")
+def avatar_file(name: str, user: User = Depends(current_user)):
+    path = env.AVATAR_DIR / os.path.basename(name)
+    if not re.match(AVATAR_FILE, name) or not path.is_file():
+        raise HTTPException(404, "No such picture")
+    return FileResponse(path, media_type="image/webp", headers={"Cache-Control": "private, max-age=31536000, immutable"})
 
 
 # ---------------------------------------------------------------- devices: the account's logins

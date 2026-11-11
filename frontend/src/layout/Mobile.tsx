@@ -19,6 +19,7 @@ import { useShown } from "../modules";
 import { useUi } from "../store/ui";
 import { useSwipeSongs } from "../swipeSongs";
 import { hasNext as canNext, SpokenSteps } from "./PlayerBar";
+import { Avatar } from "../components/Avatar";
 
 const MORE = [
   { to: "/podcasts", label: "Podcasts", sub: "Your shows and new episodes", icon: Podcast },
@@ -132,7 +133,7 @@ function MoreSheet({ onClose }: { onClose: () => void }) {
     <div className="sheet-bg" onClick={onClose}>
       <div className="sheet" role="dialog" aria-label="More" onClick={(e) => e.stopPropagation()}>
         <div className="sheet-head">
-          <span className="avatar">{(user?.username || "?")[0].toUpperCase()}</span>
+          <Avatar user={user} />
           <b className="grow">{user?.username}</b>
           <button className="iconbtn" aria-label="Close" onClick={onClose}><X size={16} /></button>
         </div>

@@ -2,14 +2,16 @@ import os
 import shutil
 import threading
 import time
+from collections import Counter
+from types import SimpleNamespace
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import __version__, env, jobs, modules, network, render, serial, settings
-from ..db import get_db, get_db_with_copies
+from .. import __version__, env, jobs, limits, modules, network, render, serial, settings
+from ..db import get_db, get_db_all, get_db_with_copies
 from ..meta import gme, openmpt
 from ..models import Album, Artist, Book, Feed, Job, Root, Track, User
 from ..security import admin_user, hash_password
@@ -221,10 +223,33 @@ class UserBody(BaseModel):
     is_admin: bool = False
 
 
+class LimitsBody(BaseModel):
+    """What's left out for an account (limits.py)."""
+    genres: list[str] = Field(default_factory=list, max_length=limits.MAX_ITEMS)
+    tags: list[str] = Field(default_factory=list, max_length=limits.MAX_ITEMS)
+    untagged: list[str] = Field(default_factory=list, max_length=limits.MAX_ITEMS)
+    artists: list[int] = Field(default_factory=list, max_length=limits.MAX_ITEMS)
+    allow: list[int] = Field(default_factory=list, max_length=limits.MAX_ITEMS)
+    sections: list[str] = Field(default_factory=list, max_length=len(limits.SECTIONS))
+    every_tag: bool = False
+
+
+def _limits_json(db: Session, raw: dict | None) -> dict:
+    """An account's limits as the admin page edits them, its artists with their names."""
+    raw = raw or {}
+    ids = {*raw.get("artists", ()), *raw.get("allow", ())}
+    names = {i: n for i, n in db.execute(select(Artist.id, Artist.name).where(Artist.id.in_(ids)))}
+    named = lambda key: [{"id": i, "name": names[i]} for i in raw.get(key, ()) if i in names]  # noqa: E731
+    return {"genres": raw.get("genres", []), "tags": raw.get("tags", []), "untagged": raw.get("untagged", []),
+            "artists": named("artists"), "allow": named("allow"), "sections": raw.get("sections", []),
+            "every_tag": raw.get("every_tag", False)}
+
+
 @router.get("/users")
-def users(db: Session = Depends(get_db)):
-    return [{"id": u.id, "username": u.username, "is_admin": u.is_admin,
-             "created_at": serial.iso(u.created_at)} for u in db.scalars(select(User).order_by(User.id))]
+def users(db: Session = Depends(get_db_all)):
+    return [{"id": u.id, "username": u.username, "is_admin": u.is_admin, "avatar": serial.avatar(u),
+             "limits": _limits_json(db, u.limits), "created_at": serial.iso(u.created_at)}
+            for u in db.scalars(select(User).order_by(User.id))]
 
 
 @router.post("/users")
@@ -262,6 +287,51 @@ def delete_user(user_id: int, db: Session = Depends(get_db), me: User = Depends(
         db.delete(u)
         db.commit()
     return {"ok": True}
+
+
+@router.put("/users/{user_id}/limits")
+def set_limits(user_id: int, body: LimitsBody, db: Session = Depends(get_db_all)):
+    """What the account doesn't see: nothing of it shows for them, anywhere, and nothing says so."""
+    u = db.get(User, user_id)
+    if u is None:
+        raise HTTPException(404, "No such user")
+    u.limits = limits.clean(body.model_dump()) or None
+    db.commit()
+    limits.forget()
+    return _limits_json(db, u.limits)
+
+
+@router.post("/limits/preview")
+def limits_preview(body: LimitsBody):
+    """How much of the music these limits leave out, before they're saved."""
+    return limits.preview(limits.of(SimpleNamespace(limits=limits.clean(body.model_dump()))))
+
+
+@router.get("/limits/choices")
+def limits_choices(db: Session = Depends(get_db_all)):
+    """What limits can be made of: the genre folders (with music without one as ""), and the genre tags
+    the artists carry, most carried first."""
+    genres = db.execute(select(Album.genre, func.count(), func.count(Album.artist_id.distinct()))
+                        .where(Album.kind == "music").group_by(Album.genre).order_by(func.count().desc())).all()
+    carried = Counter()
+    for tags, other in db.execute(select(Artist.tags, Artist.other_tags)):
+        for name in {limits.norm(t) for t, *_ in [*(tags or []), *(other or [])]}:
+            carried[name] += 1
+    return {"genres": [{"name": g, "albums": n, "artists": a} for g, n, a in genres],
+            "tags": [{"name": t, "artists": n} for t, n in carried.most_common(2000)]}
+
+
+@router.get("/limits/artists")
+def limits_artists(q: str = "", db: Session = Depends(get_db_all)):
+    """Artists by name, to leave out or let through."""
+    q = q.strip()
+    if not q:
+        return []
+    albums = select(func.count()).where(Album.artist_id == Artist.id).scalar_subquery()
+    rows = db.execute(select(Artist.id, Artist.name, Artist.genre, albums.label("albums"))
+                      .where(func.casefold(Artist.name).contains(q.casefold()))
+                      .order_by(func.casefold(Artist.name) != q.casefold(), albums.desc(), Artist.name).limit(20)).all()
+    return [{"id": i, "name": n, "genre": g, "albums": a} for i, n, g, a in rows]
 
 
 # ---------------------------------------------------------------- status
