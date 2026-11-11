@@ -7,7 +7,7 @@
   --primary: #f2a93b; --on-primary: #0b0b0f; --secondary: #e4572e; --on-secondary: #0b0b0f;
   --error: #ef5350; --error-text: #ef5350; --error-solid: #ef5350; --on-error: #0b0b0f; --warning: #f2c14e; --success: #4fb286;
   --border: #253048; --border-strong: #36456a; --frame: #2a3550; --glow: #f2a93b55;
-  --stripe-1: #f1e7d0; --stripe-2: #f2c14e; --stripe-3: #f2a93b; --stripe-4: #ef5350; --stripe-5: #4fb286; --stripe-6: #e4572e;
+  --stripe-1: #efe3c8; --stripe-2: #e2a634; --stripe-3: #cc4a30; --stripe-4: #4f8f50; --stripe-5: #2f74a0; --stripe-6: #5a5066;
   --font-ui: "Saira", system-ui, sans-serif;
   --font-display: "Saira", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
@@ -101,13 +101,16 @@ img { display: block; }
 /* the stripes sit on the name's baseline; Logo.tsx sizes the name so its capitals
    are exactly as tall as the stripes in whatever font the skin uses */
 .logo { display: flex; align-items: baseline; gap: 10px; flex-shrink: 0; min-width: 0; font: 900 42px/1 var(--font-display); }
-.logo-mark { width: 40px; height: 30px; flex-shrink: 0; }
+.logo-mark { width: 37.9px; height: 30px; flex-shrink: 0; }     /* the cassette's own proportions (components/cassette.ts) */
 .logo-mark svg { display: block; width: 100%; height: 100%; }
 .logo-mark .s1 { fill: var(--stripe-1); }
 .logo-mark .s2 { fill: var(--stripe-2); }
 .logo-mark .s3 { fill: var(--stripe-3); }
 .logo-mark .s4 { fill: var(--stripe-4); }
 .logo-mark .s5 { fill: var(--stripe-5); }
+.logo-mark .s6 { fill: var(--stripe-6); }
+.logo-mark .deck { fill: color-mix(in srgb, var(--text) 9%, transparent); }   /* the window and the reels show what's behind */
+.logo-mark .hub { fill: var(--stripe-2); }
 .logo-name { letter-spacing: .02em; text-transform: var(--display-case); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .keychip {
@@ -1490,7 +1493,7 @@ button.lyr:hover { color: var(--lyr-now); text-decoration: underline; text-decor
   .workspace, .workspace.np-open { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 0; }
   .sidepanel, .nppanel { display: none; }
   .logo { font-size: 30px; gap: 8px; }
-  .logo-mark { width: 29.33px; height: 22px; }
+  .logo-mark { width: 27.79px; height: 22px; }
   .userpill { width: 34px; height: 34px; padding: 0; justify-content: center; border-radius: 50%; }
   .userpill .uname { display: none; }
 

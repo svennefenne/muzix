@@ -14,6 +14,8 @@ export interface Colors {
   warning: string;
   success: string;
   border: string;
+  /** the six stripes (the logo, the tiles' edges), if not the roles' colours */
+  stripes?: string[];
 }
 
 export interface Palette {
@@ -28,13 +30,17 @@ const MUZIX: Palette = {
   slug: "muzix",
   name: "Muzix",
   category: "muzix",
+  // the stripes are the app icon's (scripts/icons.py), as Hooden's and Deck Force's: cream, amber, brick,
+  // green, blue and plum (ink for the cream on the light version)
   dark: {
     bg: "#0a1020", surface: "#121b2e", text: "#f1e7d0", primary: "#f2a93b", secondary: "#e4572e",
     error: "#ef5350", warning: "#f2c14e", success: "#4fb286", border: "#33405c",
+    stripes: ["#efe3c8", "#e2a634", "#cc4a30", "#4f8f50", "#2f74a0", "#5a5066"],
   },
   light: {
     bg: "#f6efe1", surface: "#fffaf0", text: "#1a2238", primary: "#c9781b", secondary: "#c8431f",
     error: "#c62828", warning: "#a8770e", success: "#2e7d5b", border: "#c9bea6",
+    stripes: ["#1a2238", "#e2a634", "#cc4a30", "#4f8f50", "#2f74a0", "#5a5066"],
   },
 };
 
@@ -135,12 +141,12 @@ export function cssVars(raw: Colors): Record<string, string> {
     "--frame": mix(c.border, c.bg, dark ? 0.45 : 0.3),
     "--glow": c.primary + "55",
     "--new": legible("#3d91f4", ink, [c.bg, c.surface], 3),   // Spotify's blue dot, kept visible on blue skins
-    "--stripe-1": c.text,
-    "--stripe-2": c.warning,
-    "--stripe-3": c.primary,
-    "--stripe-4": c.error,
-    "--stripe-5": c.success,
-    "--stripe-6": c.secondary,
+    "--stripe-1": c.stripes?.[0] ?? c.text,
+    "--stripe-2": c.stripes?.[1] ?? c.warning,
+    "--stripe-3": c.stripes?.[2] ?? c.primary,
+    "--stripe-4": c.stripes?.[3] ?? c.error,
+    "--stripe-5": c.stripes?.[4] ?? c.success,
+    "--stripe-6": c.stripes?.[5] ?? c.secondary,
     "color-scheme": dark ? "dark" : "light",
   };
 }

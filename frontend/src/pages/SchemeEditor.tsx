@@ -14,7 +14,10 @@ import {
   BACKDROPS, CUSTOM, DISPLAY_FONTS, FRAMES, fromPalette, HEADLINES, type Scheme, type SchemeData, UI_FONTS, useSchemes,
 } from "../theme/schemes";
 
-const COLORS: [keyof Colors, string][] = [
+/** The nine colours a scheme sets (the stripes come from them). */
+type Role = Exclude<keyof Colors, "stripes">;
+
+const COLORS: [Role, string][] = [
   ["bg", "Background"], ["surface", "Panels"], ["text", "Text"], ["primary", "Accent (Play, titles, what's on)"],
   ["secondary", "Second accent (main buttons)"], ["border", "Lines"], ["success", "Success"], ["warning", "Warning"], ["error", "Danger"],
 ];
@@ -117,7 +120,7 @@ export default function SchemeEditor() {
 
   if (!data) return <div className="page" />;
   const set = <K extends keyof SchemeData>(k: K, v: SchemeData[K]) => setData({ ...data, [k]: v });
-  const setColor = (k: keyof Colors, v: string) => setData({ ...data, [version]: { ...data[version], [k]: v } });
+  const setColor = (k: Role, v: string) => setData({ ...data, [version]: { ...data[version], [k]: v } });
   const start = (slug: string) => {
     const p = fromPalette(slug);
     setData({ ...data, base: slug, dark: p.dark, light: p.light });

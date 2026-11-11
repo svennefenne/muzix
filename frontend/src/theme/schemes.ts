@@ -92,11 +92,18 @@ export const BACKDROPS: [BackdropKind | "space", string][] = [
 
 export const fontCss = (id: string, list = DISPLAY_FONTS) => list.find((f) => f.id === id)?.css ?? list[0].css;
 
+/** A palette's nine colours, without stripes of its own (a scheme of the user's takes them from the colours). */
+function roles(c: Colors): Colors {
+  const { stripes, ...rest } = c;
+  void stripes;
+  return rest;
+}
+
 /** A scheme to start from: the colours of one of the app's, the house's look for the rest. */
 export function fromPalette(slug: string): SchemeData {
   const p = palette(slug);
   return {
-    base: p.slug, modes: "both", dark: { ...p.dark }, light: { ...p.light }, display: "saira", ui: "saira", caps: true,
+    base: p.slug, modes: "both", dark: roles(p.dark), light: roles(p.light), display: "saira", ui: "saira", caps: true,
     headline: "none", radius: 10, glass: 42, frame: "plain", backdrop: "space",
     picture: { desktop: "", mobile: "", dim: 35, blur: 0, size: "cover" },
   };

@@ -8,7 +8,9 @@ plate with its ember glow. Run from the repo's root:
 
 It writes the favicon (with its own drawings for 32 px and 16 px, so every edge lands on a pixel), the
 web app's icons, Muzix Desktop's icon in each size and its .ico, Android's adaptive and themed launcher
-icon and its notification icon, and Unraid's Docker icon. It needs resvg, and Pillow for the .ico."""
+icon, its notification icon and its own logo (the address screen), Unraid's Docker icon, and the logo's
+shapes for the web interface (frontend/src/components/cassette.ts, coloured there by the theme). It
+needs resvg, and Pillow for the .ico."""
 
 import io
 import math
@@ -238,13 +240,70 @@ def android_mono(width, viewport, radius, comment):
     return _vd(width, width, viewport, _group(k, tx, ty, inner), comment)
 
 
+# ------------------------------------------------------------------ the logo
+
+def _body_box():
+    return M["x0"], M["y0"], M["x1"] - M["x0"], M["y1"] - M["y0"]
+
+
+def logo_ts():
+    """The logo's shapes for the web interface (components/Logo.tsx), which colours them from the theme: the
+    stripes, the deck's outline (cut out of the stripes), the panel with the window and the reels cut out of
+    it, and the hubs."""
+    cy, h, x0, x1, rim = M["cy"], M["ph"], M["px0"], M["px1"], M["rim"]
+    er = h / 2
+    wx0, wx1, wh = x0 + h + 8, x1 - h - 8, h * 0.62
+    panel = _rrect(x0, cy - er, x1, cy + er, er) + _rrect(wx0, cy - wh / 2, wx1, cy + wh / 2, 7)
+    hubs = []
+    for rx in (x0 + er, x1 - er):
+        panel += _circle(rx, cy, er - 10)
+        hr = er - 22
+        hubs.append(_circle(rx, cy, hr) + _circle(rx, cy, hr * 0.28))
+    q = lambda d: '"' + d.replace(".00", "") + '"'
+    box = ", ".join(f"{v:.2f}" for v in _body_box())
+    return ("// Made by scripts/icons.py, from the app icon's measures: don't edit by hand.\n"
+            "// The Muzix logo's cassette (components/Logo.tsx colours it from the theme), on the icon's 512 grid.\n\n"
+            f"export const VIEWBOX = [{box}] as const;\n\n"
+            "/** The six stripes, the first with the notch, the last split into feet by the tape opening. */\n"
+            f"export const STRIPES = [\n{''.join(f'  {q(d)},' + chr(10) for _, d in stripe_paths())}];\n\n"
+            "/** The deck's outline, cut out of the stripes. */\n"
+            f"export const RIM = {q(_rrect(x0 - rim, cy - er - rim, x1 + rim, cy + er + rim, er + rim))};\n\n"
+            "/** The deck's panel, with the window and the two reels cut out of it (even-odd). */\n"
+            f"export const PANEL = {q(panel)};\n\n"
+            "/** The reels' hubs, each with its middle cut out (even-odd). */\n"
+            f"export const HUBS = [{', '.join(q(d) for d in hubs)}];\n")
+
+
+def logo_svg(background="#0a1020"):
+    """The logo's cassette alone, its cut-outs in the colour of what it sits on (Muzix Desktop's address page)."""
+    x0, y0, w, h = _body_box()
+    paths = "".join(f'<path fill="{c if c != PLATE else background}" d="{d}"/>' for c, d in stripe_paths() + deck_paths())
+    return f'<svg xmlns="http://www.w3.org/2000/svg" width="{w:.2f}" height="{h:.2f}" viewBox="{x0:.2f} {y0:.2f} {w:.2f} {h:.2f}">{paths}</svg>'
+
+
+def android_logo():
+    """The logo on Android's own screens (the server's address): the icon's cassette, its cut-outs in the
+    screen's background colour."""
+    x0, y0, w, h = _body_box()
+    bg = "#0a1020"
+    paths = [(c if c != PLATE else bg, d) for c, d in stripe_paths() + deck_paths()]
+    inner = "".join(f'        <path android:fillColor="{c}" android:pathData="{d}" />\n' for c, d in paths)
+    body = (f'    <group android:translateX="{-x0:.2f}" android:translateY="{-y0:.2f}">\n{inner}    </group>\n')
+    return (f'<?xml version="1.0" encoding="utf-8"?>\n<!-- The Muzix logo\'s cassette, as the app icon (scripts/icons.py), for the app\'s own screens. -->\n'
+            f'<vector xmlns:android="http://schemas.android.com/apk/res/android"\n'
+            f'    android:width="80dp" android:height="{80 * h / w:.1f}dp" android:viewportWidth="{w:.2f}" android:viewportHeight="{h:.2f}">\n'
+            f'{body}</vector>\n')
+
+
 # ------------------------------------------------------------------ writing
 
-def _png(svg: str, size: int) -> bytes:
+def _png(svg: str, size: int, height: bool = True) -> bytes:
+    """`svg` as a PNG `size` px wide (and as tall, unless height=False: then in its own proportions)."""
     with tempfile.NamedTemporaryFile("w", suffix=".svg", delete=False) as f:
         f.write(svg)
     try:
-        return subprocess.run(["resvg", "-w", str(size), "-h", str(size), f.name, "-c"], check=True, capture_output=True).stdout
+        dims = ["-w", str(size)] + (["-h", str(size)] if height else [])
+        return subprocess.run(["resvg", *dims, f.name, "-c"], check=True, capture_output=True).stdout
     finally:
         os.remove(f.name)
 
@@ -270,6 +329,7 @@ def main():
     for n, data in sizes.items():
         _write(f"desktop/muzix_desktop/assets/icons/{n}.png", data)
     _write("desktop/muzix_desktop/assets/icon.png", _png(icon, 512))
+    _write("desktop/muzix_desktop/assets/logo.png", _png(logo_svg(), 240, height=False))   # 80 px wide at 3×
     images = [Image.open(io.BytesIO(sizes[n])) for n in sorted(sizes)]
     out = io.BytesIO()
     images[-1].save(out, format="ICO", sizes=[(n, n) for n in sorted(sizes)], append_images=images[:-1])
@@ -279,6 +339,9 @@ def main():
     _write(res + "ic_launcher_foreground.xml", android_foreground())
     _write(res + "ic_launcher_monochrome.xml", android_mono(108, 108, 33, "The Muzix icon's cassette in one colour, for Android's themed icons (scripts/icons.py)."))
     _write(res + "ic_stat_muzix.xml", android_mono(24, 24, 11.5, "The Muzix cassette in white, for the notifications (scripts/icons.py)."))
+    _write(res + "logo.xml", android_logo())
+    # the logo in the web interface
+    _write("frontend/src/components/cassette.ts", logo_ts())
     # Unraid's Docker icon
     _write("unraid/muzix.png", _png(icon, 512))
 

@@ -1,22 +1,26 @@
-/** The Muzix logo: a cassette made of the five stripes, notched on top so it also reads as an
- * M, and the name, with the name's capitals sized to exactly the cassette's height in whatever
- * display font the current skin uses. The stripes take the theme's colours, so skins recolour it. */
+/** The Muzix logo: the app icon's cassette (components/cassette.ts, drawn by scripts/icons.py), six stripes
+ * notched on top so it also reads as an M, with a deck across the middle, and the name, with the name's
+ * capitals sized to exactly the cassette's height in whatever display font the current skin uses. The
+ * stripes and the hubs take the theme's colours, so skins recolour it; the deck shows what's behind it. */
 
 import { useEffect, useId, useLayoutEffect, useRef } from "react";
-
-// on a 40×30 grid: the body, the notch, the two reel holes and the tape opening
-const CUT = "M3 0H37A3 3 0 0 1 40 3V27A3 3 0 0 1 37 30H3A3 3 0 0 1 0 27V3A3 3 0 0 1 3 0Z M17 0L20 4L23 0Z "
-  + "M8.4 13a3.6 3.6 0 1 0 7.2 0a3.6 3.6 0 1 0 -7.2 0Z M24.4 13a3.6 3.6 0 1 0 7.2 0a3.6 3.6 0 1 0 -7.2 0Z "
-  + "M10 30L13.5 24.5H26.5L30 30Z";
+import { HUBS, PANEL, RIM, STRIPES, VIEWBOX } from "./cassette";
 
 export function Cassette() {
-  const clip = "mx-cassette-" + useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const mask = "mx-cassette-" + useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const [x, y, w, h] = VIEWBOX;
   return (
-    <svg viewBox="0 0 40 30" aria-hidden="true">
-      <clipPath id={clip}><path clipRule="evenodd" d={CUT} /></clipPath>
-      <g clipPath={`url(#${clip})`}>
-        {[0, 1, 2, 3, 4].map((i) => <rect key={i} className={`s${i + 1}`} x="0" y={i * 6.2} width="40" height="5.2" />)}
+    <svg viewBox={`${x} ${y} ${w} ${h}`} aria-hidden="true">
+      {/* the deck's outline cut out of the stripes */}
+      <mask id={mask} maskUnits="userSpaceOnUse" x={x} y={y} width={w} height={h}>
+        <rect x={x} y={y} width={w} height={h} fill="#fff" />
+        <path d={RIM} fill="#000" />
+      </mask>
+      <g mask={`url(#${mask})`}>
+        {STRIPES.map((d, i) => <path key={i} className={`s${i + 1}`} d={d} />)}
       </g>
+      <path className="deck" fillRule="evenodd" d={PANEL} />
+      {HUBS.map((d, i) => <path key={i} className="hub" fillRule="evenodd" d={d} />)}
     </svg>
   );
 }

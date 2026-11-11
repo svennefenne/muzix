@@ -187,7 +187,7 @@ Density is a listener's density, not a dashboard's: generous page margins, large
 - Every colour, font and corner comes from role variables that the 98 colour schemes and 25 genre skins swap out. Nothing in a component is hard-wired to the house palette.
 - Heavy uppercase display type for headings; tiny spaced monospace for labels and status; a plain sans for everything you read or press.
 - The frame: one 1px hairline panel with 14px corners, inset 8px from the window, holding the page; the side docks share its edge.
-- Broadcast furniture: the section pills in the top bar, the footer status line, the five-colour stripes.
+- Broadcast furniture: the section pills in the top bar, the footer status line, the six-colour stripes.
 - Quiet, precise controls: small outlined buttons, round icon buttons, pill chips. They never outshout the headings or the cover art.
 
 ## Colors
@@ -202,15 +202,15 @@ The house palette is warm light on deep night: one hot accent for what's live, o
 
 ### Tertiary
 - **Jade** (#4fb286): success and the "ready" dot; also the cool corner of the nebula glow.
-- **Saffron** (#f2c14e): warnings, and the second logo stripe.
-- **Coral Red** (#ef5350): errors, destructive hovers, and the fourth logo stripe. Error notices carry near-black **On Coral Red** (#0b0b0f) text.
+- **Saffron** (#f2c14e): warnings.
+- **Coral Red** (#ef5350): errors and destructive hovers. Error notices carry near-black **On Coral Red** (#0b0b0f) text.
 
 ### Neutral
 - **Midnight Navy** (#0a1020): the page background, under the nebula.
 - **Deep Navy** (#060a15): the darkest well, for text inputs and recessed areas.
 - **Navy Panel** (#121b2e): surfaces: buttons, menus, drawers, modals. It's usually mixed with the page at 80–96% so the nebula shows through.
 - **Navy Panel Raised** (#1f2738) and **Navy Panel High** (#2d3341): hovered rows, progress tracks, chip counters.
-- **Bone** (#f1e7d0): primary text, the play button, the first logo stripe.
+- **Bone** (#f1e7d0): primary text and the play button.
 - **Bone Dim**: secondary text such as artists, subtitles and help (7.8:1 on Midnight Navy).
 - **Bone Faint**: the quietest text, such as the footer status line, captions, group labels and times (5.1:1 on Midnight Navy, 4.6:1 on Navy Panel).
 - **Hairline** (#1c263b), **Hairline Strong** (#29344d) and **Frame Line** (#212a41): dividers, control outlines and the frame border.
@@ -307,7 +307,7 @@ The house shape is a gently rounded rectangle on a 1px hairline:
 - **Badges and footer chips:** 4px.
 - **Pills:** search, filter chips and section chips are fully round, and so are icon buttons and avatars.
 
-The recurring motif is **the stripes**: five vertical colour bars with 2px gaps, coloured from Bone, Saffron, Marigold, Coral Red and Jade (plus a sixth in Vermilion on tiles). Laid horizontally they make the logo: a 40×30px cassette with two reel holes, the tape opening below and a small notch on top so it also reads as an M, with the name's capitals exactly as tall (22px tall on phones). Upright they edge the VGM tiles. The favicon and the app icons are the cassette too, in six stripes of the owner's Hooden icon (cream, amber, brick, green, blue, and plum lightened to #5a5066 so it shows on the plate), filling Hooden's near-black plate with its ember glow, with a deck across the middle: a dark panel with round ends, a reel in each end with a toothed amber hub, and the tape window between them. The favicon has its own drawings for 32px and 16px so every edge lands on a pixel; Android's launcher icon and the web's maskable icon draw it smaller so it stays inside the circle every launcher shape keeps; the themed and notification icons are the cassette as a pictogram, reels and window cut out. scripts/icons.py draws them all. Skins replace the frame's edge with their own: thorns, frost, rivets, gaffer tape, neon, pixel steps, art deco corners, double rules, ornaments, film sprockets, rope, a checkerboard band or bubbly 28px corners.
+The recurring motif is **the stripes**: six colour bars, in the house scheme the colours of the owner's Hooden and Deck Force (cream, amber, brick, green, blue and plum; ink for the cream on the light version), in other schemes and skins their text, warning, primary, error, success and secondary colours. Laid horizontally they make the logo: the app icon's cassette (components/cassette.ts, drawn by scripts/icons.py), 38×30px, notched on top so it also reads as an M, with the tape opening below and a deck across the middle (a panel faintly lighter than what's behind it, the window and the reels cut out of it, the hubs in the second stripe's colour), with the name's capitals exactly as tall (22px tall on phones). Upright they edge the VGM tiles. The favicon and the app icons are the same cassette, always in the six stripes of the owner's Hooden icon (cream, amber, brick, green, blue, and plum lightened to #5a5066 so it shows on the plate), filling Hooden's near-black plate with its ember glow, with a deck across the middle: a dark panel with round ends, a reel in each end with a toothed amber hub, and the tape window between them. The favicon has its own drawings for 32px and 16px so every edge lands on a pixel; Android's launcher icon and the web's maskable icon draw it smaller so it stays inside the circle every launcher shape keeps; the themed and notification icons are the cassette as a pictogram, reels and window cut out. scripts/icons.py draws them all. Skins replace the frame's edge with their own: thorns, frost, rivets, gaffer tape, neon, pixel steps, art deco corners, double rules, ornaments, film sprockets, rope, a checkerboard band or bubbly 28px corners.
 
 ## Components
 

@@ -17,7 +17,7 @@ from PySide6.QtNetwork import QNetworkCookie, QNetworkInformation
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineScript
 from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtWidgets import (QApplication, QFileDialog, QHBoxLayout, QLineEdit, QMainWindow, QMenu, QMessageBox,
+from PySide6.QtWidgets import (QApplication, QFileDialog, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox,
                                QPushButton, QStackedWidget, QSystemTrayIcon, QVBoxLayout, QWidget)
 
 from . import config, player
@@ -203,6 +203,9 @@ class Window(QMainWindow):
         outer.addStretch(1)
         box = QVBoxLayout()
         box.setSpacing(12)
+        mark = QLabel()         # the logo's cassette, as on the Android app's address screen
+        mark.setPixmap(theme.logo(80))
+        box.addWidget(mark, alignment=Qt.AlignmentFlag.AlignHCenter)
         box.addWidget(label("MUZIX", "kicker"), alignment=Qt.AlignmentFlag.AlignHCenter)
         box.addWidget(label("Your Muzix server's address", "title"), alignment=Qt.AlignmentFlag.AlignHCenter)
         self.field = QLineEdit()

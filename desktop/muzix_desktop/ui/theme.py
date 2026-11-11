@@ -4,7 +4,7 @@ accent, Saira for words and JetBrains Mono for codes and labels (bundled under f
 import os
 
 from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QFontDatabase, QIcon, QImage, QPainter, QPalette, QPixmap
+from PySide6.QtGui import QColor, QFont, QFontDatabase, QGuiApplication, QIcon, QImage, QPainter, QPalette, QPixmap
 
 HERE = os.path.dirname(os.path.dirname(__file__))
 ASSETS = os.path.join(HERE, "assets")
@@ -35,6 +35,17 @@ def icon() -> QIcon:
         i.addFile(os.path.join(folder, n))
     i.addFile(os.path.join(ASSETS, "icon.png"))
     return i
+
+
+def logo(width: int = 80) -> QPixmap:
+    """The Muzix logo's cassette (assets/logo.png, drawn by scripts/icons.py as the app icon's), `width`
+    px wide, sharp on screens with more pixels."""
+    pm = QPixmap(os.path.join(ASSETS, "logo.png"))
+    screen = QGuiApplication.primaryScreen()
+    ratio = screen.devicePixelRatio() if screen else 1.0
+    out = pm.scaledToWidth(round(width * ratio), Qt.TransformationMode.SmoothTransformation)
+    out.setDevicePixelRatio(ratio)
+    return out
 
 
 def _greyed(pm: QPixmap) -> QPixmap:
