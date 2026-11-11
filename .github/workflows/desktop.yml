@@ -39,16 +39,15 @@ jobs:
         run: cd ../frontend && npm ci && npm run build
 
       # Qt's, and the window's player: the system's GStreamer, and PyGObject built against it (on Windows
-      # and macOS GStreamer comes from its Python packages, in requirements.txt). From Ubuntu's own mirror
-      # (Azure's stalled for hours on 2026-11-11, each package timing out), giving up on a stuck one in time
+      # and macOS GStreamer comes from its Python packages, in requirements.txt), giving up on a stuck
+      # package in time
       - name: Libraries for Qt, GStreamer and the tests
         if: runner.os == 'Linux'
         timeout-minutes: 20
         run: |
-          # (the runners list their mirrors in apt-mirrors.txt, Azure's first)
-          for f in /etc/apt/sources.list /etc/apt/apt-mirrors.txt /etc/apt/sources.list.d/*; do
-            if [ -f "$f" ]; then sudo sed -i 's|azure\.archive\.ubuntu\.com|archive.ubuntu.com|g' "$f"; fi
-          done
+          # kernel.org's Ubuntu mirror first (the runners list theirs in apt-mirrors.txt, Azure's first): on
+          # 2026-11-11 neither Azure's nor Ubuntu's own answered the runners for hours
+          printf 'http://mirrors.edge.kernel.org/ubuntu/\tpriority:1\nhttp://archive.ubuntu.com/ubuntu/\tpriority:2\n' | sudo tee /etc/apt/apt-mirrors.txt
           APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30"
           sudo apt-get $APT update && sudo apt-get $APT install -y ffmpeg libegl1 libxkbcommon0 libxkbcommon-x11-0 libdbus-1-3 \
             libnss3 libxcomposite1 libxdamage1 libxrandr2 libxtst6 libasound2 \
