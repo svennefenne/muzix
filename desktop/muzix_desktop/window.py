@@ -132,6 +132,7 @@ class Window(QMainWindow):
 
         # the player, and the page's way to it
         self.player = None
+        self.updater = None             # the app's (updater.py), for Update in the account menu
         if player.available():
             self.player = player.Player(self.relay.headers, lambda: self.isVisible() and not self.isMinimized(), self.relay.speaker_link,
                                         library=lambda: self.cfg.library, downloads=self.downloads,
@@ -378,12 +379,19 @@ class Window(QMainWindow):
                 menu.addAction("No speakers on this network yet").setEnabled(False)
         menu.popup(QCursor.pos())
 
+    def notify(self, text: str):
+        """A note at the bottom of the page."""
+        if self.player:
+            self.player.notify(text)
+
     def _command(self, t: str, m: dict):
         if t == "update":
             # a newer Muzix Desktop: one of its releases on GitHub (the server says which: backend/muzix/api/android.py),
-            # downloaded by the browser
+            # put in by the app itself now (updater.py), or else downloaded by the browser
             url = m.get("url") or ""
-            if re.fullmatch(r"https://github\.com/[\w.-]+/[\w.-]+/releases/download/desktop-v[\w.-]+/muzix-desktop-[\w.-]+", url):
+            if not re.fullmatch(r"https://github\.com/[\w.-]+/[\w.-]+/releases/download/desktop-v[\w.-]+/muzix-desktop-[\w.-]+", url):
+                return
+            if not (self.updater and self.updater.now(url)):
                 QDesktopServices.openUrl(QUrl(url))
         elif t == "cast":
             self._speakers()

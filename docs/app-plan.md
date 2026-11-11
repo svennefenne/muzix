@@ -163,6 +163,22 @@ addresses, is never looked up. When neither address answers, the window's server
 with what's downloaded (the sign-in state, the pages, the covers) and says so to the page, looking again
 every 30 seconds. The original files by default; no wifi setting.
 
+### 3.7 Updates (0.4.6)
+
+Update the app in the account menu (shown when the server says a newer version is out) is all the user
+does; the app does the rest (updater.py). It asks GitHub for its newest release, downloads the file for
+its system (checked against GitHub's digest and size), and a small program waits for the app to end,
+puts the new version in and starts it again, in the tray or with its window as it was. Nothing happens
+before Update is chosen.
+
+- Linux: the AppImage file is replaced by renaming over it; the running app carries on from the old
+  file until it ends. The new start gets the environment without the old mount's paths and
+  PyInstaller's, and with AppImageLauncher asking nothing.
+- Windows: the installer runs with /VERYSILENT /CURRENTUSER into the app's own folder, then the app starts.
+- macOS: the zip is unpacked beside the app (ditto), and the app is swapped for it.
+- Run from source, as PyInstaller's bare folder, or where it can't write: the browser downloads the file,
+  as before.
+
 ## Step 4 in detail
 
 This computer's music in Muzix Desktop, with no server, or beside one.

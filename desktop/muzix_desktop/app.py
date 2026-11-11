@@ -26,6 +26,7 @@ from .sharing import Sharing
 from .shared import use_keys
 from .ui import theme
 from .ui.widgets import in_background
+from .updater import Updater
 
 log = logging.getLogger(__name__)
 
@@ -157,6 +158,9 @@ class App:
             self.sharing.start()
         if not minimized and self.cfg.servers and not self.cfg.folders:
             QTimer.singleShot(400, self.open_settings)      # sharing set up, but nothing to share yet
+        # Update in the account menu: the new version downloaded, put in and started (updater.py)
+        self.updater = Updater(lambda: self.window.isVisible() and not self.window.isMinimized(), self.quit, self.window.notify)
+        self.window.updater = self.updater
         try:
             if autostart.enabled():
                 autostart.set_enabled(True)     # the login entry kept up to date (--minimized, where the app is)
@@ -508,6 +512,7 @@ def main():
     if "--check" in sys.argv:
         return check()
     _logging()
+    log.info("Muzix Desktop %s", __version__)
     if sys.platform.startswith("linux") and os.environ.get("QT_QPA_PLATFORMTHEME") not in ("gtk3", "xdgdesktopportal"):
         # the desktop's own folder picker through its portal (KDE's, GNOME's...): the desktop's Qt
         # plugins don't fit the Qt bundled here, so Qt would draw its own, and on systems without

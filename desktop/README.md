@@ -46,11 +46,16 @@ Download the file for your system from the newest `desktop-v…` release on the
   KStatusNotifierItem Support* extension.
 
 When a newer version is out, the Muzix window's account menu offers *Update the
-app*: it downloads the new file for your system in your browser (the server asks
-GitHub once an hour). Install it as above, over the old one, and start it: a
-newer version starting while the old one runs in the tray takes over from it
-(from 0.4.5; on Linux it also ends an older one, which can't be asked to go).
-Until then, choose *Quit* in the tray's menu before you start the new one.
+app* (the server asks GitHub once an hour). From 0.4.6 that's all you do: Muzix
+Desktop downloads the new version, puts it in and starts again as it was (in the
+tray, or with its window). On Linux the AppImage file is replaced, wherever it
+is. On Windows the installer runs silently for you. On macOS the app in its
+folder is swapped for the new one.
+
+A copy that can't write over itself (in a folder it may not change, or run from
+source) downloads the new file in your browser instead. Install that as above,
+over the old one, and start it: a newer version starting while the old one runs
+in the tray takes over from it.
 
 *Settings → Sharing → Start Muzix Desktop minimized when I log in* keeps it
 running: at login it opens no window, only its tray icon. The icon is grey while

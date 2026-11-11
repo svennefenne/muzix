@@ -172,8 +172,9 @@ class AppPlayer {
     this.send({ t: "signedIn", state });
   }
 
-  /** A newer version of the app (appUpdate.ts): the app downloads it and opens Android's installer;
-   * an older app, which can't, opens it in the browser, which downloads it. */
+  /** A newer version of the app (appUpdate.ts): the app downloads it and opens Android's installer, or
+   * Muzix Desktop puts it in and starts again (0.4.6 on); an older app, which can't, opens it in the
+   * browser, which downloads it. */
   update(url: string) {
     if (this.updates) this.send({ t: "update", url });
     else location.assign(url);
@@ -346,6 +347,7 @@ class AppPlayer {
     else if (m.t === "downloads") this.onDownloads(m.list as Downloaded[], !!m.offline);
     else if (m.t === "spectrum") this.onSpectrum(m.bands as string);
     else if (m.t === "cast") usePlayer.getState().set({ castState: m.state as CastState, castDevice: (m.device as string) || "" });
+    else if (m.t === "notify") useUi.getState().notify(m.text as string);     // Muzix Desktop's own word (its update)
     else if (m.t === "error") {
       const msg = `Couldn't play ${(m.title as string) || "this"}`;
       useUi.getState().notify(msg, "error");

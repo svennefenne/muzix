@@ -261,6 +261,9 @@ class Player(QObject):
     def _downloads_changed(self):
         self._telling.start()
 
+    def notify(self, text: str):
+        self._send(t="notify", text=text)
+
     def send_downloads(self):
         """Everything downloaded, and whether the server can't be reached, for the page."""
         if self.downloads:
