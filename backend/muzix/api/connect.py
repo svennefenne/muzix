@@ -19,9 +19,13 @@ Messages, as JSON with a "t":
                   transfer {to, play, state?}  play on `to` from now on (`state`: what to play, when
                                                nothing played anywhere yet)
                   sync                         back in view: the devices and what plays, again
+                  stopped                      the device that plays (as the server has it) started again
+                                               with nothing to play: what it played stops where it was
   to a device     devices {devices, active, you, grace}   each with its library; the active device missing from devices
                                                is away: for `grace` seconds it may come back
-                  state {state}                what the device that plays plays
+                  state {state, at?}           what the device that plays plays; on connecting (and sync),
+                                               what played last, `at` when it was heard of, for the device
+                                               to weigh against what it played itself
                   command {cmd, ...}           to the device that plays
                   takeover {state, play}       play this from here on
                   yield                        another device plays now: stop, and follow it
@@ -96,6 +100,8 @@ def settle(acc: Account):
         if acc.state:
             played = acc.away - acc.at if acc.state.get("playing") else 0
             acc.state = {**acc.state, "playing": False, "position": (acc.state.get("position") or 0) + played}
+            if played:
+                acc.at = acc.away               # where it got to by the time it went
         acc.active, acc.away = "", 0.0
 
 
@@ -194,13 +200,17 @@ async def connect(ws: WebSocket):
                     acc.away = 0.0              # back in time
                 await tell_devices(acc)
                 if acc.state and acc.active != dev.id:
-                    await send(dev, {"t": "state", "state": current(acc)})
+                    await send(dev, {"t": "state", "state": current(acc), "at": acc.at})
             elif dev is None:
                 continue
             elif t == "sync":
                 await tell_devices(acc, dev)
                 if acc.state and acc.active != dev.id:
-                    await send(dev, {"t": "state", "state": current(acc)})
+                    await send(dev, {"t": "state", "state": current(acc), "at": acc.at})
+            elif t == "stopped":
+                if acc.active == dev.id and acc.state and acc.state.get("playing"):
+                    acc.state, acc.at = {**acc.state, "playing": False, "buffering": False}, time.time()
+                    await others(acc, dev.id, {"t": "state", "state": acc.state})
             elif t == "state" and isinstance(m.get("state"), dict):
                 await on_state(acc, dev, m["state"])
             elif t == "command" and acc.active != dev.id:

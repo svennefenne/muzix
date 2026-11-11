@@ -2,7 +2,7 @@
 that has the APK (.github/workflows/android.yml publishes them), and the highest desktop-v* release
 with Muzix Desktop's file for the computer's system (desktop.yml). GitHub's releases are asked for at
 most once an hour; while GitHub can't be reached, the last answer stands and it's asked again in ten
-minutes."""
+minutes. Check for updates in the apps asks now (`fresh`), at most once a minute."""
 
 import logging
 import re
@@ -10,7 +10,7 @@ import threading
 import time
 
 import httpx
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from .. import enrich, env
 from ..models import User
@@ -25,10 +25,12 @@ DESKTOP = {"linux": "muzix-desktop-linux-x86_64.AppImage", "windows": "muzix-des
            "macos": "muzix-desktop-macos-arm64.zip"}
 FRESH = 3600        # seconds an answer is kept
 RETRY = 600         # seconds before GitHub is asked again after it failed
+AGAIN = 60          # seconds between two checks someone asked for (GitHub allows 60 an hour)
 
 _lock = threading.Lock()
 _latest: list[dict] | None = None     # GitHub's releases, as last heard
 _next = 0.0
+_asked = 0.0        # when GitHub was last asked
 
 
 def _version(v: str) -> tuple[int, ...]:
@@ -57,16 +59,20 @@ def _releases() -> list[dict]:
         return r.json()
 
 
-def _known() -> list[dict]:
-    global _latest, _next
+def _known(fresh: bool = False) -> list[dict]:
+    """GitHub's releases; `fresh`: asked now (unless it was within the minute), and an error if it can't be."""
+    global _latest, _next, _asked
     with _lock:
-        if time.time() >= _next:
+        if time.time() >= _next or (fresh and time.time() - _asked >= AGAIN):
+            _asked = time.time()
             try:
                 _latest = _releases()
                 _next = time.time() + FRESH
             except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
                 log.warning("Couldn't ask GitHub for the apps' newest versions: %s", e)
                 _next = time.time() + RETRY
+                if fresh:
+                    raise HTTPException(502, "GitHub couldn't be reached to check for updates: try again in a while")
         return _latest or []
 
 
@@ -75,12 +81,12 @@ def latest() -> dict | None:
 
 
 @router.get("/latest")
-def latest_app(user: User = Depends(current_user)):
-    return latest() or {"version": None, "url": None}
+def latest_app(fresh: bool = False, user: User = Depends(current_user)):
+    return newest(_known(fresh)) or {"version": None, "url": None}
 
 
 @desktop_router.get("/latest")
-def latest_desktop(platform: str, user: User = Depends(current_user)):
+def latest_desktop(platform: str, fresh: bool = False, user: User = Depends(current_user)):
     """Muzix Desktop's newest version for a system: linux, windows or macos."""
     file = DESKTOP.get(platform)
-    return (newest(_known(), "desktop", file) if file else None) or {"version": None, "url": None}
+    return (newest(_known(fresh), "desktop", file) if file else None) or {"version": None, "url": None}

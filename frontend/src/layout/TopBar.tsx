@@ -1,12 +1,12 @@
 import {
-  Activity, BookOpen, Disc3, Download, FolderPlus, Gamepad2, House, Laptop, LogOut, MessageCircle, Moon, Podcast, Radio, Settings, Shield,
+  Activity, BookOpen, Disc3, Download, FolderPlus, Gamepad2, House, Laptop, LogOut, MessageCircle, Moon, Podcast, Radio, RefreshCw, Settings, Shield,
   Smartphone, Sun, SunMoon, Wrench,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
-import { useAppUpdate, useAppVersion } from "../appUpdate";
+import { checkForUpdates, useAppUpdate, useAppVersion } from "../appUpdate";
 import { ChatButton } from "../chat/Chat";
 import { useChat, useChatOn } from "../chat/store";
 import { Logo } from "../components/Logo";
@@ -143,7 +143,8 @@ export function TopBar() {
                             onClick: () => (inApp ? appPlayer.openOnServer("/admin") : nav("/admin")) }] : []),
     // admin mode: a cog on every item, to edit, hide or delete it (in the apps too, on the server's music)
     ...(user?.is_admin && library !== "local" ? [{ label: "Admin mode", icon: <Wrench size={16} />, checked: adminMode, onClick: () => setAdminMode(!adminMode) }] : []),
-    ...(update ? [{ label: `Update the app to ${update.version}`, icon: <Download size={16} />, onClick: () => appPlayer.update(update.url) }] : []),
+    ...(update ? [{ label: `Update the app to ${update.version}`, icon: <Download size={16} />, onClick: () => appPlayer.update(update.url) }]
+      : version ? [{ label: "Check for updates", icon: <RefreshCw size={16} />, onClick: checkForUpdates }] : []),
     // the app's own library has no login
     ...(library !== "local" ? [{ sep: true }, { label: "Sign out", icon: <LogOut size={16} />, onClick: () => api.post("/api/auth/logout").then(() => location.assign("/")) }] : []),
     // the app's own version, in small print at the end

@@ -5,6 +5,7 @@ time, and from the tray's menu, it asks for the server's address. Closing it lea
 playing on."""
 
 import asyncio
+import hashlib
 import logging
 import os
 import sys
@@ -144,7 +145,12 @@ class Window(QMainWindow):
                                         downloaded=self._downloaded, offline=self._offline,
                                         # the server takes the player's requests once the relay has the window's login
                                         # (from the page's first call): this computer's library needs none
-                                        signed_in=lambda: self.cfg.library == "local" or bool(self.relay.session))
+                                        signed_in=lambda: self.cfg.library == "local" or bool(self.relay.session),
+                                        # what played last, for the next start: this computer's library's, or this server's
+                                        last=os.path.join(config.DATA_DIR, "last.json"),
+                                        place=lambda: "local" if self.cfg.library == "local" else f"{self.cfg.listen_home}|{self.cfg.listen_away}",
+                                        # one of the account's devices, the same after a restart (from this computer's id)
+                                        device_id=hashlib.sha256(f"connect:{self.cfg.computer_id}".encode()).hexdigest()[:24])
             self.bridge = _Bridge(self.player.handle)
             self.player.sent.connect(self.bridge.message)
             self.player.command.connect(self._command)

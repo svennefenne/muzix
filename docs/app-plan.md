@@ -165,7 +165,8 @@ every 30 seconds. The original files by default; no wifi setting.
 
 ### 3.7 Updates (0.4.6)
 
-Update the app in the account menu (shown when the server says a newer version is out) is all the user
+Update the app in the account menu (shown when the server says a newer version is out; until then the
+menu has Check for updates, which has the server ask GitHub there and then, from 0.4.16) is all the user
 does; the app does the rest in the background and opens nothing (updater.py). It asks GitHub for its
 newest release, downloads the file for its system (checked against GitHub's digest and size), and a
 small program waits for the app to end, puts the new version in and starts it again. The new start

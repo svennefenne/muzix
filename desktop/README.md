@@ -46,7 +46,8 @@ Download the file for your system from the newest `desktop-v…` release on the
   KStatusNotifierItem Support* extension.
 
 When a newer version is out, the Muzix window's account menu offers *Update the
-app* (the server asks GitHub once an hour). From 0.4.6 that's all you do: Muzix
+app* (the server asks GitHub once an hour; *Check for updates* there asks it
+now, from 0.4.16). From 0.4.6 that's all you do: Muzix
 Desktop downloads the new version in the background, puts it in and starts again
 where it was, without opening anything. From 0.4.8 the window comes back in the
 same place and size, on the same page, and what was playing plays on from where

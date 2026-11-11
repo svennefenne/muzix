@@ -70,6 +70,7 @@ class LocalApi(private val context: Context, private val lib: LocalLibrary) {
             method == "GET" && path == "/api/local/folders" -> ok(folders())
             method == "DELETE" && path == "/api/local/folders" -> removeFolder(q["uri"].orEmpty())
             method == "GET" && path in setOf("/api/file-playlists", "/api/vgm/systems", "/api/me/devices") -> ok(JSONArray())
+            method == "GET" && path == "/api/android/latest" -> latestApp()
             else -> Answer.Json(404, JSONObject().put("detail", "Not in this phone's library"))
         }
     }
@@ -523,6 +524,34 @@ class LocalApi(private val context: Context, private val lib: LocalLibrary) {
         }
         if (lines.length() == 0) return empty
         return empty.put("source", "lrclib").put("synced", synced != null).put("lines", lines)
+    }
+
+    /** The app's newest version with no server to ask (LocalServer passes it on to one): the highest
+     * android-v* release on GitHub with the APK, as backend/muzix/api/android.py answers it. */
+    private fun latestApp(): Answer {
+        val releases = try {
+            JSONArray(get("https://api.github.com/repos/svennefenne/muzix/releases?per_page=30"))
+        } catch (e: Exception) {
+            return Answer.Json(502, JSONObject().put("detail", "GitHub couldn't be reached to check for updates: try again in a while"))
+        }
+        fun parts(v: String) = v.split('.').map { it.toIntOrNull() ?: 0 }
+        fun higher(a: String, b: String): Boolean {
+            val (x, y) = parts(a) to parts(b)
+            for (i in 0 until maxOf(x.size, y.size)) if (x.getOrElse(i) { 0 } != y.getOrElse(i) { 0 }) return x.getOrElse(i) { 0 } > y.getOrElse(i) { 0 }
+            return false
+        }
+        var best = JSONObject().put("version", JSONObject.NULL).put("url", JSONObject.NULL)
+        for (i in 0 until releases.length()) {
+            val r = releases.getJSONObject(i)
+            val v = Regex("^android-v(\\d+(?:\\.\\d+)*)$").find(r.optString("tag_name"))?.groupValues?.get(1) ?: continue
+            if (r.optBoolean("draft") || r.optBoolean("prerelease")) continue
+            val assets = r.optJSONArray("assets") ?: continue
+            val apk = (0 until assets.length()).map { assets.getJSONObject(it) }.firstOrNull { it.optString("name") == "muzix-android.apk" } ?: continue
+            if (best.isNull("version") || higher(v, best.getString("version"))) {
+                best = JSONObject().put("version", v).put("url", apk.optString("browser_download_url"))
+            }
+        }
+        return ok(best)
     }
 
     private fun get(url: String): String = web.newCall(Request.Builder().url(url).header("User-Agent", PlaybackService.USER_AGENT).build()).execute().use {

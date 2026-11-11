@@ -26,7 +26,11 @@ declare global {
 export interface AppHooks extends CastHooks {
   onFinish(): void;                // the queue played to its end
   onSaved(key: string): void;      // the app saved where an episode or audiobook was left, or that it was heard
+  onIdle(last: AppLast | null): void;   // the app has nothing to play; what it played last, if it kept that
 }
+
+/** What the app's own player played last (Android: LastPlayed.kt, 0.10.17 on; Muzix Desktop: player.py, 0.4.16 on). */
+export interface AppLast { queue: PlayItem[]; index: number; position: number; at: number }
 
 interface AppState {
   key: string; position: number; duration: number; playing: boolean; buffering: boolean;
@@ -49,6 +53,8 @@ class AppPlayer {
   saves = false;
   /** The phone's own name (Settings → About phone), for the other devices' device pickers (since 0.7.0). */
   deviceName = "";
+  /** The app's own id as one of the account's devices (player/connect.ts; Android 0.10.17, Muzix Desktop 0.4.16 on). */
+  deviceId = "";
   /** Another device plays (player/connect.ts): the app's player is stopped, and what it says about itself doesn't count. */
   standby = false;
   /** The app downloads and installs a newer version of itself (since 0.8.0). */
@@ -239,9 +245,10 @@ class AppPlayer {
     const items = this.upcoming(start);
     if (!items.length) return useUi.getState().notify("Nothing in the queue plays in the app");
     const into = at > 0.5 && items[0] === first ? at : 0;
-    // the song that plays now says itself whether it can seek (a chip tune being rendered can't)
+    // the song that plays now says itself whether it can seek (a chip tune being rendered can't); an episode
+    // has no stream from a time (the server hands over its file as it is): the app goes there itself
     const now = this.state?.key === items[0].key;
-    const direct = now ? !!this.state?.seekable && !this.offset : this.direct(items[0]);
+    const direct = items[0].kind === "episode" || (now ? !!this.state?.seekable && !this.offset : this.direct(items[0]));
     this.offset = direct ? 0 : into;
     this.asked = items[0].key;
     this.handed = new Set(items.map((it) => it.key));
@@ -361,7 +368,8 @@ class AppPlayer {
    * reloaded), its queue becomes ours. */
   private onHello(m: { queue: string[]; index: number; state: AppState; saves?: boolean; device?: string; volume?: number; updates?: boolean;
                        downloads?: Downloaded[]; offline?: boolean; opens?: boolean; desktop?: { version: string; platform: string };
-                       library?: Library }) {
+                       library?: Library; last?: { queue: string[]; index: number; position: number; at: number };
+                       deviceId?: string }) {
     // an app that opens the web version's admin pages in the browser (Android 0.9 on, Muzix Desktop) has none of its own;
     // Muzix Desktop says its version and system, for its updates (appUpdate.ts); an app with a library of its
     // own (Android 0.10.1, Muzix Desktop 0.3.1 on) says which one shows
@@ -376,17 +384,12 @@ class AppPlayer {
     this.saves = !!m.saves;
     this.updates = !!m.updates;
     this.deviceName = m.device || "";
+    this.deviceId = m.deviceId || "";
     this.prefs();
     this.hooks?.onStart();
     const s = usePlayer.getState();
     this.send({ t: "repeat", mode: s.repeat });
-    const queue = m.queue.map((j) => {
-      try {
-        return JSON.parse(j) as Slim;
-      } catch {
-        return null;
-      }
-    }).filter(Boolean) as PlayItem[];
+    const queue = carried(m.queue);
     if (queue.length && !s.queue.length) {
       s.set({ queue, index: Math.max(0, m.index), ordered: null });
       this.handed = new Set(queue.map((it) => it.key));
@@ -394,17 +397,12 @@ class AppPlayer {
       if (cur) this.hooks?.onItem(cur.key);
     }
     this.onState(m.state);
+    if (!queue.length) this.hooks?.onIdle(m.last ? { ...m.last, queue: carried(m.last.queue) } : null);
   }
 
   /** Back in view: another device gave the app a new queue while the page was frozen; it's ours now. */
-  private onQueue(carried: string[], index: number) {
-    const queue = carried.map((j) => {
-      try {
-        return JSON.parse(j) as PlayItem;
-      } catch {
-        return null;
-      }
-    }).filter(Boolean) as PlayItem[];
+  private onQueue(items: string[], index: number) {
+    const queue = carried(items);
     if (!queue.length) return;
     this.handed = new Set(queue.map((it) => it.key));
     usePlayer.getState().set({ queue, index: Math.max(0, Math.min(index, queue.length - 1)), ordered: null });
@@ -447,6 +445,17 @@ class AppPlayer {
       this.syncUpcoming();      // the app nears the end of what it has
     }
   }
+}
+
+/** The items as the app carries them (each the page's own description of it, as JSON). */
+function carried(items: string[]): PlayItem[] {
+  return items.map((j) => {
+    try {
+      return JSON.parse(j) as Slim;
+    } catch {
+      return null;
+    }
+  }).filter(Boolean) as PlayItem[];
 }
 
 /** The music the app shows: the server's, or the one on this phone or computer. */

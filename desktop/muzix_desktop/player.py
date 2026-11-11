@@ -102,7 +102,8 @@ class Player(QObject):
     command = Signal(str, dict)  # one that isn't for the player (the window's: another server, a link)
 
     def __init__(self, headers, shown=lambda: True, for_speaker=lambda url: url, speakers=True, library=lambda: "server",
-                 downloads=None, downloaded=lambda url: None, offline=lambda: False, signed_in=lambda: True):
+                 downloads=None, downloaded=lambda url: None, offline=lambda: False, signed_in=lambda: True,
+                 last="", place=lambda: "", device_id=""):
         super().__init__()
         self.headers = headers              # (url) → the headers the window's own server wants from the player
         self.shown = shown                  # () → whether the window shows (the visualizer's spectrum only then)
@@ -112,7 +113,14 @@ class Player(QObject):
         self.downloaded = downloaded        # (url) → the song's downloaded file, if it's here
         self.offline = offline              # () → whether the server can't be reached (relay.py)
         self.signed_in = signed_in          # () → whether the server takes the player's requests yet (window.py)
+        self.last = last                    # the file what played last is kept in, for the next start ("": none)
+        self.place = place                  # () → the library that plays: this computer's, or a server's
+        self.kept = (0.0, -1, False)        # when it was last kept, and what played then
+        self.device_id = device_id          # the window's id as one of the account's devices (frontend/src/player/connect.ts)
         self.bin = Gst.ElementFactory.make(_playbin(), "muzix")
+        if Gst.ElementFactory.find("souphttpsrc") is None:
+            log.warning("GStreamer has no souphttpsrc here (libsoup didn't load): streams go through curlhttpsrc, "
+                        "which can't seek in a podcast and stops in long streams")
         self.bin.set_property("flags", AUDIO | SOFT_VOLUME)
         if sink := os.environ.get("MUZIX_AUDIO_SINK"):      # another output (the tests: "fakesink sync=true")
             self.bin.set_property("audio-sink", Gst.parse_bin_from_description(sink, True))
@@ -175,10 +183,13 @@ class Player(QObject):
         resume, self.pending = self.pending, None
         if resume:
             self.queue, self.index, self.failures = resume["queue"], resume["index"], 0
+        # nothing to play: what played last, which the page shows paused (frontend/src/player/last.ts)
+        last = self._kept() if not self.queue else None
         self._send(t="hello", version=f"MuzixDesktop/{__version__}", saves=False, updates=True, opens=True,
                    desktop={"version": __version__, "platform": system},
-                   device=platform.node() or "Computer", volume=self.level, library=self.library(),
-                   queue=[it.get("muzix", "") for it in self.queue], index=self.index, state=self._state_msg(), **has)
+                   device=platform.node() or "Computer", deviceId=self.device_id, volume=self.level, library=self.library(),
+                   queue=[it.get("muzix", "") for it in self.queue], index=self.index, state=self._state_msg(),
+                   **({"last": last} if last else {}), **has)
         if self.caster:
             self.caster._tell()             # the Cast button: speakers about, or one playing
         if resume:
@@ -309,6 +320,41 @@ class Player(QObject):
         self.queue, self.index, self.want, self.ended = [], -1, False, False
         self.ticking.stop()
         self._state()
+        if self.last:
+            pathlib.Path(self.last).unlink(missing_ok=True)      # a queue cleared is forgotten
+
+    # ------------------------------------------------------------ what played last, for the next start
+
+    def keep(self, now: bool = False):
+        """What plays and where, into the file: when the song or playing changes, every 15 seconds while it
+        plays, and as the app quits (`now`). The page keeps it too, but its storage is written a while later."""
+        cur = self._current()
+        if not self.last or not cur:
+            return
+        playing = self.want and not self.ended
+        if not now and (self.index, playing) == self.kept[1:] and time.time() - self.kept[0] < 15:
+            return
+        self.kept = (time.time(), self.index, playing)
+        last = {"queue": [it.get("muzix", "") for it in self.queue], "index": self.index, "position": max(0.0, self.position()),
+                "at": int(time.time() * 1000), "place": self.place()}
+        try:
+            path = pathlib.Path(self.last)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(last))
+            os.replace(tmp, path)
+        except OSError as e:
+            log.warning("Couldn't keep what played last: %s", e)
+
+    def _kept(self) -> dict | None:
+        """What played last, if it was in the library that shows now."""
+        try:
+            last = json.loads(pathlib.Path(self.last).read_text()) if self.last else None
+        except (OSError, ValueError):
+            return None
+        if not isinstance(last, dict) or last.get("place") != self.place() or not last.get("queue"):
+            return None
+        return {k: last.get(k) for k in ("queue", "index", "position", "at")}
 
     # ------------------------------------------------------------ a speaker
 
@@ -474,7 +520,8 @@ class Player(QObject):
             elif t == Gst.MessageType.ELEMENT and self.want and self.shown():
                 self._spectrum(msg)
             elif t == Gst.MessageType.ERROR:
-                err, _ = msg.parse_error()
+                err, debug = msg.parse_error()
+                log.info("GStreamer: %s", debug)
                 self._failed(err.message)
         if self.want and not self.ticking.isActive():
             self.ticking.start()
@@ -537,8 +584,10 @@ class Player(QObject):
     def _state(self):
         self.sent.emit(json.dumps(self._state_msg()))
         self.changed.emit()
+        self.keep()
 
     def release(self):
+        self.keep(now=True)
         if self.caster:
             self.caster.stop()
         self.bin.set_state(Gst.State.NULL)

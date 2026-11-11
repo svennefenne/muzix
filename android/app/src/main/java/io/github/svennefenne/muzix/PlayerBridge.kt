@@ -159,9 +159,11 @@ class PlayerBridge(
         when (val t = m.optString("t")) {
             "hello" -> send(JSONObject().put("t", "hello").put("version", PlaybackService.USER_AGENT).put("saves", true).put("updates", true)
                 .put("downloads", Downloads.list()).put("offline", Downloads.offline)
-                .put("device", deviceName()).put("volume", mediaVolume()).put("library", if (Server.local) "local" else "server")
+                .put("device", deviceName()).put("deviceId", deviceId()).put("volume", mediaVolume()).put("library", if (Server.local) "local" else "server")
                 .put("queue", JSONArray((0 until c.mediaItemCount).map { c.getMediaItemAt(it).carried() }))
-                .put("index", c.currentMediaItemIndex).put("state", state(c))).also { onHello() }
+                .put("index", c.currentMediaItemIndex).put("state", state(c))
+                // nothing to play: what played last, which the page shows paused (LastPlayed.kt)
+                .apply { if (c.mediaItemCount == 0) LastPlayed.read(context)?.let { put("last", it) } }).also { onHello() }
             "load" -> {
                 val items = m.getJSONArray("items").let { a -> (0 until a.length()).map { Items.fromJson(a.getJSONObject(it)) } }
                 c.setMediaItems(items, m.optInt("index"), (m.optDouble("position", 0.0) * 1000).toLong())
@@ -236,6 +238,14 @@ class PlayerBridge(
         audio.getStreamVolume(AudioManager.STREAM_MUSIC).toDouble() / audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
 
     private fun sendVolume() = send(JSONObject().put("t", "volume").put("value", mediaVolume()).put("muted", player?.volume == 0f))
+
+    /** The app's id as one of the account's devices, the same at every address of the server and in the
+     * phone's own library (the page's storage is one for each: frontend/src/player/connect.ts). */
+    private fun deviceId(): String {
+        val prefs = context.getSharedPreferences("muzix", Context.MODE_PRIVATE)
+        return prefs.getString("device_id", null)
+            ?: java.util.UUID.randomUUID().toString().replace("-", "").take(24).also { prefs.edit().putString("device_id", it).apply() }
+    }
 
     /** The phone's name as its owner set it (Settings → About phone), for the other devices. */
     private fun deviceName(): String =

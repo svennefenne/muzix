@@ -27,6 +27,12 @@ shared with the others on your server if you like.
   A real reload (the browser's button, Ctrl+F5, a new version of Muzix) keeps
   the queue and carries on where the music was, playing if it played (a
   browser that wants a click first asks for one).
+  Started again (the apps, or Muzix in a new tab or browser), Muzix shows what
+  played last paused where it was, and Play carries on: what this device
+  played, or what another device of yours played after it while the server
+  has kept that. The apps' players keep it themselves too, so it holds when
+  the app was shut down or the phone ended it while the music played with the
+  screen off. Clearing the queue forgets it.
   Search remembers what you pick from its results, as Spotify does: they show
   as recent searches in the empty search box and on the Search page, each to
   remove, on every device you sign in on.
@@ -223,7 +229,9 @@ device button in the player (the Cast button, when no other device is online)
 lists your devices and Google Cast speakers; choosing one moves the music there,
 where it was. The app plays on with its screen off and can be controlled from
 your other devices meanwhile. A device that goes away is waited for 45 seconds
-(a reload); after that nothing plays, and any of them can carry on from there.
+(a reload), shown paused where it got to; after that nothing plays, and any of
+them can carry on from there. A device opened meanwhile doesn't follow it, and an
+app started again after it was shut down tells the others that nothing plays.
 
 ### Casting to speakers
 
@@ -390,6 +398,9 @@ over it. From 0.8.0 the app updates itself: when a newer release is out (the
 server asks GitHub once an hour; another repository's with `MUZIX_APP_REPO`), the
 account menu offers "Update the app", and the app downloads it and opens
 Android's installer (the first time, Android asks to allow installs from Muzix).
+Until then the menu has "Check for updates" (from 0.10.17), which asks GitHub
+there and then: through the server, or with the phone's own music and no server,
+from the phone.
 The server's address is changed under Settings → The app. GitHub Actions builds and signs it whenever `android/` changes
 (`.github/workflows/android.yml`), with the key in the repository's secrets
 `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS`;

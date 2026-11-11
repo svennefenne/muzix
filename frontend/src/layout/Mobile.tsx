@@ -2,14 +2,14 @@
  * mini-player and a bottom tab bar whose "More" sheet holds the other sections. */
 
 import {
-  BookOpen, Download, FolderPlus, Gamepad2, Heart, House, Laptop, Library, LogOut, MessageCircle, MoreHorizontal, Pause, Play, Podcast, Radio, Search,
-  Settings, Shield, SkipForward, Smartphone, Wrench, X,
+  BookOpen, Download, FolderPlus, Gamepad2, Heart, House, Laptop, Library, LogOut, MessageCircle, MoreHorizontal, Pause, Play, Podcast, Radio, RefreshCw,
+  Search, Settings, Shield, SkipForward, Smartphone, Wrench, X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { toggleQueuedLike } from "../actions";
 import { api } from "../api";
-import { appVersion, useAppUpdate } from "../appUpdate";
+import { appVersion, checkForUpdates, useAppUpdate } from "../appUpdate";
 import { useChat, useChatOn, useConversations } from "../chat/store";
 import { CastButton, CastNote, usePlaysElsewhere } from "../components/CastButton";
 import { Art, NewDot, SwitchLook } from "../components/ui";
@@ -178,6 +178,12 @@ function MoreSheet({ onClose }: { onClose: () => void }) {
           <button className="sheet-item" onClick={() => { appPlayer.update(update.url); onClose(); }}>
             <Download size={22} />
             <span><b>Update the app to {update.version}</b><small>You have {appVersion()}</small></span>
+          </button>
+        )}
+        {!update && appVersion() && (
+          <button className="sheet-item" onClick={() => { checkForUpdates(); onClose(); }}>
+            <RefreshCw size={22} />
+            <span><b>Check for updates</b><small>You have {appVersion()}</small></span>
           </button>
         )}
         {/* the phone's own library has no login */}

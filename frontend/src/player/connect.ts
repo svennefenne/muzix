@@ -10,6 +10,7 @@
 import { create } from "zustand";
 import { type PlayItem, type Repeat, usePlayer } from "../store/player";
 import { appPlayer, useShell } from "./app";
+import { mayPlace, place } from "./last";
 
 export interface Device { id: string; name: string; kind: "browser" | "app"; library?: "server" | "local" }
 
@@ -57,8 +58,11 @@ export interface ConnectHooks {
 
 const SPOT = "muzix.device";
 
-/** This tab (a browser's tabs are devices of their own), or the app: kept through reloads. */
+/** This tab (a browser's tabs are devices of their own), or the app: kept through reloads. The app says
+ * its own (Android 0.10.17, Muzix Desktop 0.4.16 on): a phone's page has a storage for each address of the
+ * server, and a page's storage is written a while later, so a restart could make it another device. */
 function deviceId() {
+  if (appPlayer.deviceId) return appPlayer.deviceId;
   const store = appPlayer.available ? localStorage : sessionStorage;
   try {
     const known = store.getItem(SPOT);
@@ -100,6 +104,8 @@ class Connect {
   private heard = { position: 0, at: 0 };   // the position it told last, and when
   private turned = 0;              // when the volume was changed here: what comes back meanwhile is older
   private claimed = 0;             // when this device took the music over by itself (a speaker chosen here)
+  private fresh = false;           // connected just now: the server's word on who plays not heard yet
+  private idleTimer = 0;
   private publishing = false;
   private parked = false;          // in the app, out of view: the app has the device's connection
   private silence = 0;             // back in view, a sync asked for: no answer, and the connection was dead
@@ -180,6 +186,7 @@ class Connect {
    * hears it too: it keeps the device's connection while the page is out of view. */
   hello() {
     if (!this.wanted) return;
+    this.id = deviceId();       // the app's own, once it has said it
     const hello = { t: "hello", id: this.id, name: deviceName(), kind: appPlayer.available ? "app" : "browser",
                     library: useShell.getState().library === "local" ? "local" : "server" };
     this.send(hello);
@@ -227,6 +234,7 @@ class Connect {
     this.ws = ws;
     ws.onopen = () => {
       this.retry = 0;
+      this.fresh = true;
       useDevices.setState({ online: true });
       this.hello();
       this.sentQueue = null;
@@ -287,7 +295,7 @@ class Connect {
 
   private onMessage(m: { t: string } & Record<string, unknown>) {
     if (m.t === "devices") this.onDevices(m as unknown as DeviceState & { grace: number });
-    else if (m.t === "state") this.onState(m.state as Shared);
+    else if (m.t === "state") this.onState(m.state as Shared, m.at as number | undefined);
     else if (m.t === "command" && !this.following) this.hooks?.onCommand(m as unknown as Command);
     else if (m.t === "takeover") this.onTakeover(m.state as Shared, m.play as boolean);
     else if (m.t === "yield" && !this.following) this.follow();
@@ -298,16 +306,47 @@ class Connect {
     useDevices.setState({ devices: m.devices, active: m.active, you: m.you });
     window.clearTimeout(this.awayTimer);
     const elsewhere = !!m.active && m.active !== m.you;
-    // just taken over here: the list may still name the device that played until the server hears of it
-    if (elsewhere && !this.following && Date.now() - this.claimed > 5000) this.follow();
+    const away = elsewhere && !m.devices.some((d) => d.id === m.active);
+    // just taken over here: the list may still name the device that played until the server hears of it; one
+    // that's away isn't followed by a device that didn't follow it already: it may be gone (an app shut down)
+    if (elsewhere && !away && !this.following && Date.now() - this.claimed > 5000) this.follow();
     else if (!elsewhere && this.following) this.unfollow();
-    // the device that plays dropped off: it may be back in a moment (a reload); if not, nothing plays
-    if (elsewhere && !m.devices.some((d) => d.id === m.active)) {
+    // the device that plays dropped off: it may be back in a moment (a reload); if not, nothing plays, and
+    // what it played last is asked for (an empty player here picks it up). Meanwhile nothing plays there
+    if (away && this.following) this.halt();
+    if (away) {
       this.awayTimer = window.setTimeout(() => {
         useDevices.setState({ active: "" });
         if (this.following) this.unfollow();
+        this.send({ t: "sync" });
       }, (m.grace + 1) * 1000);
     }
+    // connected just now, and the server has this device as the one that plays: after a reload it plays on in
+    // a moment, but after a restart nothing plays here; the others hear so
+    if (this.fresh) {
+      this.fresh = false;
+      window.clearTimeout(this.idleTimer);
+      if (m.active === m.you) this.idleTimer = window.setTimeout(() => this.notPlaying(), 2500);
+    }
+  }
+
+  /** The device followed went away: it plays no more for now, where it got to (it says again if it's back). */
+  private halt() {
+    const s = usePlayer.getState();
+    if (!s.playing && !s.buffering) return;
+    this.applying = true;
+    s.set({ playing: false, buffering: false, position: this.heard.position + (s.playing ? (Date.now() - this.heard.at) / 1000 : 0) });
+    this.applying = false;
+  }
+
+  /** This device is the one that plays, as the server has it, but nothing plays here: what's here, paused,
+   * or that nothing does. */
+  private notPlaying() {
+    const s = usePlayer.getState();
+    const { active, you } = useDevices.getState();
+    if (this.following || active !== you || s.playing || s.buffering) return;
+    if (s.current()) this.publish();
+    else this.send({ t: "stopped" });
   }
 
   /** This device plays from now on, through what it has here: a Cast speaker chosen while it followed
@@ -334,18 +373,22 @@ class Connect {
   }
 
   /** What plays on the device that plays, put in place here. Not following (nothing plays anywhere),
-   * an empty player picks up what played last, to play here. */
-  private onState(st: Shared) {
+   * an empty player picks up what played last (`at`, seconds: when it was heard of), to play here, as
+   * long as this device has nothing newer of its own (player/last.ts). */
+  private onState(st: Shared, at?: number) {
     const s = usePlayer.getState();
     const theirs = st.library || "server";
-    if (!this.following && (s.queue.length || st.playing || theirs !== this.mine())) return;
+    const last = (at ?? 0) * 1000;
+    if (!this.following && (st.playing || theirs !== this.mine() || !mayPlace(last))) return;
     if (theirs !== this.theirs && !st.queue) return;     // another library's queue comes with it
     this.theirs = theirs;
     if (st.queue && theirs !== this.mine()) this.originals = new Map(st.queue.map((it) => [it.key, it]));
     const before = s.current()?.key;
+    const queue = st.queue && (theirs === this.mine() ? st.queue : st.queue.map(foreign));
+    if (!this.following && queue) place(queue, last);
     this.applying = true;
     s.set({
-      ...(st.queue ? { queue: theirs === this.mine() ? st.queue : st.queue.map(foreign) } : {}),
+      ...(queue ? { queue } : {}),
       index: st.index, position: st.position, duration: st.duration, playing: this.following && st.playing,
       buffering: this.following && st.buffering, shuffle: st.shuffle, repeat: st.repeat,
       ...(this.following && st.volume !== undefined && Date.now() - this.turned > 1500

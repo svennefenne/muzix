@@ -30,6 +30,7 @@ def test_the_highest_version_with_the_apk():
 def client(monkeypatch):
     monkeypatch.setattr(android, "_latest", None)
     monkeypatch.setattr(android, "_next", 0.0)
+    monkeypatch.setattr(android, "_asked", 0.0)
     app = FastAPI()
     app.include_router(android.router)
     app.include_router(android.desktop_router)
@@ -55,6 +56,27 @@ def test_asked_once_and_kept_while_github_fails(client, monkeypatch):
     assert client.get("/api/android/latest").json()["version"] == "0.8.0"
     assert len(asked) == 2
     assert android._next > 0
+
+
+def test_check_for_updates_asks_now_once_a_minute(client, monkeypatch):
+    out = [release("android-v0.8.0")]
+    asked = []
+    monkeypatch.setattr(android, "_releases", lambda: asked.append(1) or list(out))
+    assert client.get("/api/android/latest").json()["version"] == "0.8.0"
+    out.append(release("android-v0.8.1"))             # published since
+    assert client.get("/api/android/latest").json()["version"] == "0.8.0"       # the hour's answer
+    monkeypatch.setattr(android, "_asked", 0.0)        # a minute later
+    assert client.get("/api/android/latest", params={"fresh": 1}).json()["version"] == "0.8.1"
+    assert client.get("/api/android/latest", params={"fresh": 1}).json()["version"] == "0.8.1"
+    assert len(asked) == 2                             # not again within the minute
+
+    def away():
+        raise httpx.ConnectError("no network")
+    monkeypatch.setattr(android, "_releases", away)
+    monkeypatch.setattr(android, "_asked", 0.0)
+    r = client.get("/api/desktop/latest", params={"platform": "linux", "fresh": 1})
+    assert r.status_code == 502 and "GitHub" in r.json()["detail"]
+    assert client.get("/api/android/latest").json()["version"] == "0.8.1"      # the last answer stands
 
 
 def test_nothing_published_yet(client, monkeypatch):

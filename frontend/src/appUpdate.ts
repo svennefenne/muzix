@@ -1,10 +1,12 @@
 /** A newer version of the app this page is in, for Update in the user menu: the Android app's, or Muzix
  * Desktop's for the computer's system (the server asks GitHub which is the newest:
- * backend/muzix/api/android.py). In a browser, none. */
+ * backend/muzix/api/android.py; with no server, the phone's own library does). In a browser, none. */
 
 import { useQuery } from "@tanstack/react-query";
+import { queryClient } from "./actions";
 import { api } from "./api";
 import { appPlayer, useShell } from "./player/app";
+import { useUi } from "./store/ui";
 
 interface Latest {
   version: string | null;
@@ -30,15 +32,38 @@ function newer(a: string, b: string) {
   return false;
 }
 
+const ask = (desktop: { platform: string } | null, fresh?: boolean) =>
+  desktop ? api.get<Latest>("/api/desktop/latest", { platform: desktop.platform, fresh }) : api.get<Latest>("/api/android/latest", { fresh });
+
 export function useAppUpdate(): { version: string; url: string } | null {
   const desktop = useShell((s) => s.desktop);
   const mine = androidVersion() || desktop?.version || "";
   const q = useQuery({
     queryKey: ["app-latest", desktop?.platform ?? "android"],
-    queryFn: () => (desktop ? api.get<Latest>("/api/desktop/latest", { platform: desktop.platform }) : api.get<Latest>("/api/android/latest")),
+    queryFn: () => ask(desktop),
     enabled: appPlayer.available && !!mine,
     staleTime: 3600_000,
   });
   const { version, url } = q.data ?? {};
   return version && url && mine && newer(version, mine) ? { version, url } : null;
+}
+
+/** Check for updates in the user menu: GitHub asked now, through the server. A newer version is offered
+ * there and then (Update, as in the menu, where it shows from then on). */
+export async function checkForUpdates() {
+  const { notify } = useUi.getState();
+  const desktop = useShell.getState().desktop;
+  const mine = appVersion();
+  try {
+    const got = await ask(desktop, true);
+    queryClient.setQueryData(["app-latest", desktop?.platform ?? "android"], got);
+    const { version, url } = got;
+    if (version && url && newer(version, mine)) {
+      notify(`Version ${version} of the app is out (you have ${mine})`, "info", { label: "Update", run: () => appPlayer.update(url) });
+    } else {
+      notify(`You have the newest version of the app (${mine})`);
+    }
+  } catch (e) {
+    notify((e as Error).message, "error");
+  }
 }

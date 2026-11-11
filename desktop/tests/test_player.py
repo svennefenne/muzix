@@ -138,3 +138,39 @@ def test_a_speaker_takes_the_queue_and_gives_it_back(tmp_path, monkeypatch):
     st = p._state_msg()
     p.release()
     assert "disconnect" in speaker.did and st["key"] == "b" and 1.4 < st["position"] < 2.9 and st["playing"]
+
+
+def test_what_played_last_is_kept_for_the_next_start(tmp_path, monkeypatch):
+    monkeypatch.setenv("MUZIX_AUDIO_SINK", "fakesink sync=true")
+    for name in ("a", "b"):
+        _song(str(tmp_path / f"{name}.wav"), 3.0)
+    app = QCoreApplication.instance() or QCoreApplication([])
+    items = [{"key": k, "url": f"file://{tmp_path}/{k}.wav", "title": k.upper(), "duration": 3.0, "muzix": f'{{"key":"{k}"}}'}
+             for k in ("a", "b")]
+    last = str(tmp_path / "last.json")
+    place = ["server"]
+    old = player.Player(lambda url: {}, speakers=False, last=last, place=lambda: place[0])
+    old.handle(json.dumps({"t": "load", "index": 1, "position": 0, "play": True, "items": items}))
+    _until(app, lambda: old.position() > 1.0)
+    old.handle(json.dumps({"t": "pause"}))
+    at = old.position()
+    old.release()                                   # the app quits
+
+    new = player.Player(lambda url: {}, speakers=False, last=last, place=lambda: place[0])
+    got = []
+    new.sent.connect(lambda s: got.append(json.loads(s)))
+    new.handle(json.dumps({"t": "hello"}))
+    hello = next(m for m in got if m["t"] == "hello")
+    assert hello["queue"] == [] and hello["last"]["queue"] == [it["muzix"] for it in items]
+    assert hello["last"]["index"] == 1 and abs(hello["last"]["position"] - at) < 0.3 and hello["last"]["at"] > 0
+    assert not new.want                             # shown paused by the page, nothing plays yet
+
+    place[0] = "local"                              # another library: not its songs
+    got.clear()
+    new.handle(json.dumps({"t": "hello"}))
+    assert "last" not in next(m for m in got if m["t"] == "hello")
+    place[0] = "server"
+    new.handle(json.dumps({"t": "load", "index": 0, "position": 0, "play": False, "items": items}))
+    new.handle(json.dumps({"t": "stop"}))           # a queue cleared is forgotten
+    assert not os.path.exists(last)
+    new.release()

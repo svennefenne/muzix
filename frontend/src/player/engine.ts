@@ -8,9 +8,10 @@ import { report } from "../components/ErrorBoundary";
 import { fromEpisode, fromTrack, usePlayer, type PlayItem } from "../store/player";
 import { useUi } from "../store/ui";
 import type { Episode, Track, User } from "../types";
-import { appPlayer } from "./app";
+import { type AppLast, appPlayer, useShell } from "./app";
 import { caster, type CastHooks } from "./cast";
 import { type Command, connect } from "./connect";
+import { mayPlace, place, placedAt } from "./last";
 import { onMobileData, onNetworkChange, stash } from "./stash";
 
 /** What plays the queue instead of the page's own audio element: a Cast speaker, the Android app's
@@ -33,17 +34,26 @@ const KEPT_AT = "muzix.at";
 
 interface Kept { user: number; index: number; position: number; playing: boolean; remote: boolean; counted: boolean }
 
-function keep(key: string, value: unknown) {
+/** What played last on this device, for the next time the page or the app starts (restoreLast): the
+ * queue (at most LAST_MAX of it, from `from` on) and where it stood, kept apart as they change apart. */
+const LAST_QUEUE = "muzix.last.queue";
+const LAST_AT = "muzix.last.at";
+const LAST_MAX = 1000;
+
+interface LastQueue { user: number; library: string | null; from: number; queue: PlayItem[]; ordered?: string[] | null }
+interface LastAt { user: number; index: number; position: number; at: number }
+
+function keep(key: string, value: unknown, store: Storage = sessionStorage) {
   try {
-    sessionStorage.setItem(key, JSON.stringify(value));
+    store.setItem(key, JSON.stringify(value));
   } catch {
     /* full, or not allowed */
   }
 }
 
-function kept<T>(key: string): T | null {
+function kept<T>(key: string, store: Storage = sessionStorage): T | null {
   try {
-    return JSON.parse(sessionStorage.getItem(key) || "null");
+    return JSON.parse(store.getItem(key) || "null");
   } catch {
     return null;
   }
@@ -140,6 +150,7 @@ class Engine {
         hooks.onStart();
         connect.hello();        // the app said what the phone is called
       },
+      onIdle: (last) => this.signedIn((user) => this.restoreLast(user, last)),
       onSaved: (key) => {
         const item = usePlayer.getState().queue.find((i) => i.key === key);
         if (item) this.onSaved?.(item);
@@ -680,7 +691,9 @@ class Engine {
     const whole = el.src.startsWith("blob:");
     const canSeek = whole || (el.seekable.length > 0 && local >= 0 && el.seekable.end(el.seekable.length - 1) >= local - 1
       && isFinite(el.duration));
-    if (canSeek) {
+    // an episode has no stream from a time (the server hands over its file as it is): the element goes there
+    // itself, once it knows the file if it doesn't yet
+    if (canSeek || (item.kind === "episode" && !this.offset)) {
       el.currentTime = local;
     } else {
       const wasPlaying = play ?? !el.paused;
@@ -857,16 +870,29 @@ class Engine {
     this.radioTimer = window.setInterval(poll, 15000);
   }
 
-  // ------------------------------------------------------------ across a reload
+  // ------------------------------------------------------------ across a reload, and to the next time
+
+  /** `then` once signed in: the streams need it, and the sound quality is a preference. */
+  private signedIn(then: (user: User) => void) {
+    const user = useUi.getState().user;
+    if (user) return then(user);
+    const off = useUi.subscribe((u) => {
+      if (!u.user) return;
+      off();
+      then(u.user);
+    });
+  }
 
   /** The queue, and where it stood, are kept for this tab: after a reload (F5) the music carries
-   * on from there, playing if it played. Not in the app: its own player plays on through a reload. */
+   * on from there, playing if it played. Not in the app: its own player plays on through a reload.
+   * With nothing to carry on, what played last on this device shows, paused (restoreLast). */
   private acrossReloads() {
-    if (appPlayer.available) return;
+    this.signedIn((user) => this.rememberLast(user));
+    if (appPlayer.available) return;      // the app says when it has nothing to play (onIdle)
     const queue = kept<{ user: number; queue: PlayItem[]; ordered?: string[] | null }>(KEPT_QUEUE);
     const at = kept<Kept>(KEPT_AT);
     const start = (user: User) => {
-      this.carryOn(user, queue, at);
+      if (!this.carryOn(user, queue, at)) this.restoreLast(user);
       let last = 0;
       const where = () => {
         const s = usePlayer.getState();
@@ -882,20 +908,13 @@ class Engine {
       window.addEventListener("pagehide", where);
       document.addEventListener("visibilitychange", () => document.hidden && where());
     };
-    // once signed in: the streams need it, and the sound quality is a preference
-    const user = useUi.getState().user;
-    if (user) return start(user);
-    const off = useUi.subscribe((u) => {
-      if (!u.user) return;
-      off();
-      start(u.user);
-    });
+    this.signedIn(start);
   }
 
   private carryOn(user: User, saved: { user: number; queue: PlayItem[]; ordered?: string[] | null } | null, at: Kept | null) {
     const s = usePlayer.getState();
     const item = at && saved?.queue[at.index];
-    if (!item || saved.user !== user.id || at.user !== user.id || s.queue.length) return;
+    if (!item || saved.user !== user.id || at.user !== user.id || s.queue.length) return false;
     const pos = item.kind === "radio" ? 0 : at.position;
     s.set({ queue: saved.queue, index: at.index, ordered: saved.ordered ?? null });
     // a speaker that played may still play: it says what (player/cast.ts), and the queue is in place meanwhile
@@ -909,6 +928,76 @@ class Engine {
       this.updateMediaSession(item);
     }
     this.scrobbled = at.counted;
+    return true;
+  }
+
+  /** What plays is kept on this device (localStorage) as it goes, for restoreLast; not what another
+   * device plays while this one follows it. A queue cleared is forgotten. */
+  private rememberLast(user: User) {
+    let from = 0;
+    let size = 0;
+    let last = 0;
+    const queue = () => {
+      const s = usePlayer.getState();
+      from = s.queue.length > LAST_MAX ? Math.min(Math.max(0, s.index - 100), s.queue.length - LAST_MAX) : 0;
+      const part = s.queue.slice(from, from + LAST_MAX);
+      size = part.length;
+      keep(LAST_QUEUE, { user: user.id, library: useShell.getState().library, from, queue: part, ordered: s.ordered } satisfies LastQueue, localStorage);
+    };
+    const where = () => {
+      const s = usePlayer.getState();
+      const cur = s.current();
+      if (!cur || connect.following) return;
+      if (s.index < from || s.index >= from + size) queue();
+      last = Date.now();
+      keep(LAST_AT, { user: user.id, index: s.index, position: cur.kind === "radio" ? 0 : s.position, at: placedAt() ?? last } satisfies LastAt,
+           localStorage);
+    };
+    usePlayer.subscribe((s, prev) => {
+      if (connect.following) return;
+      if (!s.queue.length && prev.queue.length) {
+        try {
+          localStorage.removeItem(LAST_QUEUE);
+          localStorage.removeItem(LAST_AT);
+        } catch {
+          /* not allowed */
+        }
+      } else if (s.queue !== prev.queue || s.ordered !== prev.ordered) {
+        queue();
+        where();
+      } else if (s.index !== prev.index || s.playing !== prev.playing || Date.now() - last > 15_000) where();
+    });
+    window.addEventListener("pagehide", where);
+    document.addEventListener("visibilitychange", () => document.hidden && where());
+  }
+
+  /** The page or the app started with nothing to play: what played last on this device shows, paused
+   * where it was, and Play carries on. The app's player keeps its own (`app`: Android's LastPlayed.kt, as
+   * its page sleeps while the phone plays on; Muzix Desktop's player.py, as the page's storage is written
+   * a while later); the newest counts, Muzix Connect's too (player/last.ts). */
+  private restoreLast(user: User, app?: AppLast | null) {
+    const q = kept<LastQueue>(LAST_QUEUE, localStorage);
+    const at = kept<LastAt>(LAST_AT, localStorage);
+    const mine = q && at && q.user === user.id && at.user === user.id && (q.library ?? null) === useShell.getState().library
+      ? { queue: q.queue, index: at.index - q.from, position: at.position, ordered: q.ordered ?? null, at: at.at } : null;
+    const theirs = app?.queue.length ? { ...app, ordered: null } : null;
+    let last = mine && theirs ? (theirs.at > mine.at ? theirs : mine) : mine || theirs;
+    if (theirs && last === theirs && mine) {
+      // the app's player has the stretch of the queue it was handed: the whole queue, as kept here, where it
+      // got to, if what's kept here goes on with the same songs (the page's storage may be behind)
+      const tail = theirs.queue.slice(theirs.index).map((it) => it.key);
+      const fits = (i: number) => tail.every((key, j) => mine.queue[i + j]?.key === key);
+      const starts = mine.queue.map((_, i) => i).filter(fits);
+      const i = starts.find((i) => i >= mine.index) ?? starts[0];
+      if (i !== undefined) last = { ...mine, index: i, position: theirs.position, at: theirs.at };
+    }
+    const item = last?.queue[last.index];
+    if (!last || !item || connect.following || !mayPlace(last.at)) return;
+    const pos = item.kind === "radio" ? 0 : last.position;
+    place(last.queue, last.at);
+    usePlayer.getState().set({ queue: last.queue, index: last.index, ordered: last.ordered, position: pos, duration: item.duration,
+                               playing: false, buffering: false });
+    this.scrobbled = pos > 30;          // counted then, most likely
   }
 
   /** The browser wouldn't play without being clicked first: the first click or key press carries

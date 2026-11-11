@@ -29,6 +29,20 @@ for root, _dirs, files in os.walk(web):
         if not f.endswith((".map", ".woff")):
             datas.append((os.path.join(root, f), os.path.join("muzix_desktop", "web", os.path.relpath(root, web))))
 
+# Linux: the library souphttpsrc loads when it starts (so PyInstaller doesn't see it), the one that fits the
+# GStreamer and GLib that come along. The computer's own is usually built for a newer GLib and won't load,
+# and GStreamer then streams with curlhttpsrc, which can't seek in a podcast and stops in long streams
+binaries = []
+if sys.platform == "linux":
+    import glob
+    for name in ("libsoup-3.0.so.0", "libsoup-2.4.so.1"):
+        found = sorted(glob.glob(f"/usr/lib/*/{name}") + glob.glob(f"/usr/lib64/{name}") + glob.glob(f"/usr/lib/{name}"))
+        if found:
+            binaries.append((found[0], "."))
+            break
+    else:
+        sys.exit("libsoup isn't here for souphttpsrc (libsoup-3.0-0 on Ubuntu)")
+
 # GStreamer from its Python packages (Windows, macOS), as they are: player.py sets their paths at the start
 import pkgutil
 for name in sorted({m.name for m in pkgutil.iter_modules() if m.ispkg and m.name.startswith("gstreamer_")}):
@@ -39,6 +53,7 @@ for name in sorted({m.name for m in pkgutil.iter_modules() if m.ispkg and m.name
 a = Analysis(
     ["launch.py"],
     pathex=[here, backend],
+    binaries=binaries,
     datas=datas,
     hiddenimports=["muzix.organize.beetsplug.musicorg", "beetsplug.lastgenre"] + collect_submodules("muzix.meta")
                   # the window's own server (relay.py) and the speakers (cast.py) load parts of themselves by name

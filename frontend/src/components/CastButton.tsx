@@ -20,7 +20,9 @@ function elsewhereLibrary(d: Device): Partial<MenuItem> {
 
 /** The other device that plays, while one does. */
 function usePlayingElsewhere() {
-  return useDevices((s) => (s.active && s.active !== s.you ? s.devices.find((d) => d.id === s.active)?.name || "another device" : ""));
+  // one that's away (it may be back in a moment) only while this device follows it
+  return useDevices((s) => (s.active && s.active !== s.you
+    ? s.devices.find((d) => d.id === s.active)?.name || (connect.following ? "another device" : "") : ""));
 }
 
 export function CastButton({ size = 18, className = "ctl", label = false }: { size?: number; className?: string; label?: boolean }) {

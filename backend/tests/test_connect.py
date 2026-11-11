@@ -136,3 +136,20 @@ def test_a_phone_playing_its_own_music_is_controlled_but_its_queue_stays(client)
     for ws in (desk, phone, laptop):
         ws.close()
 
+
+
+def test_a_device_started_again_with_nothing_playing_stops_what_it_played(client):
+    phone = device(client, 1, "phone", "Galaxy S23", "app")
+    desk = device(client, 1, "desk", "Chrome on Linux")
+    phone.send_json({"t": "state", "state": {"queue": QUEUE, "index": 1, "position": 12, "playing": True}})
+    assert until(desk, "state")["state"]["playing"]
+    phone.close()                                       # the app shut down while it played
+    assert until(desk, "devices")["active"] == "phone"  # away: it may be back in a moment
+    phone = device(client, 1, "phone", "Galaxy S23", "app")     # back, but started again: nothing plays there
+    phone.send_json({"t": "stopped"})
+    st = until(desk, "state")["state"]
+    assert not st["playing"] and st["index"] == 1 and st["position"] == 12 and st["queue"] == QUEUE
+    assert connect.accounts[1].active == "phone"        # still the device that has the music, paused
+    phone.send_json({"t": "stopped"})                   # said again: nothing more to say
+    desk.send_json({"t": "sync"})
+    assert until(desk, "devices")["active"] == "phone"
