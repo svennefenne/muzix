@@ -27,7 +27,7 @@ def load_fonts():
 
 def icon() -> QIcon:
     """Muzix's own icon (frontend/public): drawn for each size, so the small ones in the tray and the
-    title bar are sharp (16 px is Muzix's simpler drawing for that size), and the big one beside them."""
+    title bar are sharp, and the big one beside them."""
     i = QIcon()
     folder = os.path.join(ASSETS, "icons")
     for n in sorted(os.listdir(folder)) if os.path.isdir(folder) else []:
