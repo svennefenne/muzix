@@ -475,11 +475,15 @@ def check() -> int:
         missing = [n[0] for n in need if not any(player.Gst.ElementFactory.find(x) for x in n)]
         assert not missing, (f"GStreamer lacks {', '.join(missing)} (its packages: {player.gst_packages()}, plugins from "
                              f"{os.environ.get('GST_PLUGIN_SYSTEM_PATH_1_0') or os.environ.get('GST_PLUGIN_PATH')})")
-        # streams through souphttpsrc where it comes along (Linux: with its libsoup, muzix-desktop.spec; Windows:
-        # gstreamer-plugins-net), made here, as it loads libsoup only then: curlhttpsrc can't seek in a podcast
-        # and stops in long streams
-        if sys.platform in ("linux", "win32"):
-            assert player.Gst.ElementFactory.make("souphttpsrc") is not None, "souphttpsrc doesn't start (its libsoup)"
+        # Linux: streams through souphttpsrc, with the libsoup that comes along (muzix-desktop.spec), made here as
+        # it loads libsoup only then: curlhttpsrc can't seek in a podcast and stops in long streams. (Windows'
+        # GStreamer packages have no souphttpsrc that starts: curlhttpsrc there, for now)
+        if sys.platform == "linux":
+            try:
+                made = player.Gst.ElementFactory.make("souphttpsrc")
+            except Exception:       # newer PyGObject raises for an element that's missing
+                made = None
+            assert made is not None, "souphttpsrc doesn't start (its libsoup)"
         if sys.platform == "win32":
             from . import smtc
             assert smtc.MediaPlayer is not None, "Windows' media controls (pywinrt) aren't there"
