@@ -68,6 +68,9 @@ def _gstreamer_frozen():
 
 _gstreamer_wheels()
 _gstreamer_frozen()
+# no proxy for the player's streams: they're the window's own server's, on 127.0.0.1 (relay.py). GIO would ask
+# libproxy, and in the AppImage that throws an exception its C++ can't catch: the app ended on Play (0.4.18)
+os.environ.setdefault("GIO_USE_PROXY_RESOLVER", "dummy")
 try:
     import gi
     gi.require_version("Gst", "1.0")

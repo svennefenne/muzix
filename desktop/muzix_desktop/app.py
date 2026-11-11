@@ -484,6 +484,10 @@ def check() -> int:
             except Exception:       # newer PyGObject raises for an element that's missing
                 made = None
             assert made is not None, "souphttpsrc doesn't start (its libsoup)"
+            # and asks no proxy of libproxy, which ended the AppImage on Play (player.py)
+            from gi.repository import Gio
+            resolver = type(Gio.ProxyResolver.get_default()).__name__
+            assert "Dummy" in resolver, f"GIO's proxy resolver is {resolver}, not the dummy one"
         if sys.platform == "win32":
             from . import smtc
             assert smtc.MediaPlayer is not None, "Windows' media controls (pywinrt) aren't there"

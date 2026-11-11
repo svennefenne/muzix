@@ -88,7 +88,10 @@ UNUSED = ("3D", "Charts", "DataVisualization", "Graphs", "Labs", "Location", "Mu
 unused = re.compile(r"(?:^|[/\\])(?:lib)?Qt6?(?:%s)\w*(?:\.|[/\\]|$)" % "|".join(UNUSED))
 qml = re.compile(r"PySide6[/\\]Qt[/\\]qml[/\\]")
 locale = re.compile(r"(qtwebengine_locales[/\\](?!en-US|sv)[^/\\]+\.pak|translations[/\\]\w+_(?!sv|en)\w+\.qm)$")
-a.binaries = [b for b in a.binaries if not (unused.search(b[0]) or qml.search(b[0]))]
+# GIO's libproxy, which libsoup would ask for a proxy: the player's streams need none (player.py), and in
+# the AppImage it ended the app on Play, throwing an exception the C++ that comes along can't catch
+proxy = re.compile(r"(?:^|[/\\])(?:libgiolibproxy\.so|libproxy\.so)")
+a.binaries = [b for b in a.binaries if not (unused.search(b[0]) or qml.search(b[0]) or proxy.search(b[0]))]
 a.datas = [d for d in a.datas if not (unused.search(d[0]) or qml.search(d[0]) or locale.search(d[0]))]
 
 pyz = PYZ(a.pure)
