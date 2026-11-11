@@ -1,9 +1,9 @@
 """Where podcasts are found to browse and search (api/podcasts.py): Apple Podcasts' charts for a country,
-in its categories and their subcategories; with a key each, what's trending on Podcast Index (by language,
-in its categories, some of which Apple doesn't have, such as tabletop and role-playing games) and Listen
-Notes' best (by region). National is the server's country (Settings → Radio home country) and its language,
-international the United States' charts and English. Answers are kept on disk a while: an hour, and Listen
-Notes' a week, as its free plan allows 300 requests a month."""
+in its categories and their subcategories; with a key each, what trended on Podcast Index this month (by
+language and category, and what it has about topics Apple has no category for, such as tabletop and
+role-playing games) and Listen Notes' best (by region). National is the server's country (Settings → Radio
+home country) and its language, international the United States' charts and English. Answers are kept on
+disk a while: an hour, and Listen Notes' a week, as its free plan allows few requests a month."""
 
 import hashlib
 import json
@@ -18,139 +18,140 @@ from . import enrich, env, settings
 log = logging.getLogger(__name__)
 
 # Apple Podcasts' categories and their subcategories (its genre ids), each with Podcast Index's categories
-# for it (the Podcast Namespace's, which cut Apple's names into words); Podcast Index's own ones that Apple
-# doesn't have come under the nearest of Apple's ("pi-<its id>")
+# for it, by their ids (the Podcast Namespace's, which cut Apple's names into words; its trending takes the
+# ids, not those names); Podcast Index's own ones that Apple doesn't have come under the nearest of Apple's
+# ("pi-<its id>"), found by search, as few feeds use them
 CATEGORIES = [
-    (1301, "Arts", "Arts", [
-        (1482, "Books", "Books"),
-        (1402, "Design", "Design"),
-        (1459, "Fashion & Beauty", "Fashion,Beauty"),
-        (1306, "Food", "Food"),
-        (1405, "Performing Arts", "Performing"),
-        (1406, "Visual Arts", "Visual"),
+    (1301, "Arts", "1", [
+        (1482, "Books", "2"),
+        (1402, "Design", "3"),
+        (1459, "Fashion & Beauty", "4,5"),
+        (1306, "Food", "6"),
+        (1405, "Performing Arts", "7"),
+        (1406, "Visual Arts", "8"),
     ]),
-    (1321, "Business", "Business", [
-        (1410, "Careers", "Careers"),
-        (1493, "Entrepreneurship", "Entrepreneurship"),
-        (1412, "Investing", "Investing"),
-        (1491, "Management", "Management"),
-        (1492, "Marketing", "Marketing"),
-        (1494, "Non-Profit", "Non-Profit"),
-        ("pi-112", "Cryptocurrency", "Cryptocurrency"),
+    (1321, "Business", "9", [
+        (1410, "Careers", "10"),
+        (1493, "Entrepreneurship", "11"),
+        (1412, "Investing", "12"),
+        (1491, "Management", "13"),
+        (1492, "Marketing", "14"),
+        (1494, "Non-Profit", "15"),
+        ("pi-112", "Cryptocurrency", "112"),
     ]),
-    (1303, "Comedy", "Comedy", [
-        (1496, "Comedy Interviews", "Interviews"),
-        (1495, "Improv", "Improv"),
-        (1497, "Stand-Up", "Stand-Up"),
+    (1303, "Comedy", "16", [
+        (1496, "Comedy Interviews", "17"),
+        (1495, "Improv", "18"),
+        (1497, "Stand-Up", "19"),
     ]),
-    (1304, "Education", "Education", [
-        (1501, "Courses", "Courses"),
-        (1499, "How To", "How-To"),
-        (1498, "Language Learning", "Language"),
-        (1500, "Self-Improvement", "Self-Improvement"),
+    (1304, "Education", "20", [
+        (1501, "Courses", "21"),
+        (1499, "How To", "22"),
+        (1498, "Language Learning", "23"),
+        (1500, "Self-Improvement", "25"),
     ]),
-    (1483, "Fiction", "Fiction", [
-        (1486, "Comedy Fiction", "Fiction"),
-        (1484, "Drama", "Drama"),
-        (1485, "Science Fiction", "Fiction"),
+    (1483, "Fiction", "26", [
+        (1486, "Comedy Fiction", "26"),
+        (1484, "Drama", "27"),
+        (1485, "Science Fiction", "26"),
     ]),
-    (1511, "Government", "Government", []),
-    (1512, "Health & Fitness", "Health,Fitness", [
-        (1513, "Alternative Health", "Alternative"),
-        (1514, "Fitness", "Fitness"),
-        (1518, "Medicine", "Medicine"),
-        (1517, "Mental Health", "Mental"),
-        (1515, "Nutrition", "Nutrition"),
-        (1516, "Sexuality", "Sexuality"),
+    (1511, "Government", "58", []),
+    (1512, "Health & Fitness", "29,30", [
+        (1513, "Alternative Health", "31"),
+        (1514, "Fitness", "30"),
+        (1518, "Medicine", "32"),
+        (1517, "Mental Health", "33"),
+        (1515, "Nutrition", "34"),
+        (1516, "Sexuality", "35"),
     ]),
-    (1487, "History", "History", []),
-    (1305, "Kids & Family", "Kids,Family", [
-        (1519, "Education for Kids", "Kids"),
-        (1521, "Parenting", "Parenting"),
-        (1522, "Pets & Animals", "Pets,Animals"),
-        (1520, "Stories for Kids", "Stories"),
+    (1487, "History", "28", []),
+    (1305, "Kids & Family", "36,37", [
+        (1519, "Education for Kids", "36"),
+        (1521, "Parenting", "38"),
+        (1522, "Pets & Animals", "39,40"),
+        (1520, "Stories for Kids", "41"),
     ]),
-    (1502, "Leisure", "Leisure", [
-        (1510, "Animation & Manga", "Animation,Manga"),
-        (1503, "Automotive", "Automotive"),
-        (1504, "Aviation", "Aviation"),
-        (1506, "Crafts", "Crafts"),
-        (1507, "Games", "Games"),
-        (1505, "Hobbies", "Hobbies"),
-        (1508, "Home & Garden", "Home,Garden"),
-        (1509, "Video Games", "Video-Games"),
-        ("pi-110", "Tabletop", "Tabletop"),
-        ("pi-111", "Role-Playing", "Role-Playing"),
+    (1502, "Leisure", "42", [
+        (1510, "Animation & Manga", "43,44"),
+        (1503, "Automotive", "45"),
+        (1504, "Aviation", "46"),
+        (1506, "Crafts", "47"),
+        (1507, "Games", "48"),
+        (1505, "Hobbies", "49"),
+        (1508, "Home & Garden", "50,51"),
+        (1509, "Video Games", "52"),
+        ("pi-110", "Tabletop", "110"),
+        ("pi-111", "Role-Playing", "111"),
     ]),
-    (1310, "Music", "Music", [
-        (1523, "Music Commentary", "Commentary"),
-        (1524, "Music History", "Music"),
-        (1525, "Music Interviews", "Interviews"),
+    (1310, "Music", "53", [
+        (1523, "Music Commentary", "54"),
+        (1524, "Music History", "53"),
+        (1525, "Music Interviews", "17"),
     ]),
-    (1489, "News", "News", [
-        (1490, "Business News", "Business"),
-        (1526, "Daily News", "Daily"),
-        (1531, "Entertainment News", "Entertainment"),
-        (1530, "News Commentary", "Commentary"),
-        (1527, "Politics", "Politics"),
-        (1529, "Sports News", "Sports"),
-        (1528, "Tech News", "Technology"),
+    (1489, "News", "55", [
+        (1490, "Business News", "9"),
+        (1526, "Daily News", "56"),
+        (1531, "Entertainment News", "57"),
+        (1530, "News Commentary", "54"),
+        (1527, "Politics", "59"),
+        (1529, "Sports News", "86"),
+        (1528, "Tech News", "102"),
     ]),
-    (1314, "Religion & Spirituality", "Religion,Spirituality", [
-        (1438, "Buddhism", "Buddhism"),
-        (1439, "Christianity", "Christianity"),
-        (1463, "Hinduism", "Hinduism"),
-        (1440, "Islam", "Islam"),
-        (1441, "Judaism", "Judaism"),
-        (1532, "Religion", "Religion"),
-        (1444, "Spirituality", "Spirituality"),
+    (1314, "Religion & Spirituality", "65,66", [
+        (1438, "Buddhism", "60"),
+        (1439, "Christianity", "61"),
+        (1463, "Hinduism", "62"),
+        (1440, "Islam", "63"),
+        (1441, "Judaism", "64"),
+        (1532, "Religion", "65"),
+        (1444, "Spirituality", "66"),
     ]),
-    (1533, "Science", "Science", [
-        (1538, "Astronomy", "Astronomy"),
-        (1539, "Chemistry", "Chemistry"),
-        (1540, "Earth Sciences", "Earth"),
-        (1541, "Life Sciences", "Life"),
-        (1536, "Mathematics", "Mathematics"),
-        (1534, "Natural Sciences", "Natural"),
-        (1537, "Nature", "Nature"),
-        (1542, "Physics", "Physics"),
-        (1535, "Social Sciences", "Social"),
-        ("pi-108", "Climate", "Climate"),
-        ("pi-109", "Weather", "Weather"),
+    (1533, "Science", "67", [
+        (1538, "Astronomy", "68"),
+        (1539, "Chemistry", "69"),
+        (1540, "Earth Sciences", "70"),
+        (1541, "Life Sciences", "71"),
+        (1536, "Mathematics", "72"),
+        (1534, "Natural Sciences", "73"),
+        (1537, "Nature", "74"),
+        (1542, "Physics", "75"),
+        (1535, "Social Sciences", "76"),
+        ("pi-108", "Climate", "108"),
+        ("pi-109", "Weather", "109"),
     ]),
-    (1324, "Society & Culture", "Society,Culture", [
-        (1543, "Documentary", "Documentary"),
-        (1302, "Personal Journals", "Personal,Journals"),
-        (1443, "Philosophy", "Philosophy"),
-        (1320, "Places & Travel", "Places,Travel"),
-        (1544, "Relationships", "Relationships"),
+    (1324, "Society & Culture", "77,78", [
+        (1543, "Documentary", "79"),
+        (1302, "Personal Journals", "80,81"),
+        (1443, "Philosophy", "82"),
+        (1320, "Places & Travel", "83,84"),
+        (1544, "Relationships", "85"),
     ]),
-    (1545, "Sports", "Sports", [
-        (1549, "Baseball", "Baseball"),
-        (1548, "Basketball", "Basketball"),
-        (1554, "Cricket", "Cricket"),
-        (1560, "Fantasy Sports", "Fantasy"),
-        (1547, "Football", "Football"),
-        (1553, "Golf", "Golf"),
-        (1550, "Hockey", "Hockey"),
-        (1552, "Rugby", "Rugby"),
-        (1551, "Running", "Running"),
-        (1546, "Soccer", "Soccer"),
-        (1558, "Swimming", "Swimming"),
-        (1556, "Tennis", "Tennis"),
-        (1557, "Volleyball", "Volleyball"),
-        (1559, "Wilderness", "Wilderness"),
-        (1555, "Wrestling", "Wrestling"),
+    (1545, "Sports", "86", [
+        (1549, "Baseball", "87"),
+        (1548, "Basketball", "88"),
+        (1554, "Cricket", "89"),
+        (1560, "Fantasy Sports", "90"),
+        (1547, "Football", "91"),
+        (1553, "Golf", "92"),
+        (1550, "Hockey", "93"),
+        (1552, "Rugby", "94"),
+        (1551, "Running", "95"),
+        (1546, "Soccer", "96"),
+        (1558, "Swimming", "97"),
+        (1556, "Tennis", "98"),
+        (1557, "Volleyball", "99"),
+        (1559, "Wilderness", "100"),
+        (1555, "Wrestling", "101"),
     ]),
-    (1309, "TV & Film", "TV,Film", [
-        (1562, "After Shows", "After-Shows"),
-        (1564, "Film History", "Film"),
-        (1565, "Film Interviews", "Interviews"),
-        (1563, "Film Reviews", "Reviews"),
-        (1561, "TV Reviews", "Reviews"),
+    (1309, "TV & Film", "104,105", [
+        (1562, "After Shows", "106"),
+        (1564, "Film History", "105"),
+        (1565, "Film Interviews", "17"),
+        (1563, "Film Reviews", "107"),
+        (1561, "TV Reviews", "107"),
     ]),
-    (1318, "Technology", "Technology", []),
-    (1488, "True Crime", "True Crime", []),
+    (1318, "Technology", "102", []),
+    (1488, "True Crime", "103", []),
 ]
 
 INTERNATIONAL = "us"
@@ -162,6 +163,7 @@ LANGUAGES = {"se": "sv", "no": "no,nb,nn", "dk": "da", "fi": "fi,sv", "is": "is"
              "ee": "et", "lv": "lv", "lt": "lt", "il": "he"}
 APPLE_TTL = PI_TTL = 3600
 LN_TTL = 7 * 86400
+TRENDING_DAYS = 30          # what trended in the last month: a narrow category in one language has little in a day
 LN = "https://listen-api.listennotes.com/api/v2"
 PI = "https://api.podcastindex.org/api/1.0"
 
@@ -246,20 +248,15 @@ def _itunes(ids: list) -> list[dict]:
 # ---------------------------------------------------------------- Apple Podcasts
 
 def apple_chart(country: str, genre: int | None, limit: int = 100) -> list[dict]:
-    """Apple's chart for a country: overall, or for a category or subcategory."""
+    """Apple's chart for a country: overall, or for a category or subcategory (its older feed of charts: the
+    newer one, rss.marketingtools.apple.com, often doesn't answer for 100)."""
     def fetch():
         with _client() as c:
-            if genre:
-                r = c.get(f"https://itunes.apple.com/{country}/rss/toppodcasts/limit={limit}/genre={genre}/json")
-                if r.status_code != 200:
-                    return []
-                entries = r.json().get("feed", {}).get("entry", [])
-                ids = [e["id"]["attributes"]["im:id"] for e in (entries if isinstance(entries, list) else [entries])]
-            else:
-                r = c.get(f"https://rss.marketingtools.apple.com/api/v2/{country}/podcasts/top/{min(limit, 100)}/podcasts.json")
-                if r.status_code != 200:
-                    return []
-                ids = [x["id"] for x in r.json().get("feed", {}).get("results", [])]
+            r = c.get(f"https://itunes.apple.com/{country}/rss/toppodcasts/limit={limit}{f'/genre={genre}' if genre else ''}/json")
+            if r.status_code != 200:
+                return []
+            entries = r.json().get("feed", {}).get("entry", [])
+        ids = [e["id"]["attributes"]["im:id"] for e in (entries if isinstance(entries, list) else [entries])]
         return _itunes(ids)
     return _kept(f"apple:{country}:{genre}:{limit}", APPLE_TTL, fetch)
 
@@ -292,13 +289,20 @@ def _pi_hits(feeds: list) -> list[dict]:
 
 
 def pi_trending(langs: str, cats: str) -> list[dict]:
-    """What's trending on Podcast Index in these languages, in these of its categories (or all)."""
-    params = {"max": 60, "lang": langs, **({"cat": cats} if cats else {})}
-    return _kept(f"pi:{langs}:{cats}", PI_TTL, lambda: _pi_hits(_pi_get("/podcasts/trending", params).get("feeds") or []))
+    """What's trended on Podcast Index this month in these languages, in these of its categories (ids; or all)."""
+    def fetch():
+        params = {"max": 60, "lang": langs, "since": int(time.time()) - TRENDING_DAYS * 86400, **({"cat": cats} if cats else {})}
+        return _pi_hits(_pi_get("/podcasts/trending", params).get("feeds") or [])
+    return _kept(f"pi:{langs}:{cats}", PI_TTL, fetch)
 
 
-def pi_search(q: str) -> list[dict]:
-    return _pi_hits(_pi_get("/search/byterm", {"q": q, "max": 30}).get("feeds") or [])
+def pi_search(q: str, most: int = 30) -> list[dict]:
+    return _pi_hits(_pi_get("/search/byterm", {"q": q, "max": most}).get("feeds") or [])
+
+
+def pi_about(topic: str) -> list[dict]:
+    """Podcasts about a topic, by search (Podcast Index's own categories, which few feeds use)."""
+    return _kept(f"pi-about:{topic}", PI_TTL, lambda: pi_search(topic.replace("-", " "), 60))
 
 
 # ---------------------------------------------------------------- Listen Notes
@@ -352,7 +356,9 @@ def browse(genre: str, scope: str) -> dict:
     jobs = {}
     if not isinstance(gid, str):        # Apple has no chart for Podcast Index's own categories
         jobs["apple"] = lambda: apple_chart(country, gid)
-    if _pi_on() and (pi or not genre):
+    if _pi_on() and isinstance(gid, str):
+        jobs["podcastindex"] = lambda: pi_about(name)
+    elif _pi_on() and (pi or not genre):
         jobs["podcastindex"] = lambda: pi_trending(langs, pi)
     if settings.get("listennotes_key") and not isinstance(gid, str):
         jobs["listennotes"] = lambda: ln_best(country, name)
@@ -365,7 +371,7 @@ def browse(genre: str, scope: str) -> dict:
             except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
                 log.info("podcast directory, %s: %s", src, e)
                 continue
-            sections.append({"source": src, "items": items})
+            sections.append({"source": src, "items": items, **({"about": name} if src == "podcastindex" and isinstance(gid, str) else {})})
     missing = [src for src, on in (("podcastindex", _pi_on()), ("listennotes", bool(settings.get("listennotes_key")))) if not on]
     return {"country": country, "languages": langs.split(",")[0], "sections": sections, "missing": missing}
 

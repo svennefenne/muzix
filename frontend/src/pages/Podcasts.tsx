@@ -284,7 +284,7 @@ export default function Podcasts() {
         {browsed.isLoading ? <Loading /> : browsed.data?.sections.some((s) => s.items.length) ? (
           browsed.data.sections.filter((s) => s.items.length).map((s) => (
             <div key={s.source} className="browse-source">
-              <h3 className="h3">{sourceTitle(s.source, browsed.data)}</h3>
+              <h3 className="h3">{sourceTitle(s.source, browsed.data, s.about)}</h3>
               <HitGrid list={s.items} />
             </div>
           ))
@@ -317,15 +317,16 @@ interface Category { id: number; name: string; subs: { id: number | string; name
 interface Browsed {
   country: string;          // two letters
   languages: string;        // Podcast Index's, the first
-  sections: { source: "apple" | "podcastindex" | "listennotes"; items: PodcastHit[] }[];
+  sections: { source: "apple" | "podcastindex" | "listennotes"; items: PodcastHit[]; about?: string }[];
   missing: string[];        // the sources without a key yet
 }
 
 const SCOPES = [{ value: "national", label: "National" }, { value: "international", label: "International" }] as const;
 const SOURCES: Record<string, string> = { apple: "Apple Podcasts", podcastindex: "Podcast Index", listennotes: "Listen Notes" };
 
-/** "Apple Podcasts · Sweden", "Trending on Podcast Index · Swedish", "Best on Listen Notes · Sweden". */
-function sourceTitle(source: string, b: Browsed) {
+/** "Apple Podcasts · Sweden", "Trending on Podcast Index · Swedish", "Best on Listen Notes · Sweden";
+ * Podcast Index's own categories, found by search: "On Podcast Index · Tabletop". */
+function sourceTitle(source: string, b: Browsed, about?: string) {
   const name = (type: "region" | "language", code: string) => {
     try {
       return new Intl.DisplayNames(["en"], { type }).of(type === "region" ? code.toUpperCase() : code) || code;
@@ -333,7 +334,7 @@ function sourceTitle(source: string, b: Browsed) {
       return code;
     }
   };
-  if (source === "podcastindex") return `Trending on Podcast Index · ${name("language", b.languages)}`;
+  if (source === "podcastindex") return about ? `On Podcast Index · ${about}` : `Trending on Podcast Index · ${name("language", b.languages)}`;
   if (source === "listennotes") return `Best on Listen Notes · ${name("region", b.country)}`;
   return `Apple Podcasts · ${name("region", b.country)}`;
 }

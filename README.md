@@ -89,10 +89,10 @@ shared with the others on your server if you like.
   Video Games, say), National (the server's country, *Radio home country*, and
   its language) or International (the United States' charts, English). With
   their keys (*Admin → Settings*, Podcasts & radio, both free) it also shows
-  what's trending on Podcast Index, in its categories Apple doesn't have too
-  (Tabletop, Role-Playing, Climate...), which also adds to search, and Listen
+  what trended on Podcast Index this month, and what it has about the topics
+  Apple doesn't (Tabletop, Role-Playing, Climate...), which also adds to search, and Listen
   Notes' best in each category. The lists are kept an hour, Listen Notes' a
-  week (its free plan allows 300 requests a month).
+  week (its free plan allows a few requests a month, 150 in November 2026).
   A blue dot, as on Spotify, marks episodes out since you subscribed that you
   haven't started, and podcasts that have one; new episodes also show at the
   top of the home page.

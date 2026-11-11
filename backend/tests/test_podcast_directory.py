@@ -79,17 +79,28 @@ def test_apples_chart_national_and_international(web):
 def test_podcast_index_trending_by_language_and_category(web):
     values, answers, asked = web
     values.update(podcastindex_key="KEY", podcastindex_secret="SECRET")
-    answers["https://itunes.apple.com"] = Answer({}, 404)
+    answers["https://itunes.apple.com/se/rss"] = Answer({"feed": {"entry": []}})
     answers[d.PI + "/podcasts/trending"] = Answer({"feeds": [
-        {"url": "https://feeds.example/tabletop", "title": "Dice Talk", "author": "A", "artwork": "https://img/x.jpg",
-         "categories": {"110": "Tabletop"}}]})
-    got = d.browse("pi-110", "national")
-    assert [s["source"] for s in got["sections"]] == ["podcastindex"]          # Apple has no such chart
-    assert got["sections"][0]["items"][0] == {"title": "Dice Talk", "author": "A", "url": "https://feeds.example/tabletop",
-                                              "image": "https://img/x.jpg", "genre": "Tabletop", "source": "podcastindex"}
+        {"url": "https://feeds.example/games", "title": "Speljuntan", "author": "A", "artwork": "https://img/x.jpg",
+         "categories": {"52": "Video Games"}}]})
+    got = d.browse("1509", "national")
+    trending = next(s for s in got["sections"] if s["source"] == "podcastindex")
+    assert trending["items"][0] == {"title": "Speljuntan", "author": "A", "url": "https://feeds.example/games",
+                                    "image": "https://img/x.jpg", "genre": "Video Games", "source": "podcastindex"}
     url, params, headers = next(a for a in asked if a[0].startswith(d.PI))
-    assert params == {"max": 60, "lang": "sv,sv-se", "cat": "Tabletop"}
+    assert {k: params[k] for k in ("max", "lang", "cat")} == {"max": 60, "lang": "sv,sv-se", "cat": "52"}   # its ids
+    assert params["since"] < __import__("time").time() - 29 * 86400                                       # the month
     assert headers["Authorization"] == hashlib.sha1(("KEY" + "SECRET" + headers["X-Auth-Date"]).encode()).hexdigest()
+
+
+def test_podcast_indexs_own_categories_by_search(web):
+    values, answers, asked = web
+    values.update(podcastindex_key="KEY", podcastindex_secret="SECRET")
+    answers[d.PI + "/search/byterm"] = Answer({"feeds": [{"url": "https://feeds.example/rpg", "title": "Dice Talk"}]})
+    got = d.browse("pi-111", "national")
+    assert got["sections"] == [{"source": "podcastindex", "about": "Role-Playing", "items": [
+        {"title": "Dice Talk", "author": "", "url": "https://feeds.example/rpg", "image": None, "genre": "", "source": "podcastindex"}]}]
+    assert next(p for u, p, _ in asked if u.endswith("/search/byterm")) == {"q": "Role Playing", "max": 60}
 
 
 def test_listen_notes_best_with_apples_feeds_when_its_own_are_left_out(web):
@@ -111,7 +122,7 @@ def test_listen_notes_best_with_apples_feeds_when_its_own_are_left_out(web):
 
 def test_an_older_answer_stands_while_a_source_is_down(web, monkeypatch):
     _, answers, _ = web
-    answers["https://rss.marketingtools.apple.com"] = Answer({"feed": {"results": [{"id": "3"}]}})
+    answers["https://itunes.apple.com/se/rss/toppodcasts/limit=100/json"] = Answer({"feed": {"entry": {"id": {"attributes": {"im:id": "3"}}}}})
     answers["https://itunes.apple.com/lookup"] = lookup(3)
     assert d.browse("", "national")["sections"][0]["items"][0]["title"] == "Pod 3"
     answers.clear()                                      # Apple away

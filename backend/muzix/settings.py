@@ -86,7 +86,8 @@ SCHEMA: list[Spec] = [
     Spec("podcastindex_secret", "secret", "", "Podcasts & radio", "Podcast Index API secret"),
     Spec("listennotes_key", "secret", "", "Podcasts & radio", "Listen Notes API key",
          "Listen Notes' best podcasts in each category, by country. Free at "
-         "https://www.listennotes.com/api/pricing/ (300 requests a month: Muzix keeps its lists a week)."),
+         "https://www.listennotes.com/api/pricing/, for a few requests a month (150 in November 2026): Muzix "
+         "keeps each list a week."),
     # uploads
     Spec("upload_musicbrainz", "bool", True, "Uploads", "Match with MusicBrainz"),
     Spec("upload_fetch_art", "bool", True, "Uploads", "Find cover art"),
