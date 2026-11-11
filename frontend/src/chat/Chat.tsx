@@ -11,6 +11,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { queryClient } from "../actions";
 import { api } from "../api";
 import { useBackCloses } from "../backCloses";
+import { Avatar } from "../components/Avatar";
 import { Art } from "../components/ui";
 import { useUi } from "../store/ui";
 import { HoverCard, LinkCard, MoreInfoHost } from "./Links";
@@ -30,9 +31,9 @@ function usePhone() {
   return phone;
 }
 
-/** A person's round mark: their initials on a colour of their name (as covers without a picture). */
-function Face({ name }: { name: string }) {
-  return <Art name={name} round className="chat-face" />;
+/** A person's icon, as their account has it (on another server, as that server says). */
+function Face({ who }: { who: Person }) {
+  return <Avatar user={{ username: who.name, avatar: who.avatar }} className="chat-face" />;
 }
 
 /** The top bar's button, where the fullscreen button was: there while there's something to the chat. */
@@ -122,7 +123,7 @@ function Conversations() {
       <div className="chat-scroll">
         {q.isLoading ? <RowSkeletons /> : list.length ? list.map((c) => (
           <button key={personKey(c.with)} className={`chat-row ${c.unread ? "unread" : ""}`} onClick={() => show(c.with)}>
-            <Face name={c.with.name} />
+            <Face who={c.with} />
             <span className="chat-row-text">
               <span className="chat-row-name">
                 <b className="ellipsis">{c.with.name}</b>
@@ -178,7 +179,7 @@ function People() {
             <h3 className="chat-group-name">{place}</h3>
             {found.filter((p) => p.place === place).map((p) => (
               <button key={personKey(p)} className="chat-row" onClick={() => show(p)}>
-                <Face name={p.name} />
+                <Face who={p} />
                 <span className="chat-row-text"><b className="ellipsis">{p.name}</b></span>
               </button>
             ))}
@@ -240,7 +241,7 @@ function Conversation({ who }: { who: Person }) {
     <>
       <div className="np-head chat-head">
         <button className="iconbtn" aria-label="Back to the conversations" onClick={() => setView("list")}><ChevronLeft size={16} /></button>
-        <Face name={shownWho.name} />
+        <Face who={shownWho} />
         <div className="chat-who">
           <b className="ellipsis">{shownWho.name}</b>
           <small className="ellipsis">{shownWho.here ? "On this server" : shownWho.place}</small>

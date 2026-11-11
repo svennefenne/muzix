@@ -3,6 +3,7 @@ to, a conversation's messages, writing, and the linked albums and songs (their s
 and covers of what's on another server, through this one)."""
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -76,6 +77,15 @@ def link(message_id: int, index: int, user: User = Depends(current_user), db: Se
     if not 0 <= index < len(links):
         raise HTTPException(404, "No such link")
     return chat.resolve(db, links[index], tracks=True)
+
+
+@router.get("/avatars/{server}/{name}", dependencies=[Depends(current_user)])
+def avatar(server: str, name: str):
+    """The icon picture of someone on a linked server, through this one."""
+    path = chat.picture(server, name)
+    if path is None:
+        raise HTTPException(404, "No such picture")
+    return FileResponse(path, media_type="image/webp", headers={"Cache-Control": "private, max-age=31536000, immutable"})
 
 
 @router.get("/stream/{server}/{track_id}")

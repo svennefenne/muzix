@@ -30,9 +30,16 @@ function where(l: ChatLink) {
 
 // ------------------------------------------------------------ the card on hover
 
-interface HoverState { link: ChatLink | null; rect: DOMRect | null; set: (link: ChatLink | null, rect?: DOMRect | null) => void }
+interface HoverState {
+  link: ChatLink | null;
+  rect: DOMRect | null;
+  edge: number | null;          // the chat panel's left edge: the card stays clear of the panel
+  set: (link: ChatLink | null, rect?: DOMRect | null, edge?: number | null) => void;
+}
 
-const useHover = create<HoverState>((set) => ({ link: null, rect: null, set: (link, rect = null) => set({ link, rect }) }));
+const useHover = create<HoverState>((set) => ({
+  link: null, rect: null, edge: null, set: (link, rect = null, edge = null) => set({ link, rect, edge }),
+}));
 
 const touch = () => matchMedia("(hover: none)").matches;
 
@@ -45,7 +52,10 @@ export function LinkCard({ link, message, index }: { link: ChatLink; message: nu
     if (touch()) return;
     const el = e.currentTarget;
     window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => showHover(link, el.getBoundingClientRect()), 220);
+    timer.current = window.setTimeout(() => {
+      const dock = el.closest(".chatdock")?.getBoundingClientRect();
+      showHover(link, el.getBoundingClientRect(), dock ? dock.left : null);
+    }, 220);
   };
   const leave = () => {
     window.clearTimeout(timer.current);
@@ -68,19 +78,19 @@ export function LinkCard({ link, message, index }: { link: ChatLink; message: nu
 }
 
 export function HoverCard() {
-  const { link, rect } = useHover();
+  const { link, rect, edge } = useHover();
   const box = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   useLayoutEffect(() => {
     if (!link || !rect || !box.current) return setPos(null);
     const w = box.current.offsetWidth;
     const h = box.current.offsetHeight;
-    // beside the chat: to the left of the link, or to its right when there's no room
-    let left = rect.left - w - 14;
+    // beside the chat, clear of it; to the right of the link when there's no room (the chat full screen)
+    let left = (edge ?? rect.left) - w - 12;
     if (left < 8) left = Math.min(rect.right + 14, innerWidth - w - 8);
     const top = Math.max(8, Math.min(rect.top + rect.height / 2 - h / 2, innerHeight - h - 8));
     setPos({ left, top });
-  }, [link, rect]);
+  }, [link, rect, edge]);
   useEffect(() => {
     if (!link) return;
     const hide = () => useHover.getState().set(null);

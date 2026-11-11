@@ -281,7 +281,8 @@ the main library.
 
 People on a server and on the servers it's linked with can write to each other,
 two at a time: *Messages* in the account menu (on phones under *More*), then
-*New message* lists everyone, server by server. While a conversation is open
+*New message* lists everyone, server by server, each with their icon (*Settings
+→ Your icon*), also those on other servers. While a conversation is open
 on a desktop, it takes the now playing panel's place (a drawer in a narrower
 window); on a phone it fills the screen. Its button sits in the top bar while
 there's something to it (a message you haven't read, or a conversation that

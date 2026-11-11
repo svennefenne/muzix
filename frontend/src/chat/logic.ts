@@ -1,6 +1,9 @@
 /** The chat's rules that need nothing but their arguments (tested in frontend/tests/chat.test.ts). */
 
-export interface Person { server: string; user: number; name: string; place: string; here: boolean }
+export interface Person {
+  server: string; user: number; name: string; place: string; here: boolean;
+  avatar?: { picture: string | null; letter: string | null; color: string | null };   // their icon (components/Avatar.tsx)
+}
 
 export interface Conversation {
   with: Person;

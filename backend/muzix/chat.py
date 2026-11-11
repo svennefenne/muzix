@@ -18,7 +18,10 @@ reader's server finds it in its own library if it's there (its own, or mirrored 
 and otherwise plays it from that server through itself (resolve()), if it's linked with it.
 """
 
+import hashlib
 import logging
+import os
+import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -29,7 +32,7 @@ from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from . import art, db, mirror, modules, network
+from . import art, db, env, mirror, modules, network
 from .models import Album, ChatMessage, Peer, Track, User
 from .serial import iso
 
@@ -43,6 +46,8 @@ WAITING_PAGE = 500
 EVERY = 300             # seconds between asking the linked servers for what's waiting here
 PEOPLE_FOR = 60         # seconds a linked server's list of people is kept
 KINDS = ("album", "track")
+PICTURE = re.compile(r"^[0-9a-f]{24}\.webp$")    # an icon's picture, named by its contents (api/me.py)
+PICTURE_MAX = 2 * 1024 * 1024
 
 
 class ChatError(Exception):
@@ -109,6 +114,89 @@ def person(sid: str, uid: int, name: str, place: str) -> dict:
     return {"server": sid, "user": uid, "name": name, "place": place, "here": sid == network.server_id()}
 
 
+# ------------------------------------------------------------ icons
+# Each account's own (api/me.py). Another server's people's come with its list of people and with
+# their messages, and are kept here in memory until the next of either; their pictures are fetched
+# through this server once and kept (their names are their contents, so they never go stale).
+
+_looks: dict[tuple[str, int], dict] = {}
+
+
+def own_look(u) -> dict:
+    """An account's icon as it goes to another server: its picture's name, or a letter on a colour."""
+    a = getattr(u, "avatar", None) or {}
+    return {"picture": a.get("picture"), "letter": a.get("letter"), "color": a.get("color")}
+
+
+def clean_look(d) -> dict | None:
+    """An icon as another server said it, made safe to show; None if it's none."""
+    if not isinstance(d, dict):
+        return None
+    pic, letter, color = d.get("picture"), d.get("letter"), d.get("color")
+    return {"picture": pic if isinstance(pic, str) and PICTURE.match(pic) else None,
+            "letter": letter.strip()[:8] or None if isinstance(letter, str) else None,
+            "color": color.lower() if isinstance(color, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", color) else None}
+
+
+def _shown(sid: str, look: dict | None, name: str) -> dict:
+    """An icon as the pages show it (components/Avatar.tsx): another server's picture through this one."""
+    look = look or {}
+    if look.get("picture"):
+        here = sid == network.server_id()
+        return {"picture": f"/api/avatars/{look['picture']}" if here else f"/api/chat/avatars/{sid}/{look['picture']}",
+                "letter": None, "color": None}
+    return {"picture": None, "letter": look.get("letter") or (name or "?")[:1].upper(), "color": look.get("color")}
+
+
+def dressed(p: dict) -> dict:
+    """A person with their icon."""
+    if p["here"]:
+        with db.session() as s:
+            u = s.get(User, p["user"])
+            look = own_look(u) if u is not None else None
+    else:
+        look = _looks.get((p["server"], p["user"]))
+    return {**p, "avatar": _shown(p["server"], look, p["name"])}
+
+
+def picture(sid: str, name: str) -> str | None:
+    """The file of another server's person's icon picture, fetched once and kept."""
+    if not PICTURE.match(name):
+        return None
+    path = env.CACHE_DIR / "avatars" / name
+    if path.is_file():
+        return str(path)
+    with db.session() as s:
+        p = _peer(s, sid)
+        if p is None:
+            return None
+        address, key = p.address, p.key
+    try:
+        with network._client() as c:
+            r = c.get(f"{address}/api/network/avatars/{name}", headers={"Authorization": f"Bearer {key}"}, timeout=10)
+    except httpx.HTTPError:
+        return None
+    data = r.content if r.status_code == 200 else b""
+    # its name is its contents: anything else isn't that picture
+    if not data or len(data) > PICTURE_MAX or hashlib.sha256(data).hexdigest()[:24] != name[:24]:
+        return None
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_bytes(data)
+    os.replace(tmp, path)
+    return str(path)
+
+
+def own_picture(name: str) -> str | None:
+    """One of this server's accounts' icon pictures, for a linked server's people to see."""
+    path = env.AVATAR_DIR / name
+    if not PICTURE.match(name) or not path.is_file():
+        return None
+    with db.session() as s:
+        used = any((a or {}).get("picture") == name for a in s.scalars(select(User.avatar)))
+    return str(path) if used else None
+
+
 # ------------------------------------------------------------ who can be written to
 
 _people: dict[str, tuple[float, list[dict]]] = {}
@@ -117,7 +205,7 @@ _people_lock = threading.Lock()
 
 def visible(s: Session) -> list[dict]:
     """This server's people in the chat, as linked servers see them."""
-    return [{"id": u.id, "name": u.username} for u in s.scalars(select(User).order_by(User.username))
+    return [{"id": u.id, "name": u.username, "avatar": own_look(u)} for u in s.scalars(select(User).order_by(User.username))
             if not _hidden(u)]
 
 
@@ -129,18 +217,22 @@ def _theirs(sid: str, address: str, key: str, place: str) -> list[dict]:
             with network._client() as c:
                 r = c.get(address + "/api/network/chat/people", headers={"Authorization": f"Bearer {key}"}, timeout=6)
             got = r.json() if r.status_code == 200 else []
-            rows = [{"id": int(p["id"]), "name": str(p["name"])[:64]} for p in got if isinstance(p, dict)]
+            rows = [{"id": int(p["id"]), "name": str(p["name"])[:64], "avatar": clean_look(p.get("avatar"))}
+                    for p in got if isinstance(p, dict)]
         except (httpx.HTTPError, ValueError, KeyError, TypeError):
             rows = []           # not up, or a Muzix without the chat: nobody there for now
         with _people_lock:
             _people[sid] = (time.time(), rows)
-    return [person(sid, p["id"], p["name"], place) for p in rows]
+            _looks.update({(sid, p["id"]): p["avatar"] for p in rows if p["avatar"]})
+    return [{**person(sid, p["id"], p["name"], place), "avatar": _shown(sid, p["avatar"], p["name"])} for p in rows]
 
 
 def people(user: User) -> list[dict]:
     """Everyone the user can write to: here, and on the linked servers."""
+    here = network.server_id()
     with db.session() as s:
-        out = [person(network.server_id(), p["id"], p["name"], network.name()) for p in visible(s) if p["id"] != user.id]
+        out = [{**person(here, p["id"], p["name"], network.name()), "avatar": _shown(here, p["avatar"], p["name"])}
+               for p in visible(s) if p["id"] != user.id]
         linked = [(p.server_id, p.address, p.key, p.name) for p in _linked(s)]
     if linked:
         with ThreadPoolExecutor(max_workers=min(len(linked), 8)) as pool:
@@ -335,10 +427,10 @@ def _songs(view: Session, sid: str, songs: list[dict], through: bool) -> list[di
 
 # ------------------------------------------------------------ messages
 
-def _wire(m: ChatMessage) -> dict:
-    """A message as it goes to the other server."""
+def _wire(m: ChatMessage, look: dict | None = None) -> dict:
+    """A message as it goes to the other server, with its writer's icon."""
     return {"id": m.origin_id, "from_user": m.from_user, "from_name": m.from_name, "to_user": m.to_user,
-            "text": m.text, "links": m.links or [], "sent_at": iso(m.sent_at)}
+            "text": m.text, "links": m.links or [], "sent_at": iso(m.sent_at), "from_avatar": look}
 
 
 def message_json(m: ChatMessage, uid: int, view: Session | None = None) -> dict:
@@ -372,7 +464,7 @@ def conversations(user: User) -> dict:
                 continue
             if not who["here"] and (p := _peer(s, who["server"])) is not None:
                 who["place"] = p.name
-            out[key] = {"with": who, "at": iso(m.sent_at), "unread": unread.get(key, 0),
+            out[key] = {"with": dressed(who), "at": iso(m.sent_at), "unread": unread.get(key, 0),
                         "last": {"text": m.text[:140], "mine": _sent(m, user.id), "links": len(m.links or [])}}
     return {"conversations": list(out.values()), "unread": sum(unread.values())}
 
@@ -387,7 +479,7 @@ def thread(user: User, sid: str, other: int, view: Session, before: int | None =
                 q = q.where(or_(ChatMessage.sent_at < b.sent_at, and_(ChatMessage.sent_at == b.sent_at, ChatMessage.id < b.id)))
         rows = list(s.scalars(q.order_by(ChatMessage.sent_at.desc(), ChatMessage.id.desc()).limit(PAGE + 1)))
         more, rows = len(rows) > PAGE, rows[:PAGE]
-        who = _other(rows[0], user.id) if rows else None
+        who = dressed(_other(rows[0], user.id)) if rows else None
     if who is None:
         who = next((p for p in people(user) if p["server"] == sid and p["user"] == other), None)
         if who is None:
@@ -454,7 +546,7 @@ def send(user: User, sid: str, other: int, text: str, links: list[dict], view: S
         address, key, place = p.address, p.key, p.name
         m = _add(s, ChatMessage(**base, to_server=sid, to_user=other, to_name=name[:64], to_place=place,
                                 delivered=False))
-        body, mid = _wire(m), m.id
+        body, mid = _wire(m, own_look(user)), m.id
     try:
         with network._client() as c:
             r = c.post(address + "/api/network/chat", json=body, headers={"Authorization": f"Bearer {key}"}, timeout=10)
@@ -501,6 +593,8 @@ def receive(p: Peer, body: dict) -> dict:
     except (ValueError, TypeError):
         sent = _now()
     here = network.server_id()
+    if (look := clean_look(body.get("from_avatar"))) is not None:
+        _looks[(p.server_id, frm)] = look
     try:
         with db.session() as s:
             to = s.get(User, to_user)
@@ -532,7 +626,8 @@ def waiting(p: Peer, after: int = 0) -> dict:
         newly = [m for m in rows if not m.delivered]
         for m in newly:
             m.delivered = True
-        out = [_wire(m) for m in rows]
+        writers = {u.id: own_look(u) for u in s.scalars(select(User).where(User.id.in_({m.from_user for m in rows})))}
+        out = [_wire(m, writers.get(m.from_user)) for m in rows]
     for m in newly:
         _note(m.from_user, m, "delivered")
     return {"messages": out, "more": len(rows) == WAITING_PAGE}
@@ -578,9 +673,10 @@ def catch_up_all():
     if not modules.on("network"):
         return
     with db.session() as s:
-        ids = [p.id for p in _linked(s)]
-    for pid in ids:
+        linked = [(p.id, p.server_id, p.address, p.key, p.name) for p in _linked(s)]
+    for pid, *who in linked:
         try:
+            _theirs(*who)
             catch_up(pid)
         except Exception:
             log.exception("Couldn't fetch the messages waiting on a linked server")

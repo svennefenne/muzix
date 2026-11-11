@@ -23,7 +23,7 @@ at a time, and link albums and songs in what they write. The owner's choices (20
 |---|---|
 | `backend/muzix/chat.py` | people, messages, links (snapshots and how a reader's server finds them), handing over and catching up |
 | `backend/muzix/api/chat.py` | the pages' routes (`/api/chat/...`), the stream and cover of a link not mirrored here |
-| `backend/muzix/api/network.py` | what linked servers call: `/api/network/chat`, `/api/network/chat/people` |
+| `backend/muzix/api/network.py` | what linked servers call: `/api/network/chat`, `/api/network/chat/people`, `/api/network/avatars/{name}` |
 | `backend/muzix/api/connect.py` | `tell(uid, msg)`: a word to an account's open pages over Muzix Connect's websocket |
 | `models.ChatMessage`, `Peer.chat_after` | the messages; how far this server has fetched a linked server's |
 | `frontend/src/chat/` | the panel (`Chat.tsx`), links, hover card and More info (`Links.tsx`), the preview player (`preview.ts`), state (`store.ts`), rules that need no page (`logic.ts`, tested in `frontend/tests`) |
@@ -61,6 +61,17 @@ The pages hear of new messages, reads and deliveries over the websocket Muzix Co
 (`{"t": "chat", "event": "new" | "read" | "delivered", "with", "mine", "text", "links"}`), and fetch
 the lists again; the list of conversations is also fetched every minute and when the page comes back
 into view.
+
+## Icons
+
+People show with their account's icon (`components/Avatar.tsx`, `User.avatar`): a picture of their own
+or a letter on a colour. A server tells its linked servers each person's icon with its list of people
+and with every message they write (`"avatar"` / `"from_avatar"`: `{"picture": "<name>.webp" | null,
+"letter", "color"}`), and the other server keeps the latest in memory (`chat._looks`; the five-minute
+catch-up fetches the lists again). A picture is fetched once through the reader's own server,
+`/api/chat/avatars/{sid}/{name}` → `GET {their address}/api/network/avatars/{name}`, which hands out only
+pictures an account there uses. A picture's name is the start of its contents' SHA-256, so it's checked
+on arrival and kept for good under the cache folder (`avatars/`).
 
 ## Links
 

@@ -10,13 +10,17 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, select, update
 
-from muzix import art, chat, db, limits, network
+from muzix import art, chat, db, env, limits, network
 from muzix.api import chat as chat_api, connect, network as network_api
 from muzix.models import Album, Artist, ChatMessage, Peer, Root, Track, User
 from muzix.security import current_user
 
 KEY = "friendkey" * 5          # what Friend shows us
 OURS = "ourkey" * 7            # what we show Friend
+DORA_PIC = b"RIFF dora's picture WEBP"       # dora's icon picture on Friend, named by its contents
+DORA_NAME = hashlib.sha256(DORA_PIC).hexdigest()[:24] + ".webp"
+BO_PIC = b"RIFF bo's picture WEBP"
+BO_NAME = hashlib.sha256(BO_PIC).hexdigest()[:24] + ".webp"
 
 
 class Friend:
@@ -24,6 +28,7 @@ class Friend:
 
     def __init__(self):
         self.got, self.waiting, self.asked_after = [], [], []
+        self.pictures = 0
         self.down = self.old = False
 
     def handle(self, req: httpx.Request) -> httpx.Response:
@@ -33,7 +38,12 @@ class Friend:
             return httpx.Response(404, json={"detail": "Not Found"})
         assert req.headers["authorization"] == f"Bearer {OURS}"
         if req.url.path == "/api/network/chat/people":
-            return httpx.Response(200, json=[{"id": 7, "name": "dora"}])
+            return httpx.Response(200, json=[{"id": 7, "name": "dora", "avatar": {"picture": DORA_NAME, "letter": None, "color": None}},
+                                             {"id": 8, "name": "eli", "avatar": {"picture": "../x.webp", "letter": "EL", "color": "#ABCDEF"}}])
+        if req.url.path.startswith("/api/network/avatars/"):
+            self.pictures += 1
+            name = req.url.path.rsplit("/", 1)[1]
+            return httpx.Response(200, content=DORA_PIC if name == DORA_NAME else b"something else")
         if req.url.path == "/api/network/chat" and req.method == "POST":
             body = json.loads(req.content)
             if body["to_user"] != 7:
@@ -53,8 +63,11 @@ def world():
     with an album of its own mirrored here; and a server we're not linked with."""
     with db.session() as s:
         s.execute(delete(ChatMessage))
-        users = {n: User(username=f"chat-{n}", password_hash="x", prefs={"chat_hidden": True} if n == "cia" else {})
-                 for n in ("anna", "bo", "cia", "eve")}
+        looks = {"anna": {"letter": "AN", "color": "#4a7fc1"}, "bo": {"picture": BO_NAME}}
+        users = {n: User(username=f"chat-{n}", password_hash="x", prefs={"chat_hidden": True} if n == "cia" else {},
+                         avatar=looks.get(n)) for n in ("anna", "bo", "cia", "eve")}
+        env.AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+        (env.AVATAR_DIR / BO_NAME).write_bytes(BO_PIC)
         root, theirs = Root(path="/chat-music", kind="music"), Root(path="peer:friend-server", kind="peer")
         ar = Artist(name="Chat Band")
         s.add_all([*users.values(), root, theirs, ar])
@@ -76,7 +89,7 @@ def world():
                   for n in (1, 2)]
         s.add_all(songs)
         s.flush()
-        return {**{n: SimpleNamespace(id=u.id, username=u.username, prefs=u.prefs) for n, u in users.items()},
+        return {**{n: SimpleNamespace(id=u.id, username=u.username, prefs=u.prefs, avatar=u.avatar) for n, u in users.items()},
                 "peer": friend.id, "ours": ours.id, "mirrored": mirrored.id, "songs": [t.id for t in songs]}
 
 
@@ -86,6 +99,7 @@ def friend(monkeypatch):
     transport = httpx.MockTransport(f.handle)
     monkeypatch.setattr(network, "_client", lambda follow=False: httpx.Client(transport=transport))
     chat._people.clear()
+    chat._looks.clear()
     return f
 
 
@@ -131,6 +145,43 @@ def test_people_here_and_on_linked_servers(world, friend):
     chat._people.clear()
     friend.down = True
     assert not [p for p in chat.people(world["anna"]) if p["server"] == "friend-server"]
+
+
+def test_everyone_with_their_icon(world, friend, notes):
+    found = {p["name"]: p for p in chat.people(world["eve"])}
+    assert found["chat-anna"]["avatar"] == {"picture": None, "letter": "AN", "color": "#4a7fc1"}
+    assert found["chat-bo"]["avatar"]["picture"] == f"/api/avatars/{BO_NAME}"
+    assert found["dora"]["avatar"]["picture"] == f"/api/chat/avatars/friend-server/{DORA_NAME}"   # through this server
+    assert found["eli"]["avatar"] == {"picture": None, "letter": "EL", "color": "#abcdef"}       # an odd picture name dropped
+
+    # its picture: fetched once, kept, and only if it's what its name says
+    assert open(chat.picture("friend-server", DORA_NAME), "rb").read() == DORA_PIC
+    assert chat.picture("friend-server", DORA_NAME) and friend.pictures == 1
+    assert chat.picture("friend-server", "0" * 24 + ".webp") is None
+    assert chat.picture("friend-server", "../../secret.key") is None
+    assert chat.picture("stranger-server", DORA_NAME.replace("a", "b", 1)) is None
+
+    # a message brings its writer's icon along, for the conversation
+    chat._looks.clear()
+    msg = {"id": 70, "from_user": 9, "from_name": "finn", "to_user": world["eve"].id, "text": "hej",
+           "from_avatar": {"picture": None, "letter": "F", "color": "#123456"}}
+    chat.receive(friend_peer(), msg)
+    (c,) = chat.conversations(world["eve"])["conversations"]
+    assert c["with"]["avatar"] == {"picture": None, "letter": "F", "color": "#123456"}
+    with view() as v:
+        sent = chat.send(world["anna"], "friend-server", 7, "hej dora", [], v, name="dora")
+    assert sent["delivered"] and friend.got[-1]["from_avatar"] == {"picture": None, "letter": "AN", "color": "#4a7fc1"}
+
+    # this server's pictures, for linked servers: only one an account uses
+    app = FastAPI()
+    app.include_router(network_api.router)
+    c = TestClient(app)
+    ok = {"Authorization": f"Bearer {KEY}"}
+    assert c.get(f"/api/network/avatars/{BO_NAME}").status_code == 401
+    assert c.get(f"/api/network/avatars/{BO_NAME}", headers=ok).content == BO_PIC
+    assert c.get(f"/api/network/avatars/{DORA_NAME}", headers=ok).status_code == 404
+    listed = {p["name"]: p["avatar"] for p in c.get("/api/network/chat/people", headers=ok).json()}
+    assert listed["chat-anna"] == {"picture": None, "letter": "AN", "color": "#4a7fc1"} and listed["chat-bo"]["picture"] == BO_NAME
 
 
 def test_a_conversation_here(world, friend, notes):
@@ -266,7 +317,9 @@ def test_writing_to_someone_on_a_linked_server(world, friend, notes):
     assert (body["from_user"], body["from_name"], body["to_user"], body["text"]) == (world["anna"].id, "chat-anna", 7, "hej dora")
     assert body["id"] == sent["id"] and body["links"][0]["title"] == "Our Record"
     (c,) = chat.conversations(world["anna"])["conversations"]
-    assert c["with"] == {"server": "friend-server", "user": 7, "name": "dora", "place": "Friend", "here": False}
+    assert {k: v for k, v in c["with"].items() if k != "avatar"} == \
+        {"server": "friend-server", "user": 7, "name": "dora", "place": "Friend", "here": False}
+    assert c["with"]["avatar"]["letter"] == "D"          # her icon isn't known here yet: her initial
 
     with view() as v:
         with pytest.raises(chat.ChatError, match="nobody by that name") as e:

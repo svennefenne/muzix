@@ -4,6 +4,7 @@ syncing and unlinking) and what other Muzix servers call."""
 import os
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, WebSocket
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -238,6 +239,15 @@ def chat_in(body: dict, p: Peer = Depends(linked_server)):
         return chat.receive(p, body)
     except chat.ChatError as e:
         raise HTTPException(e.status, str(e))
+
+
+@router.get("/avatars/{name}", dependencies=[Depends(linked_server)])
+def chat_avatar(name: str):
+    """An account's icon picture, for its people list and messages there."""
+    path = chat.own_picture(name)
+    if path is None:
+        raise HTTPException(404, "No such picture")
+    return FileResponse(path, media_type="image/webp", headers={"Cache-Control": "private, max-age=31536000, immutable"})
 
 
 @router.get("/chat")
