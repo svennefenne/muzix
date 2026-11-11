@@ -47,7 +47,7 @@ Muzix is a self-hosted, Spotify-style player for everything you own: your music 
 
 - **Name:** Muzix.
 - **Logo:** a cassette made of the five colour stripes, notched on top so it also reads as an M, and the name, with the name's capitals exactly as tall as the cassette. (Before 2026-10-26 it was five vertical stripes, which looked too much like other players' spectrum-bar marks, CLIAmp's in particular; keep away from bars of varying height.)
-- **App icon:** its own mark, not the cassette (chosen 2026-11-11): six upright stripes of equal height, the backdrop of the owner's Hooden icon, nearly filling the plate with a thin, even edge, and across them two beamed eighth notes shown only as a colour shift, each stripe taking the colour three along as in Deck Force, with the beam bent into a calm M. The cassette icon it replaced is kept in docs/icons/cassette, to go back to.
+- **App icon:** the cassette, with six stripes in the colours of the owner's Hooden icon and a deck across the middle (a dark panel with two reels with amber hubs and the tape window), filling Hooden's plate (chosen 2026-11-11, as variant 8 of the owner's picks; scripts/icons.py draws every size). Before it: the five-stripe cassette (docs/icons/cassette) and, briefly, six upright stripes with two eighth notes (docs/icons/eighths).
 - **Look:** modelled on the owner's site *Unlimited Deck Force*. The reference screenshot is outside the repo, at `~/Projects/muzix-testdata/design-ref/deckforce-home.png`.
 - **Binding (from the owner):**
   - The layout follows Spotify's arrangement while the Deck Force style stays intact. That style covers the colours, fonts, genre skins, frame lines, kicker labels, the now-playing ticker and the footer status line.

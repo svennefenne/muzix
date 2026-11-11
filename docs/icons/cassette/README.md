@@ -13,6 +13,7 @@ five bars until 2026-11-11 (docs/icons/bars).
 | `frontend/public/icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `apple-touch-icon.png` | the web app's icons |
 | `desktop/muzix_desktop/assets/icon.png`, `icon.ico`, `icons/*.png` | Muzix Desktop's icon, drawn for each size |
 | `android/app/src/main/res/drawable/ic_launcher_foreground.xml`, `ic_launcher_monochrome.xml`, `mipmap-anydpi/ic_launcher.xml` | Android's adaptive launcher icon, on the plain `@color/muzix_bg` background |
+| `android/app/src/main/res/drawable/ic_stat_muzix.xml` | the notification icon, the cassette in white (in use until the six-stripe cassette replaced it the same day) |
 
 ## Going back
 
