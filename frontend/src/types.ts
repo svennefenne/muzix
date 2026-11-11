@@ -47,7 +47,8 @@ export interface Lyrics {
 
 export type LibraryView = "genres" | "artists" | "albums";
 export type DisplayMode = "list" | "grid" | "gallery";
-export interface BrowsePref { display?: DisplayMode; sort?: string; hide_finished?: boolean; collapsed?: boolean }
+export interface BrowsePref { display?: DisplayMode; sort?: string; hide_finished?: boolean; collapsed?: boolean;
+  scope?: "national" | "international" }
 
 /** The parts of Muzix a server can do without (modules.ts). */
 export type ModuleKey = "vgm" | "audiobooks" | "podcasts" | "radio" | "network";

@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import jobs, podcasts, settings
+from .. import jobs, podcast_directory, podcasts, settings
 from ..db import get_db
 from ..models import Episode, EpisodeProgress, Feed, Subscription, User
 from ..security import current_user, stream_user
@@ -141,58 +141,35 @@ def subscribe(body: SubscribeBody, user: User = Depends(current_user)):
 
 
 @router.get("/search")
-def search(q: str, user: User = Depends(current_user)):
-    country = (settings.get("radio_country") or "US").lower()
-    r = httpx.get("https://itunes.apple.com/search", params={
-        "media": "podcast", "term": q, "limit": 30, "country": country}, timeout=15)
-    r.raise_for_status()
-    return [{"title": x.get("collectionName"), "author": x.get("artistName"), "url": x.get("feedUrl"),
-             "image": x.get("artworkUrl600") or x.get("artworkUrl100"), "genre": x.get("primaryGenreName")}
-            for x in r.json().get("results", []) if x.get("feedUrl")]
-
-
-# Apple Podcasts' categories, for browsing
-GENRES = [(1301, "Arts"), (1321, "Business"), (1303, "Comedy"), (1304, "Education"), (1483, "Fiction"),
-          (1511, "Government"), (1512, "Health & Fitness"), (1487, "History"), (1305, "Kids & Family"),
-          (1502, "Leisure"), (1310, "Music"), (1489, "News"), (1314, "Religion & Spirituality"), (1533, "Science"),
-          (1324, "Society & Culture"), (1545, "Sports"), (1318, "Technology"), (1488, "True Crime"), (1309, "TV & Film")]
+def search(q: str, scope: str = "national", user: User = Depends(current_user)):
+    """Apple's matches (in this server's country, or the United States'), then Podcast Index's (podcast_directory.py)."""
+    try:
+        return podcast_directory.search(q, scope)
+    except (httpx.HTTPError, ValueError) as e:
+        log.info("podcast search: %s", e)
+        raise HTTPException(502, "Podcast search can't be reached right now")
 
 
 @router.get("/genres")
 def genres(user: User = Depends(current_user)):
-    return [{"id": i, "name": n} for i, n in GENRES]
+    """Apple Podcasts' categories with their subcategories, and Podcast Index's own under the nearest."""
+    return podcast_directory.tree()
+
+
+@router.get("/browse")
+def browse(genre: str = "", scope: str = "national", user: User = Depends(current_user)):
+    """A category's lists (overall, with no genre), from each source there's a key for: national or international."""
+    return podcast_directory.browse(genre, scope)
 
 
 @router.get("/top")
 def top(genre: int | None = None, user: User = Depends(current_user)):
-    """The charts for this server's country: overall, or for one category."""
+    """The charts for this server's country: overall, or for one category (the apps from before /browse)."""
     try:
-        return _top((settings.get("radio_country") or "us").lower(), genre)
+        return podcast_directory.apple_chart(podcast_directory.place("national")[0], genre, 50)
     except (httpx.HTTPError, ValueError) as e:      # Apple slow or down: try again next time
         log.info("podcast charts: %s", e)
         raise HTTPException(502, "The charts can't be reached right now")
-
-
-def _top(country: str, genre: int | None) -> list[dict]:
-    if genre:
-        r = httpx.get(f"https://itunes.apple.com/{country}/rss/toppodcasts/limit=50/genre={genre}/json",
-                      timeout=15, follow_redirects=True)
-        if r.status_code != 200:
-            return []
-        entries = r.json().get("feed", {}).get("entry", [])
-        ids = [e["id"]["attributes"]["im:id"] for e in (entries if isinstance(entries, list) else [entries])]
-    else:
-        r = httpx.get(f"https://rss.marketingtools.apple.com/api/v2/{country}/podcasts/top/30/podcasts.json",
-                      timeout=15, follow_redirects=True)
-        if r.status_code != 200:
-            return []
-        ids = [x["id"] for x in r.json().get("feed", {}).get("results", [])]
-    if not ids:
-        return []
-    look = httpx.get("https://itunes.apple.com/lookup", params={"id": ",".join(ids), "entity": "podcast"}, timeout=15)
-    return [{"title": x.get("collectionName"), "author": x.get("artistName"), "url": x.get("feedUrl"),
-             "image": x.get("artworkUrl600"), "genre": x.get("primaryGenreName")}
-            for x in look.json().get("results", []) if x.get("feedUrl")]
 
 
 @router.get("/{feed_id}")

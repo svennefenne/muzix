@@ -8,6 +8,7 @@ import { AdminCog } from "../components/AdminMode";
 import { DownloadButton } from "../components/DownloadButton";
 import { Segmented } from "../components/Browse";
 import { Art, Display, Empty, Kicker, Loading, Modal, NewDot, Section, Switch, useMenu } from "../components/ui";
+import { appPlayer, useShell } from "../player/app";
 import { engine } from "../player/engine";
 import { fromEpisode, usePlayer, useStartedEpisodes } from "../store/player";
 import { useUi } from "../store/ui";
@@ -134,12 +135,18 @@ export default function Podcasts() {
   const latest = useQuery({ queryKey: ["podcasts-latest"], queryFn: () => api.get<Episode[]>("/api/podcasts/latest") });
   // fetched on each visit: what was heard elsewhere (the app, another device) since
   const resume = useQuery({ queryKey: ["podcasts-continue"], queryFn: () => api.get<Episode[]>("/api/podcasts/continue", { limit: 6 }), staleTime: 0 });
-  const [genre, setGenre] = useState<number | null>(null);
-  const genres = useQuery({ queryKey: ["podcast-genres"], queryFn: () => api.get<{ id: number; name: string }[]>("/api/podcasts/genres"), staleTime: Infinity });
-  const top = useQuery({
-    queryKey: ["podcasts-top", genre], staleTime: 3600_000,
-    queryFn: () => api.get<PodcastHit[]>("/api/podcasts/top", genre ? { genre } : {}),
+  // browsing: a category, and one of its subcategories, national or international (remembered on the device)
+  const [genre, setGenre] = useState<Category | null>(null);
+  const [sub, setSub] = useState<string | null>(null);
+  const genres = useQuery({ queryKey: ["podcast-genres"], queryFn: () => api.get<Category[]>("/api/podcasts/genres"), staleTime: 3600_000 });
+  const scope = useUi((s) => s.browse["podcasts-browse"]?.scope) ?? "national";
+  const asked = sub ?? (genre ? String(genre.id) : "");
+  const browsed = useQuery({
+    queryKey: ["podcasts-browse", asked, scope], staleTime: 3600_000,
+    queryFn: () => api.get<Browsed>("/api/podcasts/browse", { genre: asked, scope }),
   });
+  const admin = useUi((s) => !!s.user?.is_admin);
+  const inApp = useShell((s) => s.opens);     // the apps have no admin pages: the server's, in the browser
   const [term, setTerm] = useState("");
   const [hits, setHits] = useState<PodcastHit[] | null>(null);
   const [adding, setAdding] = useState(false);
@@ -177,7 +184,7 @@ export default function Podcasts() {
   const search = async () => {
     if (!term.trim()) return;
     setHits(null);
-    setHits(await api.get<PodcastHit[]>("/api/podcasts/search", { q: term }));
+    setHits(await api.get<PodcastHit[]>("/api/podcasts/search", { q: term, scope }));
   };
   const importOpml = async (file: File) => {
     const fd = new FormData();
@@ -253,14 +260,43 @@ export default function Podcasts() {
         </Section>
       )}
 
-      <Section kicker="Charts" title="Browse">
+      <Section kicker="Charts" title="Browse"
+               more={<Segmented label="Where" value={scope} options={[...SCOPES]}
+                                onChange={(v) => setBrowse("podcasts-browse", { scope: v })} />}>
         <div className="subnav swipe" role="toolbar" aria-label="Categories">
-          <button className={genre === null ? "active" : ""} aria-pressed={genre === null} onClick={() => setGenre(null)}>Top</button>
+          <button className={genre === null ? "active" : ""} aria-pressed={genre === null}
+                  onClick={() => { setGenre(null); setSub(null); }}>Top</button>
           {(genres.data || []).map((g) => (
-            <button key={g.id} className={genre === g.id ? "active" : ""} aria-pressed={genre === g.id} onClick={() => setGenre(g.id)}>{g.name}</button>
+            <button key={g.id} className={genre?.id === g.id ? "active" : ""} aria-pressed={genre?.id === g.id}
+                    onClick={() => { setGenre(g); setSub(null); }}>{g.name}</button>
           ))}
         </div>
-        {top.isLoading ? <Loading /> : top.data?.length ? <HitGrid list={top.data} /> : <Empty title="Nothing in this chart right now" />}
+        {/* a category's subcategories, to dig further */}
+        {genre && genre.subs?.length > 0 && (
+          <div className="subnav swipe subcats" role="toolbar" aria-label={`${genre.name}: subcategories`}>
+            <button className={sub === null ? "active" : ""} aria-pressed={sub === null} onClick={() => setSub(null)}>All {genre.name}</button>
+            {genre.subs.map((s) => (
+              <button key={s.id} className={sub === String(s.id) ? "active" : ""} aria-pressed={sub === String(s.id)}
+                      onClick={() => setSub(String(s.id))}>{s.name}</button>
+            ))}
+          </div>
+        )}
+        {browsed.isLoading ? <Loading /> : browsed.data?.sections.some((s) => s.items.length) ? (
+          browsed.data.sections.filter((s) => s.items.length).map((s) => (
+            <div key={s.source} className="browse-source">
+              <h3 className="h3">{sourceTitle(s.source, browsed.data)}</h3>
+              <HitGrid list={s.items} />
+            </div>
+          ))
+        ) : <Empty title="Nothing in this chart right now" />}
+        {admin && browsed.data && browsed.data.missing.length > 0 && (
+          <p className="dim browse-more">
+            More lists from {browsed.data.missing.map((m) => SOURCES[m]).join(" and ")}: their keys go under
+            {" "}{inApp
+              ? <a href="/admin/settings" onClick={(e) => { e.preventDefault(); appPlayer.openOnServer("/admin/settings"); }}>Admin → Settings</a>
+              : <Link to="/admin/settings">Admin → Settings</Link>}, Podcasts &amp; radio.
+          </p>
+        )}
       </Section>
 
       {adding && (
@@ -275,6 +311,31 @@ export default function Podcasts() {
       )}
     </div>
   );
+}
+
+interface Category { id: number; name: string; subs: { id: number | string; name: string }[] }
+interface Browsed {
+  country: string;          // two letters
+  languages: string;        // Podcast Index's, the first
+  sections: { source: "apple" | "podcastindex" | "listennotes"; items: PodcastHit[] }[];
+  missing: string[];        // the sources without a key yet
+}
+
+const SCOPES = [{ value: "national", label: "National" }, { value: "international", label: "International" }] as const;
+const SOURCES: Record<string, string> = { apple: "Apple Podcasts", podcastindex: "Podcast Index", listennotes: "Listen Notes" };
+
+/** "Apple Podcasts · Sweden", "Trending on Podcast Index · Swedish", "Best on Listen Notes · Sweden". */
+function sourceTitle(source: string, b: Browsed) {
+  const name = (type: "region" | "language", code: string) => {
+    try {
+      return new Intl.DisplayNames(["en"], { type }).of(type === "region" ? code.toUpperCase() : code) || code;
+    } catch {
+      return code;
+    }
+  };
+  if (source === "podcastindex") return `Trending on Podcast Index · ${name("language", b.languages)}`;
+  if (source === "listennotes") return `Best on Listen Notes · ${name("region", b.country)}`;
+  return `Apple Podcasts · ${name("region", b.country)}`;
 }
 
 const ORDERS = [{ value: "newest", label: "Newest" }, { value: "oldest", label: "Oldest" }] as const;

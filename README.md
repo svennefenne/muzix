@@ -85,6 +85,14 @@ shared with the others on your server if you like.
   speed control, finished/unfinished.
 - **Podcasts**: subscribe by URL or from the Apple Podcasts directory, top
   charts, OPML import/export, resume, downloads (automatic if you like).
+  *Browse* has Apple's 19 categories and their 91 subcategories (Leisure →
+  Video Games, say), National (the server's country, *Radio home country*, and
+  its language) or International (the United States' charts, English). With
+  their keys (*Admin → Settings*, Podcasts & radio, both free) it also shows
+  what's trending on Podcast Index, in its categories Apple doesn't have too
+  (Tabletop, Role-Playing, Climate...), which also adds to search, and Listen
+  Notes' best in each category. The lists are kept an hour, Listen Notes' a
+  week (its free plan allows 300 requests a month).
   A blue dot, as on Spotify, marks episodes out since you subscribed that you
   haven't started, and podcasts that have one; new episodes also show at the
   top of the home page.

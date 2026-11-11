@@ -77,7 +77,16 @@ SCHEMA: list[Spec] = [
     Spec("podcast_keep_days", "int", 30, "Podcasts & radio", "Keep downloaded episodes (days)",
          "0 keeps them forever.", min=0, max=3650),
     Spec("radio_country", "str", "", "Podcasts & radio", "Radio home country",
-         "Two-letter code for the \"popular near you\" list, e.g. SE."),
+         "Two-letter code for the \"popular near you\" list, e.g. SE. Podcasts' National lists are this "
+         "country's too, in its language."),
+    Spec("podcastindex_key", "secret", "", "Podcasts & radio", "Podcast Index API key",
+         "What's trending on Podcast Index (an open index of over four million podcasts), by language and in "
+         "more categories, and more search results. Free: sign up at https://api.podcastindex.org and paste "
+         "the key and its secret here."),
+    Spec("podcastindex_secret", "secret", "", "Podcasts & radio", "Podcast Index API secret"),
+    Spec("listennotes_key", "secret", "", "Podcasts & radio", "Listen Notes API key",
+         "Listen Notes' best podcasts in each category, by country. Free at "
+         "https://www.listennotes.com/api/pricing/ (300 requests a month: Muzix keeps its lists a week)."),
     # uploads
     Spec("upload_musicbrainz", "bool", True, "Uploads", "Match with MusicBrainz"),
     Spec("upload_fetch_art", "bool", True, "Uploads", "Find cover art"),
