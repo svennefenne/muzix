@@ -96,6 +96,11 @@ SCHEMA: list[Spec] = [
     Spec("upload_check_duplicates", "bool", True, "Uploads", "Check for duplicates",
          "Before files go up: the same file uploaded before or waiting to be imported, and songs the "
          "library seems to have already (by title, with the artist or album in the file or folder names)."),
+    # the watch folder (watch.py): set on the admin page's upload area, not in the settings form
+    Spec("watch_folder", "str", "", "Watch folder", "Watch folder",
+         "Albums put here are filed into the library by themselves. Empty: none."),
+    Spec("watch_computer", "str", "", "Watch folder", "On the computer",
+         "The id of the computer (Muzix Desktop) the watch folder is on; empty: on this server."),
     # admin mode's edit window
     Spec("discogs_token", "secret", "", "Library", "Discogs personal access token",
          "Album and artist matches and pictures from Discogs when editing in admin mode. Free: sign in at "

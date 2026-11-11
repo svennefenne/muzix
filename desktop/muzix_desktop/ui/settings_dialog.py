@@ -303,11 +303,34 @@ class SettingsDialog(QDialog):
                 else live if live in ("offline", "refused", "connecting") else s.state
             text, role = STATUS.get(status, (status, "dim"))
             info.addWidget(label(text, role, wrap=True))
+            # its admin's watch folder on this computer (sharing.py): albums put there go into its library
+            watch = QCheckBox("May pick a folder here to watch for new music")
+            watch.setToolTip("Its admin sees this computer's folder names to pick one, and then reads and moves files "
+                             "only in that folder: albums put there are filed into the server's library, and the files "
+                             "here go to its _Done folder. While Muzix Desktop runs and shares.")
+            watch.setChecked(s.watch)
+            watch.toggled.connect(lambda on, sid=s.server_id: self._set_watch(sid, on))
+            info.addSpacing(4)
+            info.addWidget(watch)
+            if s.watch and s.watch_folder:
+                info.addWidget(Elided(f"Watches {s.watch_folder}", "faint"))
             rl.addLayout(info, 1)
             rm = _button("Remove", "ghost")
             rm.clicked.connect(lambda _=False, s=s: self._unlink(s))
             rl.addWidget(rm, 0, Qt.AlignTop)
             self.server_rows.addWidget(row)
+
+    def _set_watch(self, sid: str, on: bool):
+        """Whether the server's admin may pick a watch folder here; taking it back forgets the folder."""
+        with config._lock:
+            server = self.cfg.server(sid)
+            if server is None:
+                return
+            server.watch = on
+            if not on:
+                server.watch_folder = ""
+            config.save()
+        self.show_servers()
 
     def _unlink(self, s: config.Server):
         def done(_):

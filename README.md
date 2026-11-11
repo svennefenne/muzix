@@ -177,6 +177,18 @@ shared with the others on your server if you like.
   (switch it off on the upload page) lists files uploaded before or waiting to
   be imported, and songs the library seems to have already by their names; you
   skip them or upload them anyway.
+- **Watch folder** (Admin → Upload): albums put in a folder you pick, on the
+  server or on a computer whose Muzix Desktop allows it, are filed by
+  themselves, the same way. Each is looked up on MusicBrainz, where a release
+  counts when its songs are as many and as long, and else on Bandcamp, whose
+  track list and cover then go into the files; one neither has is filed as its
+  tags say and listed for a look. An album is taken two minutes after its last
+  file arrived (the folder is looked at every minute). What isn't music goes to
+  `_Done/<album>`, an album the library seems to have to `_Duplicates/<album>`
+  (*File anyway* there), one that couldn't be filed to `_Failed/<album>`:
+  nothing is deleted. From a computer the music is copied, and its files there
+  go to `_Done`; the computer has to be on with Muzix Desktop running and
+  sharing.
 - Spotify-style layout in the Deck Force look: your library on the left, the
   page in a frame, what's playing on the right (toggle it from the player bar),
   player and status line below. Works on phones too.

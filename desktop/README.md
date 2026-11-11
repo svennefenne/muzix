@@ -80,6 +80,16 @@ Then your music is in that server's library while this computer is on, and hidde
 while it's off. Nothing on your computer is changed by sharing, and the server
 can read only the songs in the shared folders.
 
+## A server's watch folder here
+
+*Settings → Servers → May pick a folder here to watch* lets that server's admin
+pick a folder on this computer for the server's watch folder (Admin → Upload):
+they see the folder names here to pick one, and from then on the server reads
+and moves files in that folder alone. Albums put there are copied into the
+server's library and then go to the folder's `_Done`; ones it already seems to
+have go to `_Duplicates`, ones it couldn't file to `_Failed`. Unticking it takes
+that back and forgets the folder. It works while Muzix Desktop runs and shares.
+
 ## Fix Metadata & Artwork
 
 *Settings → Metadata & artwork* chooses the sources (MusicBrainz with the Cover

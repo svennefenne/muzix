@@ -7,7 +7,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import API_VERSION, __version__, chat, db, env, jobs, modules, network, settings, tunnel
+from . import API_VERSION, __version__, chat, db, env, jobs, modules, network, settings, tunnel, watch
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -44,7 +44,7 @@ def create_app() -> FastAPI:
     from .organize import importer  # noqa: F401
     from .api import admin, android, auth, books as books_api, chat as chat_api, library, me, podcasts as podcasts_api
     from .api import connect, manage as manage_api, network as network_api, online, radio, setup
-    from .api import schemes, stream, tags, upload
+    from .api import schemes, stream, tags, upload, watch as watch_api
 
     app = FastAPI(title="Muzix", version=__version__, docs_url="/api/docs", openapi_url="/api/openapi.json")
     app.add_middleware(NoProxyBuffering)
@@ -52,7 +52,7 @@ def create_app() -> FastAPI:
     module_of = {books_api: "audiobooks", podcasts_api: "podcasts", radio: "radio", online: "vgm", network_api: "network",
                  chat_api: "network"}
     for mod in (auth, setup, library, stream, me, admin, books_api, podcasts_api, radio, upload,
-                online, manage_api, connect, android, network_api, chat_api, tags, schemes):
+                online, manage_api, connect, android, network_api, chat_api, tags, schemes, watch_api):
         needs = [Depends(modules.needed(module_of[mod]))] if mod in module_of else []
         app.include_router(mod.router, dependencies=needs)
         if hasattr(mod, "art_router"):
@@ -123,6 +123,7 @@ def create_app() -> FastAPI:
     if not os.environ.get("MUZIX_NO_SCHEDULER"):
         jobs.start_scheduler()
         chat.start()
+        watch.start()
     return app
 
 

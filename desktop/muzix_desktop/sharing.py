@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import secrets
+import shutil
 import ssl
 import struct
 import threading
@@ -125,6 +126,105 @@ def unlink(server: config.Server):
     with config._lock:
         cfg.servers = [s for s in cfg.servers if s.server_id != server.server_id]
         config.save()
+
+
+# ---------------------------------------------------------------- the server's watch folder, here
+
+HELD = ("_Done", "_Duplicates", "_Failed")
+
+
+def _server(sid: str) -> config.Server:
+    """The server, if it may pick a folder here (Settings → Servers)."""
+    s = config.load().server(sid)
+    if s is None or not s.watch:
+        raise PermissionError("Muzix Desktop on this computer doesn't let this server pick a folder here: "
+                              "Settings → Servers → \"May pick a folder here to watch\"")
+    return s
+
+
+def watched(sid: str, path, held: str, rel: str = "") -> str:
+    """A path in the watch folder the server's admin picked here (or in one of its HELD folders), or why not."""
+    s = _server(sid)
+    folder = os.path.realpath(s.watch_folder) if s.watch_folder else ""
+    if not folder or os.path.realpath(path or "") != folder:
+        raise PermissionError("That isn't the folder picked here for the watch folder")
+    if held and held not in HELD:
+        raise PermissionError("Not one of the watch folder's own folders")
+    base = os.path.join(folder, held) if held else folder
+    out = os.path.realpath(os.path.join(base, rel))
+    if out != base and not out.startswith(base + os.sep):
+        raise PermissionError("Outside the watch folder")
+    return out
+
+
+def _browse(sid: str, m: dict) -> dict:
+    """The folders in a folder here (the home folder first), for the server's admin to pick one."""
+    _server(sid)
+    path = os.path.realpath(os.path.expanduser(m.get("path") or "~"))
+    dirs = sorted((e.name for e in os.scandir(path) if e.is_dir() and not e.name.startswith(".")), key=str.lower)
+    parent = os.path.dirname(path)
+    return {"path": path, "parent": parent if parent != path else None, "folders": dirs[:500]}
+
+
+def _set(sid: str, m: dict) -> dict:
+    """The folder the server's admin picked here: the only one it may read and move files in from now on."""
+    s = _server(sid)
+    path = os.path.realpath(os.path.expanduser(m.get("path") or ""))
+    if not os.path.isdir(path) or not os.access(path, os.W_OK):
+        raise PermissionError("That folder isn't here, or Muzix Desktop can't move files in it")
+    cfg = config.load()
+    with config._lock:
+        cfg.server(sid).watch_folder = path
+        config.save()
+    log.info("%s watches %s", s.name, path)
+    return {"path": path}
+
+
+def _list(sid: str, m: dict) -> list[dict]:
+    """What's in the watch folder (or one of its HELD folders): each album with (path, size, modified) of its
+    files, paths from that folder."""
+    base = watched(sid, m.get("path"), m.get("held") or "")
+    out = []
+    for e in os.scandir(base):
+        if e.name.startswith(("_", ".")):
+            continue
+        if e.is_file():
+            st = e.stat()
+            out.append({"name": e.name, "files": [[e.name, st.st_size, st.st_mtime]]})
+        elif e.is_dir():
+            files = []
+            for r, dirs, fs in os.walk(e.path):
+                dirs[:] = [d for d in dirs if not d.startswith(".")]
+                for f in fs:
+                    try:
+                        st = os.stat(os.path.join(r, f))
+                    except OSError:
+                        continue
+                    files.append([os.path.relpath(os.path.join(r, f), base).replace(os.sep, "/"), st.st_size, st.st_mtime])
+            out.append({"name": e.name, "files": files})
+    return out
+
+
+def _move(sid: str, m: dict) -> dict:
+    """An album (in the watch folder, or one of its HELD folders) into one of HELD: nothing is deleted, and a
+    move never overwrites."""
+    name, to = m.get("name") or "", m.get("to") or ""
+    if to not in HELD or not name or "/" in name or "\\" in name or name in (".", ".."):
+        raise PermissionError("Not a move the watch folder makes")
+    src = watched(sid, m.get("path"), m.get("held") or "", name)
+    if not os.path.exists(src):
+        return {"moved": False}
+    dest_dir = watched(sid, m.get("path"), to)
+    os.makedirs(dest_dir, exist_ok=True)
+    stem, ext = os.path.splitext(name) if os.path.isfile(src) else (name, "")
+    dest, n = os.path.join(dest_dir, name), 2
+    while os.path.exists(dest):
+        dest, n = os.path.join(dest_dir, f"{stem} ({n}){ext}"), n + 1
+    shutil.move(src, dest)
+    return {"moved": True}
+
+
+WATCH = {"watch_browse": _browse, "watch_set": _set, "watch_list": _list, "watch_move": _move}
 
 
 class Sharing:
@@ -299,9 +399,14 @@ class Sharing:
                 await self._send_bytes(sid, ws, rid, data)
             elif op == "lyrics":
                 await ws.send(json.dumps({"id": rid, "result": None}))
+            elif op == "watch_file":
+                await self._send_file(sid, ws, rid, watched(sid, m.get("path"), m.get("held") or "", m.get("rel") or ""))
+            elif op in WATCH:
+                result = await asyncio.to_thread(WATCH[op], sid, m)
+                await ws.send(json.dumps({"id": rid, "result": result}))
             else:
                 raise LookupError(f"Unknown request {op}")
-        except (LookupError, OSError, ValueError, KeyError) as e:
+        except (LookupError, OSError, ValueError, KeyError, PermissionError) as e:
             try:
                 await ws.send(json.dumps({"id": rid, "error": str(e) or e.__class__.__name__}))
             except ConnectionClosed:

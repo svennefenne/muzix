@@ -3,7 +3,8 @@
 Each upload batch is a folder in /config/uploads/<batch>. Music goes through
 beets (MusicBrainz match, genre decision, cover art, Genre/Artist/Album naming,
 tags written, covers embedded) and is moved into the music upload folder.
-Chip/tracker files are copied into the VGM upload folder as they are.
+Chip/tracker files are copied into the VGM upload folder as they are. The watch
+folder (watch.py) files its albums the same way, from where they are (file_music).
 """
 
 import json
@@ -22,7 +23,8 @@ PLUGIN_DIR = Path(__file__).parent / "beetsplug"
 BEET = shutil.which("beet") or "beet"
 
 
-def beets_config(music_root: str, batch: str) -> str:
+def beets_config(music_root: str, batch: str, autotag: bool | None = None) -> str:
+    """beets' settings for one import; `autotag` False: the files' tags as they are (matched already)."""
     cfg = {
         "directory": music_root,
         "library": str(env.BEETS_DIR / "library.db"),
@@ -37,7 +39,7 @@ def beets_config(music_root: str, batch: str) -> str:
             # beets bug: WAV-wrapped files already named .mp3 are overwritten and deleted
             "remux_mp3_in_wav": False,
             "log": str(env.BEETS_DIR / "import.log"),
-            "autotag": bool(settings.get("upload_musicbrainz")),
+            "autotag": bool(settings.get("upload_musicbrainz")) if autotag is None else autotag,
         },
         "original_date": True, "per_disc_numbering": False, "id3v23": True, "max_filename_length": 200,
         "match": {"strong_rec_thresh": 0.10},
@@ -147,39 +149,7 @@ def import_upload(ctx: jobs.JobContext, batch: str):
         result["vgm_folder"] = os.path.join(dest_root, "Uploads")
 
     if music:
-        music_root = upload_root("music")
-        if not music_root or not os.access(music_root, os.W_OK):
-            raise RuntimeError("the music upload folder is missing or read-only; check the admin page")
-        write_artist_genres()
-        beet = Beet(ctx, beets_config(music_root, batch))
-        tag = f"mo_batch:{batch}"
-        ctx.update(0.05, "matching with MusicBrainz")
-        beet("import", "--", str(batch_dir))
-        beet("modify", "-y", "-a", f"mo_batch={batch}", f"path:{batch_dir}")
-        ctx.update(0.35, "deciding genres")
-        beet("mplan", tag)
-        beet("mgenre", tag)
-        if settings.get("upload_fetch_art"):
-            ctx.update(0.5, "finding cover art")
-            beet("fetchart", "-q", tag, check=False)
-        beet("mplan", tag)
-        ctx.update(0.65, "writing tags and moving files")
-        before = beet.songs(tag)
-        beet("write", tag)
-        beet("move", tag)
-        after = beet.songs(tag)
-        moved = {path: after[i][0] for i, (path, _) in before.items() if i in after}
-        if n := lyrics.carry(moved, {path: title for path, title in before.values()}):
-            ctx.log(f"{n} lyrics files went along with their songs")
-        beet("embedart", "-y", tag, "artpath::.", check=False)
-        beet("extractart", "-a", "-n", "cover", tag, "^artpath::.", check=False)
-        for r, _, fs in os.walk(music_root):
-            for f in fs:
-                if f.startswith("cover") and os.stat(os.path.join(r, f)).st_mode & 0o777 == 0o600:
-                    os.chmod(os.path.join(r, f), 0o644)
-        result["report"] = beet("mreport", tag, check=False)[-2000:]
-        result["albums"] = beet.albums(tag)
-        result["music_root"] = music_root
+        result.update(file_music(ctx, batch_dir, batch))
 
     left = [os.path.relpath(os.path.join(r, f), batch_dir) for r, _, fs in os.walk(batch_dir) for f in fs]
     if not left:
@@ -189,3 +159,43 @@ def import_upload(ctx: jobs.JobContext, batch: str):
     result["left"] = left[:200]
     jobs.submit("scan", "Scan new uploads")
     return result
+
+
+def file_music(ctx: jobs.JobContext, source, batch: str, autotag: bool | None = None, search_id: str = "") -> dict:
+    """The music in `source` matched with MusicBrainz (with `search_id`, as that release; with `autotag` False,
+    as its tags have it), given a main genre and cover art, and moved into the music upload folder."""
+    out: dict = {}
+    music_root = upload_root("music")
+    if not music_root or not os.access(music_root, os.W_OK):
+        raise RuntimeError("the music upload folder is missing or read-only; check the admin page")
+    write_artist_genres()
+    beet = Beet(ctx, beets_config(music_root, batch, autotag))
+    tag = f"mo_batch:{batch}"
+    ctx.update(0.05, "matching with MusicBrainz")
+    beet("import", *(["-S", search_id] if search_id else []), "--", str(source))
+    beet("modify", "-y", "-a", f"mo_batch={batch}", f"path:{source}")
+    ctx.update(0.35, "deciding genres")
+    beet("mplan", tag)
+    beet("mgenre", tag)
+    if settings.get("upload_fetch_art"):
+        ctx.update(0.5, "finding cover art")
+        beet("fetchart", "-q", tag, check=False)
+    beet("mplan", tag)
+    ctx.update(0.65, "writing tags and moving files")
+    before = beet.songs(tag)
+    beet("write", tag)
+    beet("move", tag)
+    after = beet.songs(tag)
+    moved = {path: after[i][0] for i, (path, _) in before.items() if i in after}
+    if n := lyrics.carry(moved, {path: title for path, title in before.values()}):
+        ctx.log(f"{n} lyrics files went along with their songs")
+    beet("embedart", "-y", tag, "artpath::.", check=False)
+    beet("extractart", "-a", "-n", "cover", tag, "^artpath::.", check=False)
+    for r, _, fs in os.walk(music_root):
+        for f in fs:
+            if f.startswith("cover") and os.stat(os.path.join(r, f)).st_mode & 0o777 == 0o600:
+                os.chmod(os.path.join(r, f), 0o644)
+    out["report"] = beet("mreport", tag, check=False)[-2000:]
+    out["albums"] = beet.albums(tag)
+    out["music_root"] = music_root
+    return out

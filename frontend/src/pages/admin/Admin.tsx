@@ -16,6 +16,7 @@ import { Modules } from "./Modules";
 import { LibraryNetwork } from "./Network";
 import { Tags } from "./Tags";
 import { AdminUsers } from "./Users";
+import { WatchFolder } from "./Watch";
 
 interface Root { id: number; path: string; kind: string; name: string; enabled: boolean; upload_target: boolean; excludes: string[]; items: number; exists: boolean; writable: boolean; last_scan: string | null }
 interface Status {
@@ -567,6 +568,7 @@ function UploadArea() {
           e.target.value = "";
         }} />
       </section>
+      <WatchFolder />
       <section className="panel">
         <div className="panel-head"><div className="h3">Waiting to be imported</div></div>
         {batches.data?.length ? (
@@ -750,7 +752,8 @@ function AdminSettings() {
   const groups = useMemo(() => {
     const g: Record<string, SettingSpec[]> = {};
     // a module's settings, and the modules themselves, are under Modules
-    for (const s of q.data || []) if (!s.module && s.group !== "Modules") (g[s.group] ||= []).push(s);
+    // the modules and the watch folder have places of their own (Modules, Upload → Watch folder)
+    for (const s of q.data || []) if (!s.module && s.group !== "Modules" && s.group !== "Watch folder") (g[s.group] ||= []).push(s);
     return g;
   }, [q.data]);
   useEffect(() => {
