@@ -6,18 +6,12 @@ import { ago, api, fmtLong, fmtNumber } from "../api";
 import { playAlbum, playRandom } from "../actions";
 import { AlbumRow, GenreCard } from "../components/Cards";
 import { Art, Display, Kicker, Loading, NewDot, Section } from "../components/ui";
-import { useModules, useShown } from "../modules";
+import { useModules } from "../modules";
 import { appPlayer, useShell } from "../player/app";
 import { engine } from "../player/engine";
-import { fromEpisode, useStartedEpisodes } from "../store/player";
+import { freshPodcasts, fromEpisode, useStartedEpisodes } from "../store/player";
 import { useUi } from "../store/ui";
 import type { Album, Episode, Home as HomeData } from "../types";
-
-// the sections, as chips on phones (desktops have them in the top bar)
-const SECTIONS = [
-  { to: "/library", label: "Music" }, { to: "/podcasts", label: "Podcasts" }, { to: "/vgm", label: "VGM" },
-  { to: "/audiobooks", label: "Audiobooks" }, { to: "/radio", label: "Radio" },
-];
 
 /** "a, b and c" */
 function listed(parts: string[]) {
@@ -58,7 +52,6 @@ export default function Home() {
     return pool[Math.floor(Math.random() * pool.length)];
   }, [q.data]);
   const started = useStartedEpisodes();
-  const sections = useShown(SECTIONS);
   const modules = useModules();
   // the app's own library with no folder picked yet: the app asks for one
   const own = useShell((s) => (s.library === "local" ? (s.desktop ? "computer" : "phone") : null));
@@ -66,22 +59,13 @@ export default function Home() {
   const d = q.data;
   const latest = d.recently_added[0];
   // podcasts with something new come first among the shortcuts, with their dot, as on Spotify
-  const fresh = d.new_podcasts.slice(0, 4).map((p) => ({
-    ...p, dot: p.new > d.new_episodes.filter((e) => e.feed_id === p.id && started.has(e.id)).length,
-  }));
+  const fresh = freshPodcasts(d, started);
   const quick = (d.recently_played.length >= 4 ? d.recently_played : [...d.recently_played, ...d.recently_added]).slice(0, 8 - fresh.length);
 
   return (
     <div className="page">
-      <nav className="home-chips phone-only" aria-label="Sections">
-        <button className="hchip on phone-only" onClick={() => playRandom({ kind: "music" })}><Shuffle size={14} /> Shuffle</button>
-        {sections.map(({ to, label }) => (
-            <Link key={to} to={to} className="hchip">
-              {to === "/podcasts" && fresh.some((p) => p.dot) && <NewDot label="New episodes" />}{label}
-            </Link>
-          ))}
-      </nav>
-      <div className="hero">
+      {/* phones go straight to the tiles: their sections are chips in the top bar */}
+      <div className="hero desktop-only">
         <div>
           <div className="desktop-only">
             <Kicker parts={["Muzix terminal", `${fmtNumber(d.stats.tracks)} tracks`, `${fmtNumber(d.stats.albums)} albums`, `${fmtNumber(d.stats.hours)} hours`]} />

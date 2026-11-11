@@ -2,7 +2,8 @@ import {
   Activity, BookOpen, Disc3, Download, FolderPlus, Gamepad2, House, Laptop, LogOut, Monitor, Moon, Podcast, Radio, Settings, Shield,
   Smartphone, Sun, SunMoon, Wrench,
 } from "lucide-react";
-import { useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useAppUpdate } from "../appUpdate";
@@ -10,8 +11,9 @@ import { Logo } from "../components/Logo";
 import { useShown } from "../modules";
 import { NewDot, useMenu } from "../components/ui";
 import { appPlayer, useShell } from "../player/app";
-import { usePlayer } from "../store/player";
+import { freshPodcasts, usePlayer, useStartedEpisodes } from "../store/player";
 import { useUi } from "../store/ui";
+import type { Home } from "../types";
 import { QuickSearch } from "./QuickSearch";
 
 export const TABS = [
@@ -23,7 +25,7 @@ export const TABS = [
   { to: "/radio", label: "Radio" },
 ];
 
-/** The sections, as pills in the top bar on desktops (phones have them on Home). */
+/** The sections, as pills in the top bar on desktops (phones have them as chips: PhoneChips). */
 const SECTIONS = [
   { to: "/library", label: "Music", icon: Disc3, tip: "Music: your library" },
   { to: "/podcasts", label: "Podcasts", icon: Podcast, tip: "Podcasts: your shows and new episodes" },
@@ -39,6 +41,38 @@ function SectionPills() {
       {sections.map(({ to, label, icon: Icon, tip }) => (
         <NavLink key={to} to={to} className="topnav-pill" data-tip={tip} data-tip-key="Q / E" aria-label={label}>
           <Icon size={16} /><span>{label}</span>
+        </NavLink>
+      ))}
+    </nav>
+  );
+}
+
+/** The sections on phones, as chips between the logo and the avatar: All (Home) first, swiped sideways
+ * when they don't all fit. */
+const CHIPS = [
+  { to: "/library", label: "Music" }, { to: "/podcasts", label: "Podcasts" }, { to: "/audiobooks", label: "Audiobooks" },
+  { to: "/vgm", label: "VGM" }, { to: "/radio", label: "Radio" },
+];
+
+function PhoneChips() {
+  const sections = useShown(CHIPS);
+  const { pathname } = useLocation();
+  const row = useRef<HTMLElement>(null);
+  const started = useStartedEpisodes();
+  // Home's data, once Home has it: Podcasts has the dot while a show has something new, as Home's tiles do
+  const home = useQuery({ queryKey: ["home"], queryFn: () => api.get<Home>("/api/home"), enabled: false }).data;
+  const fresh = !!home && freshPodcasts(home, started).some((p) => p.dot);
+  // the section you're in stays in sight
+  useEffect(() => {
+    row.current?.querySelector(".hchip.on")?.scrollIntoView({ inline: "nearest", block: "nearest" });
+  }, [pathname]);
+  const chip = ({ isActive }: { isActive: boolean }) => `hchip ${isActive ? "on" : ""}`;
+  return (
+    <nav ref={row} className="phone-chips phone-only" aria-label="Sections">
+      <NavLink to="/" end className={chip}>All</NavLink>
+      {sections.map(({ to, label }) => (
+        <NavLink key={to} to={to} className={chip}>
+          {to === "/podcasts" && fresh && <NewDot label="New episodes" />}{label}
         </NavLink>
       ))}
     </nav>
@@ -114,6 +148,7 @@ export function TopBar() {
         <Logo name={siteName || "Muzix"} />
       </NavLink>
       <SectionPills />
+      <PhoneChips />
       <div className="topbar-center">
         <NavLink to="/" end className={`iconbtn homebtn ${atHome ? "on" : ""}`} data-tip="Home" aria-label="Home"><House size={17} /></NavLink>
         <QuickSearch />

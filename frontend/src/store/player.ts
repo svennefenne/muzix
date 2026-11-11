@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { create } from "zustand";
 import type { CastState } from "../player/cast";
-import type { Book, Episode, OnlineTrack, Station, Track } from "../types";
+import type { Book, Episode, Home as HomeData, OnlineTrack, Station, Track } from "../types";
 
 export type ItemKind = "track" | "book" | "episode" | "radio" | "online";
 
@@ -75,6 +75,14 @@ export function fromEpisode(e: Episode, feedTitle?: string, feedImage?: string):
 export function useStartedEpisodes(): Set<number> {
   const ids = usePlayer((s) => s.queue.slice(0, s.index + 1).filter((q) => q.kind === "episode").map((q) => q.id).join(" "));
   return useMemo(() => new Set(ids.split(" ").filter(Boolean).map(Number)), [ids]);
+}
+
+/** Home's podcasts with something new (the first four, latest first), each with its dot while it has
+ * episodes not started here, as on Spotify. */
+export function freshPodcasts(d: HomeData, started: Set<number>) {
+  return d.new_podcasts.slice(0, 4).map((p) => ({
+    ...p, dot: p.new > d.new_episodes.filter((e) => e.feed_id === p.id && started.has(e.id)).length,
+  }));
 }
 
 export function fromStation(s: Station): PlayItem {

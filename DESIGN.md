@@ -152,8 +152,8 @@ components:
     backgroundColor: "color-mix(in srgb, #f1e7d0 12%, transparent)"
     textColor: "{colors.bone}"
     rounded: "{rounded.pill}"
-    height: "32px"
-    padding: "0 14px"
+    height: "30px"
+    padding: "0 12px"
   library-row:
     textColor: "{colors.bone}"
     rounded: "{rounded.row}"
@@ -323,7 +323,7 @@ Small, outlined and exact; they recede until you need them.
 
 ### Chips
 - **Filter chips** (library dock and sub-navigation): pill outline in Hairline Strong with dim 11–12px capitals; hover brightens to Bone; selected fills solid Bone with navy text.
-- **Section chips** (Home): borderless pills, Bone at 12% opacity, 13px semibold, turning 20% on hover. The phone's Shuffle chip is solid Marigold.
+- **Section chips** (phones, in the top bar between the logo and the avatar: All, Music, Podcasts, Audiobooks, VGM, Radio): borderless pills, Bone at 12% opacity, 12.5px semibold, 30px high, turning 20% on hover; the section you're in is solid Marigold. The row swipes sideways and fades out at its edges. Phones have no greeting on Home: it starts with the tiles.
 - **Badges and footer chips:** 18px tall, 4px corners, mono 9–10px capitals in a hairline outline.
 
 ### Cards / Containers

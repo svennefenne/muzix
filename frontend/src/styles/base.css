@@ -1127,9 +1127,8 @@ a.stat-link.warn .v { color: var(--warning); }
 .module-folder .faint { flex-shrink: 0; }
 @media (max-width: 860px) { .module-body { margin-left: 0; } }
 
-/* ---------------------------------------------------------------- Home: section chips and quick tiles */
+/* ---------------------------------------------------------------- section chips (phones) and Home's quick tiles */
 
-.home-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
 .hchip {
   flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 14px; border: 0; border-radius: 99px;
   background: color-mix(in srgb, var(--text) 12%, transparent); color: var(--text); font: 600 13px/1 var(--font-ui); cursor: pointer;
@@ -1598,9 +1597,15 @@ button.lyr:hover { color: var(--lyr-now); text-decoration: underline; text-decor
   .subnav.swipe { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; margin-left: -16px; margin-right: -16px; padding: 0 16px; }
   .subnav.swipe > * { flex-shrink: 0; }
 
-  /* Home: section chips swipe, quick tiles in two columns */
-  .home-chips { flex-wrap: nowrap; margin: 0 -16px 16px; padding: 0 16px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
-  .hero { margin-bottom: 12px; }
+  /* the sections as chips between the logo and the avatar, swiped sideways, fading out at the edges */
+  .phone-chips {
+    flex: 1 1 auto; min-width: 0; display: flex; gap: 6px; padding: 0 10px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
+    mask-image: linear-gradient(to right, transparent, #000 10px, #000 calc(100% - 16px), transparent);
+  }
+  .phone-chips::-webkit-scrollbar { display: none; }
+  .phone-chips .hchip { height: 30px; padding: 0 12px; font-size: 12.5px; }
+
+  /* Home: quick tiles in two columns */
   .quick-grid { grid-template-columns: 1fr 1fr; margin-bottom: 0; }
   .quick { grid-template-columns: 52px minmax(0, 1fr); height: 52px; }
   .quick .art { width: 52px; }
