@@ -1,5 +1,5 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { Check, CircleCheck, Download, ListChecks, MoreHorizontal, Pause, Play, Plus, RefreshCw, Rss, Upload } from "lucide-react";
+import { Check, CircleCheck, HardDriveDownload, ListChecks, MoreHorizontal, Pause, Play, Plus, RefreshCw, Rss, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ago, api, fmtLong, fmtTime } from "../api";
@@ -62,11 +62,12 @@ function EpisodeRow({ e, feed }: { e: Episode; feed?: Feed }) {
   const actions = (
     <div className="row-actions">
       {e.finished && <span className="badge accent"><Check size={11} /> Played</span>}
-      {e.downloaded ? <span className="badge" data-tip="Downloaded to the server">Saved</span> : (
-        <button className="mini" data-tip="Download the episode to the server" aria-label="Download" onClick={async () => {
-          await api.post(`/api/podcasts/episodes/${e.id}/download`);
-          notify("Downloading in the background");
-        }}><Download size={15} /></button>
+      {e.downloaded ? <span className="badge" data-tip="Saved on the server: it plays from there, even if the podcast takes it down">On server</span> : (
+        <button className="mini" data-tip="Save on the server: it plays from there, even if the podcast takes it down" aria-label="Save on the server"
+                onClick={async () => {
+                  await api.post(`/api/podcasts/episodes/${e.id}/download`);
+                  notify("Saving it on the server in the background");
+                }}><HardDriveDownload size={15} /></button>
       )}
       <button className="mini" aria-label={`More options for ${e.title}`}
               data-tip={e.finished ? "More: play again, mark as unplayed, mark older as finished" : "More: mark as played, mark older as finished"}
@@ -477,11 +478,13 @@ function EpisodeView({ e }: { e: EpisodeDetail }) {
               return { id: `episode:${e.id}`, kind: "episode", title: e.title, subtitle: f.title, art: it.art, path: `/podcasts/episode/${e.id}`,
                        pages: { [`/api/podcasts/episodes/${e.id}`]: e }, items: [it] };
             }} />
-            {e.downloaded ? <span className="badge" data-tip="Downloaded to the server">Saved</span> : (
-              <button className="btn" onClick={async () => {
-                await api.post(`/api/podcasts/episodes/${e.id}/download`);
-                notify("Downloading in the background");
-              }}><Download size={15} /> Download</button>
+            {/* the server's copy, beside Download to this computer or phone (DownloadButton, in the apps) */}
+            {e.downloaded ? <span className="badge" data-tip="Saved on the server: it plays from there, even if the podcast takes it down">On server</span> : (
+              <button className="btn" data-tip="Save on the server: it plays from there, even if the podcast takes it down"
+                      onClick={async () => {
+                        await api.post(`/api/podcasts/episodes/${e.id}/download`);
+                        notify("Saving it on the server in the background");
+                      }}><HardDriveDownload size={15} /> Save on server</button>
             )}
             <button className="btn ghost" onClick={async () => {
               await api.put(`/api/podcasts/episodes/${e.id}/progress`, { position: e.finished ? 0 : e.duration, finished: !e.finished });
