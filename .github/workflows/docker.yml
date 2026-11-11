@@ -43,6 +43,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15         # a hang outside the tests too (each test has its own limit: backend/pyproject.toml)
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6

@@ -28,7 +28,7 @@ dependencies = [
 
 [project.optional-dependencies]
 organize = ["beets>=2.2", "pylast>=5.2", "requests>=2.31"]
-dev = ["pytest>=8", "pytest-asyncio>=0.23"]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "pytest-timeout>=2.3"]
 
 [project.scripts]
 muzix = "muzix.__main__:main"
@@ -41,3 +41,5 @@ muzix = ["organize/*.yaml", "static/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# a test that hangs fails after this many seconds, with its name and where it waited (each takes under one)
+timeout = 60

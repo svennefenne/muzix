@@ -50,13 +50,15 @@ jobs:
           python -m pip install "PyGObject>=3.48,<3.51"
 
       - name: Install
-        run: python -m pip install -r requirements.txt pyinstaller pytest
+        run: python -m pip install -r requirements.txt pyinstaller pytest pytest-timeout
 
+      # a test that hangs fails after a minute, with its name (each takes a few seconds)
       - name: Test
         if: runner.os == 'Linux'
+        timeout-minutes: 10
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -m pytest -q tests
+        run: python -m pytest -q --timeout 60 tests
 
       - name: Build
         run: pyinstaller --noconfirm muzix-desktop.spec
