@@ -8,6 +8,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { playAlbum, playTracks } from "../actions";
+import { linkData } from "../chat/store";
 import { Art, NewDot } from "../components/ui";
 import { useModules } from "../modules";
 import { engine } from "../player/engine";
@@ -34,6 +35,7 @@ interface Row {
   key: string; chip: Chip; title: string; sub: string; art: ReactNode;
   to?: string; onOpen?: () => void; onPlay?: () => void;
   dot?: string;              // a blue dot before the subtitle (or on the cover, folded), saying this
+  link?: string;             // what the chat links when it's Ctrl+clicked (chat/store.ts)
 }
 
 /** True while the media query matches (the panel collapses on narrower windows). */
@@ -95,11 +97,11 @@ export function Sidebar() {
                   art: <Art src={b.art} name={b.title} size={96} peer={b.peer} />, to: `/audiobooks/${b.id}` });
     for (const a of d.albums)
       rows.push({ key: `a${a.id}`, chip: "albums", title: a.title, sub: `Album · ${a.artist}`,
-                  art: <Art src={a.art} name={a.title} size={96} peer={a.peer} />,
+                  art: <Art src={a.art} name={a.title} size={96} peer={a.peer} />, link: linkData("album", a.id, a.title, a.artist, a.art),
                   to: `/album/${a.id}`, onPlay: () => playAlbum(a.id) });
     for (const a of d.games)
       rows.push({ key: `g${a.id}`, chip: "vgm", title: a.title, sub: `Game · ${a.artist || "VGM"}`,
-                  art: <Art src={a.art} name={a.title} size={96} peer={a.peer} />,
+                  art: <Art src={a.art} name={a.title} size={96} peer={a.peer} />, link: linkData("album", a.id, a.title, a.artist, a.art),
                   to: `/album/${a.id}`, onPlay: () => playAlbum(a.id) });
     for (const p of d.podcasts)
       rows.push({ key: `f${p.id}`, chip: "podcasts", title: p.title, sub: `Podcast${p.author ? ` · ${p.author}` : ""}`,
@@ -159,7 +161,7 @@ export function Sidebar() {
             </>
           );
           return r.to ? (
-            <NavLink key={r.key} to={r.to} end className="lib-row" data-tip={collapsed ? [r.title, r.sub].filter(Boolean).join(" · ") : undefined}
+            <NavLink key={r.key} to={r.to} end className="lib-row" data-link={r.link} data-tip={collapsed ? [r.title, r.sub].filter(Boolean).join(" · ") : undefined}
                      onClick={(e) => { if ((e.target as HTMLElement).closest(".lib-play") && r.onPlay) { e.preventDefault(); r.onPlay(); } }}>
               {body}
             </NavLink>

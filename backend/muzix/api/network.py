@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import __version__, art, db, lyrics, mirror, network, settings, tunnel
+from .. import __version__, art, chat, db, lyrics, mirror, network, settings, tunnel
 from ..db import get_db_with_copies
 from ..models import Album, Artist, Book, BookPart, Peer, Track
 from ..security import admin_user, current_user
@@ -220,3 +220,27 @@ def track_lyrics(track_id: int, db: Session = Depends(get_db_with_copies)):
     out = lyrics.for_track(db, _own(db, Track, track_id))
     db.commit()
     return out
+
+
+# the chat (chat.py): a linked server's people writing to people here
+
+@router.get("/chat/people")
+def chat_people(p: Peer = Depends(linked_server)):
+    """Who here can be written to."""
+    with db.session() as s:
+        return chat.visible(s)
+
+
+@router.post("/chat")
+def chat_in(body: dict, p: Peer = Depends(linked_server)):
+    """A message one of its people wrote to someone here."""
+    try:
+        return chat.receive(p, body)
+    except chat.ChatError as e:
+        raise HTTPException(e.status, str(e))
+
+
+@router.get("/chat")
+def chat_waiting(after: int = 0, p: Peer = Depends(linked_server)):
+    """What people here wrote to its people, from `after` on (the ids here): those it didn't get yet too."""
+    return chat.waiting(p, after)

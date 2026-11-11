@@ -9,6 +9,7 @@ import { fmtTime } from "../api";
 import { playRandom, toggleLike } from "../actions";
 import { hasLyrics, LyricsCard, LyricsLines, LyricsSource, noLyrics, tinted, useLyrics } from "../components/Lyrics";
 import { useStationHistory } from "../components/StationHistory";
+import { linkData } from "../chat/store";
 import { Art } from "../components/ui";
 import { engine } from "../player/engine";
 import { usePlayer, type PlayItem } from "../store/player";
@@ -71,7 +72,8 @@ export function NowPanel() {
       {cur ? (
         <div className="np-scroll">
           <button className="np-cover" onClick={() => setNowPlayingOpen(true)} aria-label="Open the full-screen player" data-tip="Open the full-screen player">
-            <Art src={cur.art} name={cur.album || cur.title} size={600} peer={cur.peer} />
+            <Art src={cur.art} name={cur.album || cur.title} size={600} peer={cur.peer}
+                 link={cur.kind === "track" && !cur.foreign ? linkData("track", Number(cur.id), cur.title, cur.artist, cur.art) : undefined} />
           </button>
           <div className="np-id">
             <div className="np-idtext">

@@ -481,6 +481,31 @@ class Peer(Base):
     kind: Mapped[str] = mapped_column(String(16), default="server", server_default="server")
     check: Mapped[str] = mapped_column(String(64), default="", server_default="")   # a computer's: sha256 of our id and its code
     away: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # a computer that isn't connected
+    chat_after: Mapped[int] = mapped_column(Integer, default=0, server_default="0")   # its messages fetched up to (chat.py)
+
+
+class ChatMessage(Base):
+    """A private message between two people in the Library Network's chat (chat.py), on this server
+    or on linked ones. Each server keeps what its own people wrote and got. Where it was written is
+    its origin (a server id) and its id there: the same message on both servers."""
+    __tablename__ = "chat_messages"
+    __table_args__ = (UniqueConstraint("origin", "origin_id", name="uq_chat_origin"),
+                      Index("ix_chat_to", "to_server", "to_user"), Index("ix_chat_from", "origin", "from_user"))
+    id: Mapped[int] = mapped_column(primary_key=True)
+    origin: Mapped[str] = mapped_column(String(64))
+    origin_id: Mapped[int] = mapped_column(Integer)
+    from_user: Mapped[int] = mapped_column(Integer)                    # the writer's user id there
+    from_name: Mapped[str] = mapped_column(String(64), default="")
+    from_place: Mapped[str] = mapped_column(String(255), default="")   # that server's name, then
+    to_server: Mapped[str] = mapped_column(String(64))
+    to_user: Mapped[int] = mapped_column(Integer)
+    to_name: Mapped[str] = mapped_column(String(64), default="")
+    to_place: Mapped[str] = mapped_column(String(255), default="")
+    text: Mapped[str] = mapped_column(Text, default="")
+    links: Mapped[list] = mapped_column(JSON, default=list)           # albums and songs, as chat.snapshot made them
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)   # its reader here saw it
+    delivered: Mapped[bool] = mapped_column(Boolean, default=True)    # one for another server: that server has it
 
 
 class TagCategory(Base):

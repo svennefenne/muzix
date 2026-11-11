@@ -3,6 +3,8 @@ import { lazy, type RefObject, Suspense, useCallback, useEffect, useLayoutEffect
 import { Link, Route, Routes, useLocation, useNavigate, useNavigationType } from "react-router-dom";
 import { queryClient } from "./actions";
 import { api } from "./api";
+import { ChatHost, ChatPanel } from "./chat/Chat";
+import { useChat } from "./chat/store";
 import { AdminHost } from "./components/AdminMode";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Logo } from "./components/Logo";
@@ -193,6 +195,7 @@ function useLikedKept() {
 function Shell() {
   const loc = useLocation();
   const npPanel = useUi((s) => s.npPanel);
+  const chatOpen = useChat((s) => s.open);
   const offline = useDownloads((s) => s.offline);
   const downloaded = useDownloads((s) => s.list);
   // offline, only the downloads, their pages and the settings
@@ -208,7 +211,7 @@ function Shell() {
       <ThemeApplier />
       <Shortcuts />
       <TopBar />
-      <div className={`workspace ${npPanel ? "np-open" : ""}`}>
+      <div className={`workspace ${npPanel || chatOpen ? "np-open" : ""}`}>
       <Sidebar />
       <main className="frame">
         <div className="frame-scroll" ref={scroll}>
@@ -250,7 +253,7 @@ function Shell() {
           </ErrorBoundary>
         </div>
       </main>
-      {npPanel && <NowPanel />}
+      {chatOpen ? <ChatPanel /> : npPanel && <NowPanel />}
       </div>
       <PlayerBar />
       <Footer />
@@ -264,6 +267,7 @@ function Shell() {
       <MenuHost />
       <Tooltips />
       <AdminHost />
+      <ChatHost />
       <Toast />
     </div>
   );

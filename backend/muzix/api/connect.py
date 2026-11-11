@@ -25,8 +25,11 @@ Messages, as JSON with a "t":
                   command {cmd, ...}           to the device that plays
                   takeover {state, play}       play this from here on
                   yield                        another device plays now: stop, and follow it
+                  chat {message}               a message in the chat (chat.py) for the account, or one it
+                                               sent from another device
 """
 
+import asyncio
 import json
 import logging
 import time
@@ -68,6 +71,16 @@ class Account:
 
 
 accounts: dict[int, Account] = {}
+_loop: asyncio.AbstractEventLoop | None = None      # the one the devices' connections are served on
+
+
+def tell(uid: int, msg: dict):
+    """A word for every device of an account that's online, from anywhere (a request's thread)."""
+    acc = accounts.get(uid)
+    if acc is None or _loop is None or _loop.is_closed():
+        return
+    for d in list(acc.devices.values()):
+        asyncio.run_coroutine_threadsafe(send(d, msg), _loop)
 
 
 async def send(dev: Device, msg: dict):
@@ -154,6 +167,8 @@ async def connect(ws: WebSocket):
         await ws.close(code=4401)
         return
     await ws.accept()
+    global _loop
+    _loop = asyncio.get_running_loop()
     acc = accounts.setdefault(uid, Account())
     dev: Device | None = None
     try:

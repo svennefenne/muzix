@@ -118,7 +118,7 @@ img { display: block; }
   border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface);
   font: 600 10px/1 var(--font-mono); color: var(--text-dim);
 }
-.topbar-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; margin-left: auto; }
+.topbar-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; flex-shrink: 0; margin-left: auto; }
 .iconbtn {
   position: relative; display: inline-grid; place-items: center; width: 32px; height: 32px;
   border-radius: 50%; border: 1px solid var(--border-strong); background: color-mix(in srgb, var(--surface) 80%, transparent);
@@ -1427,6 +1427,7 @@ button.lyr:hover { color: var(--lyr-now); text-decoration: underline; text-decor
 @media (max-width: 1440px) { :root { --side-w: 272px; --np-w: 300px; } }
 @media (max-width: 1000px) { .topbar .logo-name { display: none; } }   /* the cassette alone, to make room */
 @media (max-width: 1180px) {
+  .topbar-center { min-width: 180px; }     /* the search gives way to the buttons beside it */
   .workspace.np-open { grid-template-columns: var(--side-w) minmax(0, 1fr); }
   .nppanel, .np-toggle { display: none; }
 }

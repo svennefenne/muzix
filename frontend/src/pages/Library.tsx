@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { ChevronRight, Disc3, Heart, ListPlus, Mic2, Play, Plus, Shuffle, Tags, Trash2, UserRound } from "lucide-react";
+import { ChevronRight, Disc3, Heart, ListPlus, MessageCircle, Mic2, Play, Plus, Shuffle, Tags, Trash2, UserRound } from "lucide-react";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Link, Navigate, NavLink, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, fmtLong, fmtNumber, sized } from "../api";
@@ -8,6 +8,7 @@ import {
   ALBUM_SORTS, AlbumItems, ARTIST_SORTS, ArtistItems, DisplaySwitch, GENRE_SORTS, GenreItems, Segmented, SortMenu,
   useBrowse, type Choice,
 } from "../components/Browse";
+import { linkData, shareInChat, useChatOn } from "../chat/store";
 import { AdminCog } from "../components/AdminMode";
 import { DownloadButton } from "../components/DownloadButton";
 import { likedCollection } from "../downloads";
@@ -455,6 +456,7 @@ export function AlbumPage() {
   const { id } = useParams();
   const q = useQuery({ queryKey: ["album", Number(id)], queryFn: () => api.get<AlbumDetail>(`/api/albums/${id}`) });
   const pick = usePlaylistPicker((s) => s.open);
+  const chat = useChatOn();
   const [liked, setLiked] = useState<boolean | null>(null);
   const [extra, setExtra] = useState<Track[]>([]);
   useEffect(() => { setLiked(null); setExtra([]); }, [id]);
@@ -467,7 +469,7 @@ export function AlbumPage() {
     <div style={tint ? { background: `radial-gradient(120% 480px at 30% 0, ${tint}30, transparent 75%)` } : undefined}>
     <div className="page">
       <div className="detail-head">
-        <Art src={a.art} name={a.title} size={600} peer={a.peer} />
+        <Art src={a.art} name={a.title} size={600} peer={a.peer} link={linkData("album", a.id, a.title, a.artist, a.art)} />
         <div style={{ minWidth: 0 }}>
           <Kicker parts={[a.kind === "vgm" ? "Game / collection" : "Album", a.genre, formats]} />
           <Display l1={a.title} small />
@@ -486,6 +488,12 @@ export function AlbumPage() {
               <Heart size={15} fill={isLiked ? "currentColor" : "none"} /> {isLiked ? "Saved" : "Save"}
             </button>
             <button className="btn" onClick={() => pick(a.tracks.map((t) => t.id))}><ListPlus size={15} /> Add to playlist</button>
+            {chat && (
+              <button className="btn" data-tip="Send the album to someone in a message"
+                      onClick={() => shareInChat({ kind: "album", id: a.id, title: a.title, sub: a.artist, art: a.art })}>
+                <MessageCircle size={15} /> Share
+              </button>
+            )}
             <DownloadButton id={`album:${a.id}`} title={a.title} make={async () => {
               const full = a.track_count > a.tracks.length ? await api.get<AlbumDetail>(`/api/albums/${a.id}`, { limit: 5000 }) : a;
               return { id: `album:${a.id}`, kind: "album", title: a.title, subtitle: a.artist, art: a.art, path: `/album/${a.id}`,

@@ -32,6 +32,7 @@ export interface Prefs {
   download_format?: "smaller" | "original";   // downloads in the app: Opus at the server's bitrate, or the files as they are
   download_wifi?: boolean;               // downloads wait for wifi
   network?: boolean;                     // false: the Library Network's music left out (only this server's)
+  chat_hidden?: boolean;                 // true: not listed in the chat, so nobody new can write
   browse?: Record<string, BrowsePref>;   // sort and display mode per page
 }
 

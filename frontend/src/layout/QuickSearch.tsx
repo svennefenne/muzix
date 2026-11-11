@@ -6,6 +6,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, typ
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { playTracks } from "../actions";
+import { linkData } from "../chat/store";
 import { clearSearches, forgetSearch, picked, rememberSearch, useRecentSearches } from "../components/RecentSearches";
 import { Art } from "../components/ui";
 import type { RecentKind, SearchResults } from "../types";
@@ -137,6 +138,7 @@ export function QuickSearch() {
             <Fragment key={h.key}>
               {(i === 0 || list[i - 1].group !== h.group) && <div className="qs-group">{h.group}</div>}
               <div id={`qs-${i}`} role="option" aria-selected={i === active} className={`qs-item ${i === active ? "on" : ""}`}
+                   data-link={h.ref.kind === "album" || h.ref.kind === "track" ? linkData(h.ref.kind, h.ref.id, h.title, h.sub, h.art) : undefined}
                    onMouseEnter={() => setActive(i)} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(i)}>
                 <Art src={h.art} name={h.title} size={96} round={h.round} peer={h.peer} />
                 <span className="qs-text">

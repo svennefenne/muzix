@@ -4,6 +4,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { queryClient } from "../actions";
 import { ago, api } from "../api";
 import { appVersion } from "../appUpdate";
+import { useChatOn } from "../chat/store";
 import { AvatarSettings } from "../components/Avatar";
 import { castStatus } from "../components/CastButton";
 import { SEARCH_ENGINES } from "../components/StationHistory";
@@ -51,6 +52,39 @@ function NetworkMusic() {
           <span className="dim">
             {on ? <>The albums, songs and audiobooks of {who} are in your library, with <Network size={13} style={{ verticalAlign: "-2px" }} /> on their covers.</>
               : <>Only this server's own library: the music of {who} is left out.</>}
+          </span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** Whether people here and on linked servers can find you in the chat and write to you. */
+function ChatSettings() {
+  const on = useChatOn();
+  const user = useUi((s) => s.user);
+  const setUser = useUi((s) => s.setUser);
+  const [busy, setBusy] = useState(false);
+  if (!on || !user) return null;
+  const listed = !user.prefs.chat_hidden;
+  return (
+    <section className="panel">
+      <div className="panel-head"><div><div className="kicker">Library Network</div><div className="h2">Messages</div></div></div>
+      <div className="field">
+        <label>Others can write to you</label>
+        <div className="row-actions">
+          <Switch checked={listed} label="Others can write to you" onChange={async (v) => {
+            if (busy) return;
+            setBusy(true);
+            try {
+              setUser({ ...user, prefs: await api.patch<Prefs>("/api/me/prefs", { chat_hidden: v ? null : true }) });
+            } finally {
+              setBusy(false);
+            }
+          }} />
+          <span className="dim">
+            {listed ? "People on this server and on linked servers find you under New message."
+              : "You aren't listed, so nobody new can write to you. You can still write, and whoever you write to can answer."}
           </span>
         </div>
       </div>
@@ -418,6 +452,7 @@ export default function Settings() {
       <DownloadSettings />
 
       <NetworkMusic />
+      <ChatSettings />
 
       <AvatarSettings />
 

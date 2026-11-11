@@ -47,7 +47,7 @@ LIKE_TYPES = {"track": Track, "album": Album, "artist": Artist}
 
 # ---------------------------------------------------------------- preferences
 # Each device (each login) keeps its own settings; these are the account's, the same everywhere.
-ACCOUNT_PREFS = ("network",)
+ACCOUNT_PREFS = ("network", "chat_hidden")
 
 
 def _merged(prefs: dict, changes: dict) -> dict:

@@ -1,8 +1,9 @@
-import { Clock, Disc3, Heart, ListEnd, ListPlus, ListStart, MoreHorizontal, Play, Trash2, User } from "lucide-react";
+import { Clock, Disc3, Heart, ListEnd, ListPlus, ListStart, MessageCircle, MoreHorizontal, Play, Trash2, User } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { fmtTime } from "../api";
 import { playTracks, toggleLike, usePlaylistPicker } from "../actions";
+import { linkData, shareInChat, useChatOn } from "../chat/store";
 import { engine } from "../player/engine";
 import { fromTrack, usePlayer } from "../store/player";
 import type { Track } from "../types";
@@ -50,6 +51,7 @@ export function TrackList({ tracks, showArt, showAlbum = true, numbered = "index
   const showMenu = useMenu((s) => s.show);
   const pick = usePlaylistPicker((s) => s.open);
   const nav = useNavigate();
+  const chat = useChatOn();
   const [liked, setLiked] = useState<Record<number, boolean>>({});
   const multiDisc = new Set(tracks.map((t) => t.disc_no)).size > 1;
   const isLiked = (t: Track) => liked[t.id] ?? t.liked;
@@ -64,6 +66,8 @@ export function TrackList({ tracks, showArt, showAlbum = true, numbered = "index
     { label: "Add to queue", icon: <ListEnd size={16} />, onClick: () => engine.enqueue([fromTrack(t)]) },
     { label: "Add to playlist…", icon: <ListPlus size={16} />, onClick: () => pick([t.id]) },
     { label: isLiked(t) ? "Remove from liked songs" : "Add to liked songs", icon: <Heart size={16} />, onClick: () => like(t) },
+    ...(chat ? [{ label: "Share in chat", icon: <MessageCircle size={16} />,
+                  onClick: () => shareInChat({ kind: "track", id: t.id, title: t.title, sub: t.artist, art: t.art }) }] : []),
     { sep: true },
     ...(t.album_id ? [{ label: "Go to album", icon: <Disc3 size={16} />, onClick: () => nav(`/album/${t.album_id}`) }] : []),
     ...(t.artist_id ? [{ label: "Go to artist", icon: <User size={16} />, onClick: () => nav(`/artist/${t.artist_id}`) }] : []),
@@ -90,7 +94,7 @@ export function TrackList({ tracks, showArt, showAlbum = true, numbered = "index
           <div key={`${t.id}-${t.item_id ?? i}`}>
             {discHead && <div className="kicker" style={{ margin: "16px 10px 6px" }}>Disc {t.disc_no || 1}</div>}
             <div className={`trow ${showAlbum ? "" : "no-album"} ${isCur ? "playing" : ""} ${isCur && !playing ? "paused" : ""}`}
-                 role="row" onDoubleClick={() => { onPlay?.(t); playTracks(tracks, i); }}
+                 role="row" data-link={linkData("track", t.id, t.title, t.artist, t.art)} onDoubleClick={() => { onPlay?.(t); playTracks(tracks, i); }}
                  onClick={rowTap(() => { onPlay?.(t); if (isCur) { if (!playing) engine.toggle(); } else playTracks(tracks, i); })}
                  onContextMenu={(e) => { e.preventDefault(); showMenu(e, menuFor(t)); }}>
               <div className="t-num">

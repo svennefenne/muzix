@@ -9,6 +9,7 @@ import { ErrorBoundary, reportGlobalErrors } from "./components/ErrorBoundary";
 import "./styles/fonts";
 import "./styles/base.css";
 import "./styles/skins.css";
+import "./styles/chat.css";
 
 reportGlobalErrors();
 keepPhonesUpright();

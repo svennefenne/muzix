@@ -291,6 +291,7 @@ class Connect {
     else if (m.t === "command" && !this.following) this.hooks?.onCommand(m as unknown as Command);
     else if (m.t === "takeover") this.onTakeover(m.state as Shared, m.play as boolean);
     else if (m.t === "yield" && !this.following) this.follow();
+    else if (m.t === "chat") window.dispatchEvent(new CustomEvent("muzix:chat", { detail: m }));   // chat/Chat.tsx
   }
 
   private onDevices(m: DeviceState & { grace: number }) {

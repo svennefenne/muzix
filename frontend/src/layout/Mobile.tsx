@@ -2,14 +2,15 @@
  * mini-player and a bottom tab bar whose "More" sheet holds the other sections. */
 
 import {
-  BookOpen, Download, FolderPlus, Gamepad2, Heart, House, Laptop, Library, LogOut, MoreHorizontal, Pause, Play, Podcast, Radio, Search, Settings, Shield,
-  SkipForward, Smartphone, Wrench, X,
+  BookOpen, Download, FolderPlus, Gamepad2, Heart, House, Laptop, Library, LogOut, MessageCircle, MoreHorizontal, Pause, Play, Podcast, Radio, Search,
+  Settings, Shield, SkipForward, Smartphone, Wrench, X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { toggleQueuedLike } from "../actions";
 import { api } from "../api";
 import { appVersion, useAppUpdate } from "../appUpdate";
+import { useChat, useChatOn, useConversations } from "../chat/store";
 import { CastButton, CastNote, usePlaysElsewhere } from "../components/CastButton";
 import { Art, NewDot, SwitchLook } from "../components/ui";
 import { appPlayer, useShell } from "../player/app";
@@ -123,6 +124,8 @@ function MoreSheet({ onClose }: { onClose: () => void }) {
   // the app's own library (this phone's or computer's music) or the server's: a switch
   const library = useShell((s) => s.library);
   const computer = useShell((s) => !!s.desktop);
+  const chat = useChatOn();
+  const unread = useConversations().data?.unread || 0;
   const go = (to: string) => { if (to === "/admin" && inApp) appPlayer.openOnServer(to); else nav(to); onClose(); };
   const items = [
     ...more,
@@ -150,6 +153,12 @@ function MoreSheet({ onClose }: { onClose: () => void }) {
           <button className="sheet-item" onClick={() => { appPlayer.addFolder(); onClose(); }}>
             <FolderPlus size={22} />
             <span><b>Add a music folder</b><small>The app only reads it</small></span>
+          </button>
+        )}
+        {chat && (
+          <button className="sheet-item" onClick={() => { useChat.getState().show(); onClose(); }}>
+            <MessageCircle size={22} />
+            <span><b>Messages</b><small>{unread ? `${unread} unread` : "Write to people here and on linked servers"}</small></span>
           </button>
         )}
         {items.map(({ to, label, sub, icon: Icon }) => (

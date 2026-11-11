@@ -277,6 +277,38 @@ own library turns *Settings → Other libraries → Music from linked servers*
 off; for them every copy of the server's own albums is listed again, whatever
 the main library.
 
+#### Messages
+
+People on a server and on the servers it's linked with can write to each other,
+two at a time: *Messages* in the account menu (on phones under *More*), then
+*New message* lists everyone, server by server. While a conversation is open
+on a desktop, it takes the now playing panel's place (a drawer in a narrower
+window); on a phone it fills the screen. Its button sits in the top bar while
+there's something to it (a message you haven't read, or a conversation that
+went on this past week), with a count of what's unread, and a new message shows
+a note at the bottom of the screen.
+
+To link an album or a song, hold Ctrl (⌘ on a Mac) and click it anywhere in
+Muzix while the chat is open. The link button beside the message box does the
+same without a key: press it, then tap the album or song (on a phone the chat
+steps aside until you do). Songs have *Share in chat* in their menu, and album
+pages a *Share* button. In a message, hovering a link shows the cover large
+with its name, year and songs; clicking it opens *More info*, with a player of
+its own that plays the album without touching your queue (what Muzix played
+pauses meanwhile and carries on when you close it), and buttons to play it in
+Muzix or add it to the queue.
+
+A linked album plays from your own library when your server has it (its own, or
+mirrored from the other server); one the other server got after the last sync
+plays through your server from there, as the network's music always does. Each
+server keeps its own people's conversations. A message for a server that can't
+be reached waits on the writer's server, marked *Waiting*, and that server
+fetches it once it's back (they ask each other every five minutes, and on
+starting). Messages only go between servers that are linked with each other.
+Whoever doesn't want to be listed turns *Settings → Messages → Others can write
+to you* off: nobody new can write to them then, but they can still write, and
+be answered.
+
 ### Muzix Desktop: listening, and sharing from a computer
 
 Muzix Desktop (`desktop/`, Windows, macOS and Linux) is Muzix on the computer: a
@@ -379,6 +411,7 @@ cd ../android && ./gradlew assembleRelease # JDK 17+ and the Android SDK (platfo
 | M | mute |
 | Q / E | previous / next section |
 | / | search |
+| Ctrl / ⌘ + click | link an album or a song in the open chat |
 
 ## Development
 
@@ -390,7 +423,10 @@ MUZIX_DATA=/tmp/muzix MUZIX_PORT=18080 ../.venv/bin/python -m muzix
 
 # frontend (Node 22): dev server on :5173 proxies /api to :18080
 cd frontend && npm install && npm run dev
+npm test        # the logic tests in frontend/tests (node's own test runner)
 ```
+
+How the chat between servers works is in [docs/chat.md](docs/chat.md).
 
 The colour schemes are generated with `scripts/import_palettes.py` from a checkout
 of claude-desktop-extra. The Docker image (`Dockerfile`) builds the web interface,

@@ -5,9 +5,10 @@ import { sized } from "../api";
 
 /** Cover art with a generated fallback (colour from the name, big initials); `peer`: the server
  * in the Library Network it's from, marked in the corner. */
-export function Art({ src, name, size = 300, round, className = "", onClick, peer }: {
+export function Art({ src, name, size = 300, round, className = "", onClick, peer, link }: {
   src?: string | null; name?: string; size?: number; round?: boolean; className?: string; onClick?: () => void;
   peer?: string | null;
+  link?: string;              // an album or song the chat can link from here (chat/store.ts: linkData)
 }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -16,7 +17,7 @@ export function Art({ src, name, size = 300, round, className = "", onClick, pee
   const url = src ? sized(src, size) : src;
   const hue = hashHue(name || "");
   return (
-    <div className={`art ${round ? "round" : ""} ${className}`} onClick={onClick}
+    <div className={`art ${round ? "round" : ""} ${className}`} onClick={onClick} data-link={link}
          style={!url || failed ? { background: `linear-gradient(135deg, hsl(${hue} 55% 38%), hsl(${(hue + 50) % 360} 60% 22%))` } : undefined}>
       {url && !failed ? <img src={url} alt="" loading="lazy" onError={() => setFailed(true)} />
         : <div className="art-fallback">{initials(name || "?")}</div>}

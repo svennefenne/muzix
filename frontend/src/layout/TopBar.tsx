@@ -1,5 +1,5 @@
 import {
-  Activity, BookOpen, Disc3, Download, FolderPlus, Gamepad2, House, Laptop, LogOut, Monitor, Moon, Podcast, Radio, Settings, Shield,
+  Activity, BookOpen, Disc3, Download, FolderPlus, Gamepad2, House, Laptop, LogOut, MessageCircle, Moon, Podcast, Radio, Settings, Shield,
   Smartphone, Sun, SunMoon, Wrench,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -7,6 +7,8 @@ import { useEffect, useRef } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useAppUpdate, useAppVersion } from "../appUpdate";
+import { ChatButton } from "../chat/Chat";
+import { useChat, useChatOn } from "../chat/store";
 import { Logo } from "../components/Logo";
 import { useShown } from "../modules";
 import { NewDot, useMenu } from "../components/ui";
@@ -108,6 +110,7 @@ export function TopBar() {
   // the app's own library (this phone's or computer's music) or the server's: a switch
   const library = useShell((s) => s.library);
   const computer = useShell((s) => !!s.desktop);
+  const chat = useChatOn();
   const tabs = user?.is_admin && !inApp ? [...shown, { to: "/admin", label: "Admin" }] : shown;
 
   // Q / E step through the sections, like a console's shoulder buttons
@@ -133,6 +136,7 @@ export function TopBar() {
                    // the app's own library: its folders are the app's to pick
                    ...(library === "local" ? [{ label: "Add a music folder", icon: <FolderPlus size={16} />, onClick: () => appPlayer.addFolder() }] : []),
                    { sep: true }] : []),
+    ...(chat ? [{ label: "Messages", icon: <MessageCircle size={16} />, onClick: () => useChat.getState().show() }] : []),
     { label: "Settings", icon: <Settings size={16} />, onClick: () => nav("/settings") },
     // the app's own library's admin is the app's (Muzix Desktop's own server signs in as one): no server's Admin
     ...(user?.is_admin && library !== "local" ? [{ label: inApp ? "Admin on the server" : "Admin", icon: <Shield size={16} />,
@@ -165,7 +169,7 @@ export function TopBar() {
                 onClick={() => setPref("mode", nextMode)}>
           <ModeIcon size={15} />
         </button>
-        <button className="iconbtn hide-sm trim-2" aria-label="Fullscreen" data-tip="Fill the whole screen" data-tip-key="F11" onClick={toggleFullscreen}><Monitor size={15} /></button>
+        <ChatButton />
         <button className="pill userpill" onClick={userMenu} aria-label={`Account: ${user?.username}`} data-tip="Settings, admin and signing out">
           <Avatar user={user} />
           <span className="uname">{user?.username}</span>

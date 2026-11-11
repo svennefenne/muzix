@@ -262,7 +262,6 @@ The desktop is a fixed shell of four rows: the top bar (58px), the workspace, th
   - Below 700px, the hero drops its featured cover.
 
 Breakpoints give up the least useful parts first:
-- Below 1500px the fullscreen button goes.
 - Below 1440px the docks narrow (272px and 300px).
 - Below about 1280px the section pills drop their names for icons (with the names as tooltips); below 1000px the logo shrinks to its cassette.
 - Below 1180px the now playing panel goes.
@@ -341,7 +340,7 @@ Small, outlined and exact; they recede until you need them.
 - **Switches and ranges:** a 40×22px track that fills Marigold when on. Range sliders have 4px tracks and a 13px Bone thumb; seek bars turn Marigold on hover and show a striped Coral Red fill when the stream is live.
 
 ### Navigation
-- **Top bar:** cassette logo (links Home), the section pills (13px semibold on Bone at 10%, the current section solid Marigold), a round home button (Marigold when you're home) beside the search, and on the right a now-playing button with a progress ring, the light/dark toggle, fullscreen and the account pill (avatar plus name; Settings, Admin and Sign out live in its menu). The avatar is the account's own icon: its picture, cropped to the circle, or a letter or two on a colour the account picked (black or white ink, whichever reads), and by default the first letter of the name on the primary-to-secondary gradient.
+- **Top bar:** cassette logo (links Home), the section pills (13px semibold on Bone at 10%, the current section solid Marigold), a round home button (Marigold when you're home) beside the search, and on the right a now-playing button with a progress ring, the light/dark toggle, the messages button (only while there's an active chat: unread messages, or a conversation that went on this past week; a Vermilion count when something is unread) and the account pill (avatar plus name; Messages, Settings, Admin and Sign out live in its menu). Fullscreen is F11 and the footer's chip; the top bar's own button gave its place to the messages (2026-11-11). The avatar is the account's own icon: its picture, cropped to the circle, or a letter or two on a colour the account picked (black or white ink, whichever reads), and by default the first letter of the name on the primary-to-secondary gradient.
 - **Your library (left dock):**
   - Header row with a panel title and a "+" for a new playlist, then filter chips, then rows.
   - Each row is a 48px cover with a 14px bold title and a 12.5px dim subtitle ("Playlist · 12 songs").

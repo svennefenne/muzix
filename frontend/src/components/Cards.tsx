@@ -1,6 +1,7 @@
 import { Play } from "lucide-react";
 import { Link } from "react-router-dom";
 import { playAlbum, playRandom } from "../actions";
+import { linkData } from "../chat/store";
 import { sized } from "../api";
 import type { Album, Artist, Genre, Playlist } from "../types";
 import { AdminCog, type ItemKind } from "./AdminMode";
@@ -8,7 +9,7 @@ import { Art } from "./ui";
 
 export function AlbumCard({ a }: { a: Album }) {
   return (
-    <Link to={`/album/${a.id}`} className="card">
+    <Link to={`/album/${a.id}`} className="card" data-link={linkData("album", a.id, a.title, a.artist, a.art)}>
       <Art src={a.art} name={a.title} peer={a.peer} />
       <button className="play-fab" aria-label={`Play ${a.title}`} data-tip={`Play ${a.title}`}
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); playAlbum(a.id); }}>
