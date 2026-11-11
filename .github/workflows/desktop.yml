@@ -45,7 +45,10 @@ jobs:
         if: runner.os == 'Linux'
         timeout-minutes: 20
         run: |
-          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list
+          # (the runners list their mirrors in apt-mirrors.txt, Azure's first)
+          for f in /etc/apt/sources.list /etc/apt/apt-mirrors.txt /etc/apt/sources.list.d/*; do
+            if [ -f "$f" ]; then sudo sed -i 's|azure\.archive\.ubuntu\.com|archive.ubuntu.com|g' "$f"; fi
+          done
           APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30"
           sudo apt-get $APT update && sudo apt-get $APT install -y ffmpeg libegl1 libxkbcommon0 libxkbcommon-x11-0 libdbus-1-3 \
             libnss3 libxcomposite1 libxdamage1 libxrandr2 libxtst6 libasound2 \
