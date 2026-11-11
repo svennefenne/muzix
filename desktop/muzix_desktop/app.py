@@ -26,7 +26,7 @@ from .sharing import Sharing
 from .shared import use_keys
 from .ui import theme
 from .ui.widgets import in_background
-from .updater import Updater
+from .updater import Updater, resumed
 
 log = logging.getLogger(__name__)
 
@@ -105,7 +105,8 @@ class App:
         self.known_states = {s.server_id: s.state for s in self.cfg.servers}
 
         from .window import Window
-        self.window = Window(self.cfg)
+        # after an update's restart: the page it was on and what played (updater.py)
+        self.window = Window(self.cfg, resumed())
         self.window.folder_added.connect(self._folder_added)
         if not minimized:
             self.window.bring()
@@ -158,8 +159,9 @@ class App:
             self.sharing.start()
         if not minimized and self.cfg.servers and not self.cfg.folders:
             QTimer.singleShot(400, self.open_settings)      # sharing set up, but nothing to share yet
-        # Update in the account menu: the new version downloaded, put in and started (updater.py)
-        self.updater = Updater(lambda: self.window.isVisible() and not self.window.isMinimized(), self.quit, self.window.notify)
+        # Update in the account menu: the new version downloaded in the background, put in and started (updater.py)
+        self.updater = Updater(lambda: self.window.isVisible() and not self.window.isMinimized(), self.window.handover,
+                               self.quit, self.window.notify)
         self.window.updater = self.updater
         try:
             if autostart.enabled():

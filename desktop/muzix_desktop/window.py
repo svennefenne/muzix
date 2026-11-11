@@ -7,12 +7,11 @@ playing on."""
 import asyncio
 import logging
 import os
-import re
 import sys
 import threading
 
 import httpx
-from PySide6.QtCore import QFile, QObject, QTimer, QUrl, Qt, Signal, Slot
+from PySide6.QtCore import QByteArray, QFile, QObject, QTimer, QUrl, Qt, Signal, Slot
 from PySide6.QtGui import QCursor, QDesktopServices
 from PySide6.QtNetwork import QNetworkCookie, QNetworkInformation
 from PySide6.QtWebChannel import QWebChannel
@@ -99,13 +98,19 @@ class Window(QMainWindow):
     folder_added = Signal()         # a music folder added here, not in Settings (the page's "Add a music folder")
     reached = Signal(bool)          # the server answers again (or not any more)
 
-    def __init__(self, cfg: config.Config):
+    def __init__(self, cfg: config.Config, resume: dict | None = None):
         super().__init__()
         self.cfg = cfg
         self.library = Library(cfg)
         self.library_up.connect(self._library_up)
         self.setWindowTitle("Muzix")
         self.resize(1280, 820)
+        if cfg.window_geometry:     # where it was left
+            self.restoreGeometry(QByteArray.fromBase64(cfg.window_geometry.encode()))
+        # after an update's restart (updater.py): the page it was on, and what played (below)
+        resume = resume or {}
+        page = str(resume.get("page") or "/")
+        self.start_page = page if page.startswith("/") and not page.startswith("//") else "/"
         self.relay = Relay(cfg.listen_home, cfg.listen_away, cfg.window_port)
         # signed in to a server: what this computer kept with no server moves into the account (step 6)
         self.relay.signed_in = lambda session: threading.Thread(
@@ -136,10 +141,15 @@ class Window(QMainWindow):
         if player.available():
             self.player = player.Player(self.relay.headers, lambda: self.isVisible() and not self.isMinimized(), self.relay.speaker_link,
                                         library=lambda: self.cfg.library, downloads=self.downloads,
-                                        downloaded=self._downloaded, offline=self._offline)
+                                        downloaded=self._downloaded, offline=self._offline,
+                                        # the server takes the player's requests once the relay has the window's login
+                                        # (from the page's first call): this computer's library needs none
+                                        signed_in=lambda: self.cfg.library == "local" or bool(self.relay.session))
             self.bridge = _Bridge(self.player.handle)
             self.player.sent.connect(self.bridge.message)
             self.player.command.connect(self._command)
+            if isinstance(resume.get("player"), dict):
+                self.player.resume(resume["player"])
             self.channel = QWebChannel(self)
             self.channel.registerObject("muzix", self.bridge)
             self.web.page().setWebChannel(self.channel)
@@ -338,7 +348,8 @@ class Window(QMainWindow):
 
     def _show_web(self):
         self.stack.setCurrentWidget(self.web)
-        self.web.load(QUrl(self.relay.origin + "/"))
+        page, self.start_page = self.start_page, "/"
+        self.web.load(QUrl(self.relay.origin + page))
 
     # ------------------------------------------------------------ what's downloaded
 
@@ -386,13 +397,10 @@ class Window(QMainWindow):
 
     def _command(self, t: str, m: dict):
         if t == "update":
-            # a newer Muzix Desktop: one of its releases on GitHub (the server says which: backend/muzix/api/android.py),
-            # put in by the app itself now (updater.py), or else downloaded by the browser
-            url = m.get("url") or ""
-            if not re.fullmatch(r"https://github\.com/[\w.-]+/[\w.-]+/releases/download/desktop-v[\w.-]+/muzix-desktop-[\w.-]+", url):
-                return
-            if not (self.updater and self.updater.now(url)):
-                QDesktopServices.openUrl(QUrl(url))
+            # a newer Muzix Desktop (the server says one is out: backend/muzix/api/android.py), put in by the app in
+            # the background, which then starts again where it was (updater.py)
+            if self.updater:
+                self.updater.now()
         elif t == "cast":
             self._speakers()
         elif t == "server":
@@ -425,7 +433,15 @@ class Window(QMainWindow):
         e.ignore()
         self.hide()
 
+    def handover(self) -> dict:
+        """What an update's restart carries on with: the page it's on and what plays (Window(resume=...))."""
+        url = self.web.url().toString()
+        page = url[len(self.relay.origin):] if url.startswith(self.relay.origin + "/") else "/"
+        return {"page": page, "player": self.player.snapshot() if self.player else None}
+
     def shutdown(self):
+        self.cfg.window_geometry = bytes(self.saveGeometry().toBase64().data()).decode()
+        config.save()
         if self.player:
             self.player.release()
         self.downloads.stop()

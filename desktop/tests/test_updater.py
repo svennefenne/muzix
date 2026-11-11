@@ -2,6 +2,7 @@
 downloaded and checked, put in where the app is, and the app started again once it has ended."""
 import base64
 import hashlib
+import json
 import os
 import signal
 import socket
@@ -13,13 +14,12 @@ from types import SimpleNamespace
 import httpx
 import pytest
 import uvicorn
+from muzix_desktop import __version__, updater
 from PySide6.QtCore import QCoreApplication
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
-
-from muzix_desktop import __version__, updater
 
 NEW = b"\x7fELF the new Muzix Desktop" * 1000
 
@@ -43,7 +43,8 @@ def _feed(releases, files: dict[str, bytes]) -> tuple[str, uvicorn.Server]:
     s.bind(("127.0.0.1", 0))
     origin = f"http://127.0.0.1:{s.getsockname()[1]}"
     server = uvicorn.Server(uvicorn.Config(app, log_level="warning", lifespan="off"))
-    threading.Thread(target=server.run, kwargs={"sockets": [s]}, daemon=True).start()
+    server.thread = threading.Thread(target=server.run, kwargs={"sockets": [s]}, daemon=True)
+    server.thread.start()
     for _ in range(50):
         try:
             httpx.get(origin + "/releases", timeout=1)
@@ -154,7 +155,7 @@ def test_macos_swaps_the_app_for_the_new_one(tmp_path):
 
 
 @pytest.mark.skipif(updater.SYSTEM != "linux", reason="the AppImage is Linux's")
-def test_update_downloads_the_newer_release_puts_it_in_and_starts_it(tmp_path, monkeypatch):
+def test_update_downloads_the_newer_release_puts_it_in_and_starts_it_where_it_was(tmp_path, monkeypatch):
     QCoreApplication.instance() or QCoreApplication([])
     major, minor, patch = updater._version(__version__)
     linux = updater.FILES["linux"]
@@ -168,26 +169,26 @@ def test_update_downloads_the_newer_release_puts_it_in_and_starts_it(tmp_path, m
     appimage.parent.mkdir()
     appimage.write_bytes(b"\x7fELF the old one")
     monkeypatch.setenv("APPIMAGE", str(appimage))
-    started, opened = [], []
+    started = []
     monkeypatch.setattr(updater.subprocess, "Popen", lambda cmd, **kw: started.append((cmd, kw)))
     monkeypatch.setattr(updater, "threading", SimpleNamespace(Thread=_Now))
-    monkeypatch.setattr(updater, "QDesktopServices", SimpleNamespace(openUrl=lambda url: opened.append(url.toString())))
-    url = f"https://github.com/svennefenne/muzix/releases/download/desktop-v{major}.{minor}.{patch + 1}/{linux}"
+    was = {"page": "/album/7?tab=credits", "player": {"queue": [{"key": "track:1", "url": "http://127.0.0.1:9/api/stream/1"}],
+                                                     "index": 0, "position": 42.5, "playing": True}}
     shown, ended, told = [False], [], []
-    u = updater.Updater(lambda: shown[0], lambda: ended.append(1), told.append)
+    u = updater.Updater(lambda: shown[0], lambda: was, lambda: ended.append(1), told.append)
     assert u.able and u.target == str(appimage)
 
     # nothing newer: it says so, and nothing happens
-    assert u.now(url)
-    assert told == ["Downloading the new Muzix Desktop. It starts again by itself when it's done.",
+    u.now()
+    assert told == ["Updating Muzix Desktop in the background. It starts again where it was when it's done.",
                     f"Muzix Desktop {__version__} is the newest one."]
     assert appimage.read_bytes() == b"\x7fELF the old one" and not started and not ended and not u.working
 
     # a newer one: downloaded and put in (the running app keeps its own file), then started once this app ends,
-    # in the tray as this one was
+    # in the tray as this one was, and the new start finds where it was
     tags.append(f"desktop-v{major}.{minor}.{patch + 1}")
     with open(appimage, "rb") as running:
-        assert u.now(url)
+        u.now()
         assert appimage.read_bytes() == NEW and os.access(appimage, os.X_OK)
         assert running.read() == b"\x7fELF the old one"
     assert not os.path.exists(tmp_path / "data" / "update" / linux)
@@ -195,29 +196,43 @@ def test_update_downloads_the_newer_release_puts_it_in_and_starts_it(tmp_path, m
     assert cmd[:2] == ["/bin/sh", "-c"] and cmd[3:] == ["muzix-update", str(os.getpid()), str(appimage), "--minimized"]
     assert kw["start_new_session"] and kw["env"]["APPIMAGELAUNCHER_DISABLE"] == "1" and "APPIMAGE" not in kw["env"]
     assert ended == [1] and u.going
-    assert u.now(url) and len(started) == 1        # only once
+    u.now()
+    assert len(started) == 1        # only once
+    kept = updater.resumed()
+    assert kept and {k: kept[k] for k in was} == was
+    assert updater.resumed() is None        # once
 
     # with the window up, the new one opens it too
     started.clear()
     appimage.write_bytes(b"\x7fELF the old one")
     shown[0] = True
-    v = updater.Updater(lambda: shown[0], lambda: ended.append(2), told.append)
-    assert v.now(url)
+    v = updater.Updater(lambda: shown[0], dict, lambda: ended.append(2), told.append)
+    v.now()
     assert started[0][0][3:] == ["muzix-update", str(os.getpid()), str(appimage)] and ended == [1, 2]
 
-    # a file that isn't the release's (as GitHub's digest says) is left out, and the browser downloads it
+    # a file that isn't the release's (as GitHub's digest says) is left out, and it says so: nothing opens
     appimage.write_bytes(b"\x7fELF the old one")
     files[linux] = b"something else"
     told.clear()
-    w = updater.Updater(lambda: True, lambda: ended.append(3), told.append)
-    assert w.now(url)
-    assert appimage.read_bytes() == b"\x7fELF the old one" and ended == [1, 2] and opened == [url]
-    assert told[-1] == "Couldn't update Muzix Desktop (the download isn't the release's file). The new one downloads in your browser instead."
+    w = updater.Updater(lambda: True, dict, lambda: ended.append(3), told.append)
+    w.now()
+    assert appimage.read_bytes() == b"\x7fELF the old one" and ended == [1, 2] and not w.working
+    assert told[-1] == "Couldn't update Muzix Desktop (the download isn't the release's file). Try Update again in a while."
     server.should_exit = True
+    server.thread.join(5)
 
 
-def test_where_it_doesnt_update_itself_the_browser_downloads_it(monkeypatch):
+def test_a_restart_long_after_isnt_the_updates(tmp_path, monkeypatch):
+    monkeypatch.setattr(updater.config, "DATA_DIR", str(tmp_path))
+    (tmp_path / "update").mkdir()
+    (tmp_path / "update" / updater.RESUME).write_text(json.dumps({"at": time.time() - 3600, "page": "/radio"}))
+    assert updater.resumed() is None and not (tmp_path / "update" / updater.RESUME).exists()
+
+
+def test_where_it_cant_update_itself_it_says_so(monkeypatch):
     QCoreApplication.instance() or QCoreApplication([])
     monkeypatch.delenv("APPIMAGE", raising=False)
-    u = updater.Updater(lambda: False, lambda: None)
-    assert not u.able and not u.now("https://github.com/svennefenne/muzix/releases/download/desktop-v9/x")
+    told = []
+    u = updater.Updater(lambda: False, dict, lambda: None, told.append)
+    u.now()
+    assert not u.able and not u.working and told[0].startswith("This copy of Muzix Desktop can't update itself")

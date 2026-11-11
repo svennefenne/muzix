@@ -81,6 +81,7 @@ class Config:
     listen_home: str = ""
     listen_away: str = ""
     window_port: int = 0        # the window's own server on 127.0.0.1 (relay.py): the same each run
+    window_geometry: str = ""   # the window's place and size as it was left (Qt's saveGeometry, base64)
     # the library the window shows: the server's, or this computer's folders (library.py)
     library: str = "server"     # server | local
     library_port: int = 0

@@ -47,15 +47,19 @@ Download the file for your system from the newest `desktop-v…` release on the
 
 When a newer version is out, the Muzix window's account menu offers *Update the
 app* (the server asks GitHub once an hour). From 0.4.6 that's all you do: Muzix
-Desktop downloads the new version, puts it in and starts again as it was (in the
-tray, or with its window). On Linux the AppImage file is replaced, wherever it
-is. On Windows the installer runs silently for you. On macOS the app in its
-folder is swapped for the new one.
+Desktop downloads the new version in the background, puts it in and starts again
+where it was, without opening anything. From 0.4.8 the window comes back in the
+same place and size, on the same page, and what was playing plays on from where
+it was (in the tray only, if that's where it was). On Linux the AppImage file is
+replaced, wherever it is. On Windows the installer runs silently for you. On
+macOS the app in its folder is swapped for the new one.
 
 A copy that can't write over itself (in a folder it may not change, or run from
-source) downloads the new file in your browser instead. Install that as above,
-over the old one, and start it: a newer version starting while the old one runs
-in the tray takes over from it.
+source) says so. Install the new version as above, over the old one, and start
+it: a newer version starting while the old one runs in the tray takes over from
+it. Versions before 0.4.6 open the download in the browser instead. If
+AppImageLauncher put Muzix in your menu, start that copy, so the menu, login and
+updates all use the same file.
 
 *Settings → Sharing → Start Muzix Desktop minimized when I log in* keeps it
 running: at login it opens no window, only its tray icon. The icon is grey while

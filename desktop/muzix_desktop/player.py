@@ -102,7 +102,7 @@ class Player(QObject):
     command = Signal(str, dict)  # one that isn't for the player (the window's: another server, a link)
 
     def __init__(self, headers, shown=lambda: True, for_speaker=lambda url: url, speakers=True, library=lambda: "server",
-                 downloads=None, downloaded=lambda url: None, offline=lambda: False):
+                 downloads=None, downloaded=lambda url: None, offline=lambda: False, signed_in=lambda: True):
         super().__init__()
         self.headers = headers              # (url) → the headers the window's own server wants from the player
         self.shown = shown                  # () → whether the window shows (the visualizer's spectrum only then)
@@ -111,6 +111,7 @@ class Player(QObject):
         self.downloads = downloads          # what's downloaded to this computer (downloads.py)
         self.downloaded = downloaded        # (url) → the song's downloaded file, if it's here
         self.offline = offline              # () → whether the server can't be reached (relay.py)
+        self.signed_in = signed_in          # () → whether the server takes the player's requests yet (window.py)
         self.bin = Gst.ElementFactory.make(_playbin(), "muzix")
         self.bin.set_property("flags", AUDIO | SOFT_VOLUME)
         if sink := os.environ.get("MUZIX_AUDIO_SINK"):      # another output (the tests: "fakesink sync=true")
@@ -132,6 +133,8 @@ class Player(QObject):
         self.ended = False
         self.buffering = False
         self.start_at = 0.0                 # where to seek once the song is ready
+        self.pending: dict | None = None    # what played before an update's restart (snapshot()), for the page's hello
+        self.starts = 0                     # songs started so far (what's asked meanwhile wins over _carry_on)
         self.level, self.muted = 1.0, False
         self.failures = 0
         self.meta: dict = {}                # a station's song now (the page's "meta")
@@ -168,12 +171,27 @@ class Player(QObject):
         # the page offers a newer Muzix Desktop for this system (frontend/src/appUpdate.ts), which opens in the browser
         system = "windows" if sys.platform == "win32" else "macos" if sys.platform == "darwin" else "linux"
         has = {"downloads": self.downloads.list(), "offline": self.offline()} if self.downloads else {}
+        # after an update's restart: the queue as it was, handed to the page with the hello, then on from where it was
+        resume, self.pending = self.pending, None
+        if resume:
+            self.queue, self.index, self.failures = resume["queue"], resume["index"], 0
         self._send(t="hello", version=f"MuzixDesktop/{__version__}", saves=False, updates=True, opens=True,
                    desktop={"version": __version__, "platform": system},
                    device=platform.node() or "Computer", volume=self.level, library=self.library(),
                    queue=[it.get("muzix", "") for it in self.queue], index=self.index, state=self._state_msg(), **has)
         if self.caster:
             self.caster._tell()             # the Cast button: speakers about, or one playing
+        if resume:
+            self._carry_on(resume["position"], resume["playing"], self.starts)
+
+    def _carry_on(self, at: float, play: bool, starts: int, tries: int = 100):
+        """The song before the restart, from where it was, once the server takes the player's requests (or
+        after ten seconds, offline, whatever plays from here); not if something else has started meanwhile."""
+        if self.starts != starts:
+            return
+        if self.signed_in() or tries <= 0:
+            return self._start(self.index, at, play)
+        QTimer.singleShot(100, lambda: self._carry_on(at, play, starts, tries - 1))
 
     def _on_load(self, m):
         self.queue = list(m.get("items") or [])
@@ -263,6 +281,21 @@ class Player(QObject):
 
     def notify(self, text: str):
         self._send(t="notify", text=text)
+
+    def snapshot(self) -> dict:
+        """What plays and where, for the next start to carry on from (an update's restart); not playing if a
+        speaker plays it (the computer would start playing by itself)."""
+        cur = self._current()
+        at = self.position() - float(cur.get("offset") or 0) if cur else 0.0
+        return {"queue": self.queue, "index": self.index, "position": max(0.0, at),
+                "playing": self.want and not self.ended and not self.casting}
+
+    def resume(self, s: dict):
+        """Carry on from snapshot() once the page says hello (the queue goes to it then)."""
+        queue = [it for it in s.get("queue") or [] if isinstance(it, dict) and it.get("url")]
+        if queue:
+            self.pending = {"queue": queue, "index": max(0, min(int(s.get("index") or 0), len(queue) - 1)),
+                            "position": float(s.get("position") or 0), "playing": bool(s.get("playing"))}
 
     def send_downloads(self):
         """Everything downloaded, and whether the server can't be reached, for the page."""
@@ -354,6 +387,7 @@ class Player(QObject):
         if not 0 <= index < len(self.queue):
             return
         self.bin.set_state(Gst.State.NULL)
+        self.starts += 1
         self.index, self.lined_up, self.ended = index, None, False
         self.meta = {}
         it = self.queue[index]
