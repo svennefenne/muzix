@@ -87,6 +87,9 @@ def _now() -> float:
 
 BANDS = 256                             # as the page's analyser has them (frontend/src/player/engine.ts)
 MAGNITUDES = re.compile(r"magnitude=\(float\)\{([^}]*)\}")
+SETTLE = 0.4        # seconds: seeks asked for one after another (+15 again and again) become one, this long after the last
+STALL = 5.0         # seconds a song may stand still while it plays (not buffering) before it's started again there
+REVIVALS = 3        # times it's started again without playing on in between, before it stops and says so
 
 
 def _playbin() -> str:
@@ -158,7 +161,16 @@ class Player(QObject):
             self.caster.finished.connect(self._cast_next)
             self.caster.loudness.connect(self._speaker_volume)
         QTimer(self, interval=40, timeout=self._messages).start()
-        self.ticking = QTimer(self, interval=500, timeout=self._state)
+        self.ticking = QTimer(self, interval=500, timeout=self._tick)
+        # seeks: the last one asked for, made once they settle (_seek_now)
+        self.seeking: float | None = None
+        self.landing = 0.0                  # where it was last sent (a start, a seek), told while it gets there
+        self._settling = QTimer(self, singleShot=True, interval=int(SETTLE * 1000), timeout=self._seek_now)
+        # standing still while it plays (_watch): where it stood at the last look and since when, whether it has
+        # played since it started (only then can it stand still), and the times it was started again since
+        self.still = (-1.0, _now())
+        self.played = False
+        self.revived = 0
         # what's downloaded, told to the page once things settle (a song done, two more begun)
         self._telling = QTimer(self, singleShot=True, interval=500, timeout=self.send_downloads)
         if downloads:
@@ -229,6 +241,9 @@ class Player(QObject):
         if self.casting:
             self.caster.play()
         else:
+            if self.seeking is not None:        # a seek still settling goes first (back from the end, say)
+                self._settling.stop()
+                self._seek_now()
             self.bin.set_state(Gst.State.PLAYING)
         self._state()
 
@@ -247,8 +262,24 @@ class Player(QObject):
         at = max(0.0, float(m.get("position") or 0) - float(cur.get("offset") or 0))
         if self.casting:
             return self.caster.seek(at, self.want)
-        self.bin.seek_simple(Gst.Format.TIME, Gst.SeekFlags.FLUSH | Gst.SeekFlags.ACCURATE, int(at * Gst.SECOND))
+        # +15 pressed again and again is one seek, once the presses stop: each one empties the sound output, and
+        # five in seven seconds left the Linux build (GStreamer 1.20, PipeWire 1.6) standing still (2026-11-12).
+        # Meanwhile the player says it's there already, so the page's next +15 counts from it.
+        self.seeking = at
         self.ended = False
+        self._settling.start()
+
+    def _seek_now(self):
+        if self.seeking is None:
+            return
+        at, self.seeking = self.seeking, None
+        self.bin.seek_simple(Gst.Format.TIME, Gst.SeekFlags.FLUSH | Gst.SeekFlags.ACCURATE, int(at * Gst.SECOND))
+        self.still, self.landing = (at, _now()), at
+        self._state()
+
+    def _forget_seek(self):
+        self.seeking = None
+        self._settling.stop()
 
     def _on_jump(self, m):
         i = next((i for i, it in enumerate(self.queue) if it.get("key") == m.get("key")), None)
@@ -279,6 +310,9 @@ class Player(QObject):
             return
         rate = max(0.25, min(4.0, float(m.get("value") or 1)))
         ok, pos = self.bin.query_position(Gst.Format.TIME)
+        if self.seeking is not None:            # from where a seek still settling goes, the two one seek
+            ok, pos = True, int(self.seeking * Gst.SECOND)
+            self._forget_seek()
         self.bin.seek(rate, Gst.Format.TIME, Gst.SeekFlags.FLUSH | Gst.SeekFlags.ACCURATE,
                       Gst.SeekType.SET, pos if ok else 0, Gst.SeekType.NONE, 0)
 
@@ -330,6 +364,7 @@ class Player(QObject):
     def _on_stop(self, m):
         if self.casting:
             self.caster.stop_media()
+        self._forget_seek()
         self.bin.set_state(Gst.State.NULL)
         self.queue, self.index, self.want, self.ended = [], -1, False, False
         self.ticking.stop()
@@ -447,8 +482,10 @@ class Player(QObject):
         if not 0 <= index < len(self.queue):
             return
         self.bin.set_state(Gst.State.NULL)
+        self._forget_seek()
         self.starts += 1
         self.index, self.lined_up, self.ended = index, None, False
+        self.still, self.played, self.revived = (-1.0, _now()), False, 0
         self.meta = {}
         it = self.queue[index]
         self.start_at = at or float(it.get("resume") or 0)
@@ -461,6 +498,7 @@ class Player(QObject):
             self._item()
             return self._state()
         self.bin.set_property("uri", self._uri(index))
+        self.landing = self.start_at
         self.bin.set_state(Gst.State.PLAYING if play else Gst.State.PAUSED)
         self._item()
         self._state()
@@ -490,6 +528,51 @@ class Player(QObject):
         if nxt is not None:
             self.lined_up = nxt
             self.bin.set_property("uri", self._uri(nxt))
+
+    def _tick(self):
+        self._watch()
+        self._state()
+
+    def _watch(self):
+        """A song that plays (not buffering, not on a speaker) but stands still for STALL seconds is started
+        again where it stood, its sound output anew. The sound output can stop taking it for good: the Linux
+        build's GStreamer 1.20 on PipeWire 1.6, after +15 five times in seven seconds (2026-11-12), had the
+        stream waiting and PipeWire's buffer empty until the app was restarted. After REVIVALS tries that
+        don't play on, it pauses and says it couldn't play."""
+        if not self.want or self.ended or self.casting or self.buffering or self.seeking is not None:
+            self.still = (self.still[0], _now())
+            return
+        was, since = self.still
+        ok, pos = self.bin.query_position(Gst.Format.TIME)
+        at = pos / Gst.SECOND if ok and pos >= 0 else was
+        if abs(at - was) > 0.05:
+            if was >= 0 and 0 < at - was < 3:       # on by itself, as playing goes (a seek jumps)
+                self.played, self.revived = True, 0
+            self.still = (at, _now())
+            return
+        if not self.played or at < 0 or _now() - since < STALL:
+            return
+        cur = self._current() or {}
+        if self.revived >= REVIVALS:
+            log.warning("%s stands still at %.1f s however it's started: stopped", cur.get("title"), at)
+            self._send(t="error", key=cur.get("key", ""), title=cur.get("title", ""),
+                       message=f"it stood still at {at:.0f} s: the sound output doesn't take it")
+            return self._on_pause({})
+        self.revived += 1
+        log.warning("%s stood still at %.1f s for %g s while playing: started again there", cur.get("title"), at, STALL)
+        self._revive(at)
+
+    def _revive(self, at: float):
+        """The song again from `at` (a station from now), its pipeline and sound output new; the page isn't
+        told of a new song, as there isn't one."""
+        live = bool((self._current() or {}).get("live"))
+        self.bin.set_state(Gst.State.NULL)
+        self.lined_up = None
+        self.start_at = 0.0 if live else at
+        self.bin.set_property("uri", self._uri(self.index))
+        self.landing = self.start_at
+        self.bin.set_state(Gst.State.PLAYING)
+        self.still = (at, _now())
 
     def _source_setup(self, _bin, source):
         """The window's own server (relay.py) takes the window's secret as a header: GStreamer before 1.22 runs
@@ -589,8 +672,10 @@ class Player(QObject):
         okd, dur = self.bin.query_duration(Gst.Format.TIME)
         seek = Gst.Query.new_seeking(Gst.Format.TIME)
         seekable = self.bin.query(seek) and seek.parse_seeking()[1]
+        # where a seek goes while it settles, and where a start or seek goes while it gets there (not 0 meanwhile)
+        at = self.seeking if self.seeking is not None else pos / Gst.SECOND if ok and pos >= 0 else self.landing
         return {"t": "state", "key": cur.get("key", ""),
-                "position": float(cur.get("offset") or 0) + (pos / Gst.SECOND if ok and pos >= 0 else 0),
+                "position": float(cur.get("offset") or 0) + at,
                 "duration": float(cur.get("duration") or 0) or (dur / Gst.SECOND if okd and dur > 0 else 0),
                 "playing": self.want and not self.ended, "buffering": self.want and self.buffering,
                 "seekable": bool(seekable), "ended": self.ended, "left": max(0, len(self.queue) - self.index - 1)}
@@ -604,4 +689,7 @@ class Player(QObject):
         self.keep(now=True)
         if self.caster:
             self.caster.stop()
+        self.ticking.stop()                     # nothing more to look after (_watch would start it again)
+        self._forget_seek()
+        self.want = False
         self.bin.set_state(Gst.State.NULL)

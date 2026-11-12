@@ -183,13 +183,19 @@ shared with the others on your server if you like.
   counts when its songs are as many and as long, and else on Bandcamp, whose
   track list and cover then go into the files; one neither has is filed as its
   tags say and listed for a look. An album is taken two minutes after its last
-  file arrived (the folder is looked at every minute). What isn't music goes to
-  `_Done/<album>`, an album the library seems to have to `_Duplicates/<album>`
-  (*File anyway* there files it into the library's `Duplicates/<artist>/<album> (2)`),
-  one that couldn't be filed to `_Failed/<album>`:
-  nothing is deleted. From a computer the music is copied, and its files there
-  go to `_Done`; the computer has to be on with Muzix Desktop running and
-  sharing.
+  file arrived (the folder is looked at every minute), or at once with
+  *Transfer now* (but one still being copied in). On the server, what isn't
+  music goes to `_Done/<album>`. One that couldn't be filed goes to
+  `_Failed/<album>`, and an album
+  at least half of whose songs the library seems to have to `_Duplicates/<album>`.
+  There you see why (its songs and what they're like in the library) and file it
+  as an album of its own, in place of the library's copy (which goes to the
+  library's `Duplicates/<artist>/<album> (2)`), beside it in that folder, or
+  throw it away (to the computer's trash; on the server, deleted). From a
+  computer the music is copied, each file checked whole, and once the library
+  has every song of it the album is deleted on the computer (one not all filed
+  goes to `_Done`); the computer has to be on with Muzix Desktop (0.4.22 or
+  later to delete) running and sharing.
 - Spotify-style layout in the Deck Force look: your library on the left, the
   page in a frame, what's playing on the right (toggle it from the player bar),
   player and status line below. Works on phones too.

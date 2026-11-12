@@ -282,3 +282,172 @@ def test_how_each_album_was_matched_the_import_or_the_librarys_word():
                                              "folder": "/lib/Metal/Qwop/Qwop - 2008 - Live Qwerty", "mbid": ""}]}
     with db.session() as s:
         assert filed(new, s)[0]["match"] == "bandcamp"
+
+
+QWERTY = "Zyx Band - 2021 - Qwerty Songs"
+
+
+def test_set_aside_only_when_at_least_half_its_songs_are_in_the_library(folder, monkeypatch):
+    """One song like one of a single in the library doesn't make an album a duplicate (Jinjer's albums,
+    2026-11-12): fewer than half of its songs found, it's filed as any album."""
+    root, _ = folder
+    album(root, songs=("1. A.mp3", "2. B.mp3", "3. C.mp3"))
+    album(root, "Zyx Band - 2022 - Again", songs=("1. A.mp3", "2. B.mp3", "3. C.mp3", "4. D.mp3"))
+    monkeypatch.setattr(watch.duplicates, "check", lambda files, s: {"found": [{"path": f[0], "why": "similar"} for f in files[:2]],
+                                                                     "skip": []})
+    monkeypatch.setattr(watch, "match", lambda songs, name, ctx=None: ("none", "", None))
+    calls, ctx = [], Ctx()
+    monkeypatch.setattr(watch.importer, "file_music", filed(calls))
+    with_one = {"found": [{"path": "x", "why": "similar"}], "skip": []}
+    monkeypatch.setattr(watch.duplicates, "check", lambda files, s: with_one)
+    got = watch.import_watched(ctx, QWERTY, f"server:{root}")
+    assert not got.get("duplicate") and len(calls) == 1
+    assert any("1 of its 3 songs" in line and "filed as any album" in line for line in ctx.lines)
+    monkeypatch.setattr(watch.duplicates, "check", lambda files, s: {"found": [{"path": f[0], "why": "similar"} for f in files[:2]],
+                                                                     "skip": []})
+    got = watch.import_watched(Ctx(), "Zyx Band - 2022 - Again", f"server:{root}")
+    assert got["duplicate"] and got["songs"] == 4 and len(got["found"]) == 2 and len(calls) == 1
+    assert (root / "_Duplicates" / "Zyx Band - 2022 - Again").is_dir()
+
+
+def test_transfer_now_takes_what_isnt_still_coming_in(folder, monkeypatch):
+    root, submitted = folder
+    album(root)
+    album(root, "Zyx Band - 2022 - Arriving")
+    monkeypatch.setattr(watch, "_busy", lambda: set())
+    monkeypatch.setattr(watch, "NOW_LOOK", 0)
+    watch._seen.clear()
+    entries, looks = watch.ServerPlace.entries, []
+
+    def looked(self, held=""):
+        looks.append(held)
+        if len(looks) == 2:         # between the two looks, one album gets another song
+            (root / "Zyx Band - 2022 - Arriving" / "3. More.mp3").write_bytes(b"\xff\xfb" + b"0" * 10)
+        return entries(self, held)
+    monkeypatch.setattr(watch.ServerPlace, "entries", looked)
+    assert watch.check(now=True) == {"taken": [QWERTY], "waiting": ["Zyx Band - 2022 - Arriving"]}
+    assert [params["name"] for _args, params in submitted] == [QWERTY]
+    assert watch.state()["waiting"] == ["Zyx Band - 2022 - Arriving"]
+
+
+class Computer(watch.ComputerPlace):
+    """A computer's watch folder as its Muzix Desktop answers (desktop/muzix_desktop/sharing.py), here in a
+    folder: `old` a Muzix Desktop before 0.4.22 (no deleting), `short` a file that comes short."""
+
+    def __init__(self, root, old=False, short=""):
+        super().__init__(1, "/home/someone/Incoming")
+        self.root, self.old, self.short, self.asked = root, old, short, []
+        self.here = watch.ServerPlace(str(root))
+
+    def _ask(self, op, timeout=60, **args):
+        self.asked.append(op)
+        held = args.get("held") or ""
+        if op == "watch_list":
+            return [{"name": n, "files": [list(f) for f in fs]} for n, fs in self.here.entries(held).items()]
+        if op == "watch_move":
+            return self.here.move(args["name"], held, args["to"])
+        if op == "watch_delete" and not self.old:
+            return self.here.remove(args["name"], held)
+        raise watch.tunnel.Refused(f"Unknown request {op}")
+
+    def _file(self, rel, held):
+        data = ((self.root / held) if held else self.root).joinpath(rel).read_bytes()
+        yield data[:-1] if rel.endswith(self.short or "\0") else data
+
+
+def _from_a_computer(monkeypatch, comp, albums=None):
+    monkeypatch.setattr(watch, "place", lambda: comp)
+    monkeypatch.setattr(watch.duplicates, "check", lambda files, s: {"found": [], "skip": []})
+    monkeypatch.setattr(watch, "match", lambda songs, name, ctx=None: ("musicbrainz", "mb-1", {}))
+    calls = []
+    monkeypatch.setattr(watch.importer, "file_music", filed(calls, albums=albums))
+    return calls
+
+
+def test_from_a_computer_an_album_filed_whole_is_deleted_there(folder, monkeypatch):
+    root, _ = folder
+    album(root)
+    comp = Computer(root)
+    calls = _from_a_computer(monkeypatch, comp)
+    got = watch.import_watched(Ctx(), QWERTY, comp.key)
+    assert calls[0]["source"] != root / QWERTY                              # filed from a copy
+    assert got["removed"] and "watch_delete" in comp.asked
+    assert not (root / QWERTY).exists() and not (root / "_Done").exists()
+
+
+def test_from_a_computer_an_album_not_filed_whole_is_kept(folder, monkeypatch):
+    root, _ = folder
+    album(root)                     # two songs; beets files one
+    comp = Computer(root)
+    _from_a_computer(monkeypatch, comp, albums=[{"artist": "Zyx Band", "album": "Qwerty Songs", "folder": "/lib/x", "songs": 1}])
+    ctx = Ctx()
+    got = watch.import_watched(ctx, QWERTY, comp.key)
+    assert not got.get("removed") and "watch_delete" not in comp.asked
+    assert (root / "_Done" / QWERTY / "1. Opening Qwerty.mp3").exists() and (root / "_Done" / QWERTY / "2. Closing Qwerty.mp3").exists()
+    assert any("1 of its 2 songs were filed" in line for line in ctx.lines)
+
+    # a Muzix Desktop before 0.4.22 can't delete: in _Done as before
+    album(root, "Zyx Band - 2022 - Old")
+    comp = Computer(root, old=True)
+    _from_a_computer(monkeypatch, comp)
+    got = watch.import_watched(Ctx(), "Zyx Band - 2022 - Old", comp.key)
+    assert not got.get("removed") and (root / "_Done" / "Zyx Band - 2022 - Old" / "info.nfo").exists()
+
+
+def test_from_a_computer_a_file_that_comes_short_fails_the_album(folder, monkeypatch):
+    root, _ = folder
+    album(root)
+    comp = Computer(root, short="2. Closing Qwerty.mp3")
+    calls = _from_a_computer(monkeypatch, comp)
+    with pytest.raises(RuntimeError, match="came short"):
+        watch.import_watched(Ctx(), QWERTY, comp.key)
+    assert not calls and (root / "_Failed" / QWERTY / "2. Closing Qwerty.mp3").stat().st_size == 4002
+
+
+def test_in_place_of_the_librarys_copy(folder, monkeypatch, tmp_path_factory):
+    """From _Duplicates, filed in place of the library's copy: that one goes to the library's Duplicates folder
+    first (an album only some of whose songs were found stays), and back again if filing fails."""
+    from muzix import db
+    from muzix.models import Root
+    root, _ = folder
+    lib = tmp_path_factory.mktemp("lib")
+    old = lib / "Metal" / "Zyx Band" / QWERTY
+    single = lib / "Metal" / "Zyx Band" / "Zyx Band - 2020 - Opening Qwerty"
+    for d, songs in ((old, ("1. Opening Qwerty.mp3", "2. Closing Qwerty.mp3")), (single, ("1. Opening Qwerty.mp3", "2. B.mp3", "3. C.mp3"))):
+        d.mkdir(parents=True)
+        for f in songs:
+            (d / f).write_bytes(b"old")
+    (lib / "Duplicates" / "Zyx Band" / QWERTY).mkdir(parents=True)          # taken: it goes to (2)
+    (root / "_Duplicates").mkdir()
+    album(root / "_Duplicates")
+    found = [{"path": f"{QWERTY}/1. Opening Qwerty.mp3", "why": "similar", "match": {"path": str(old / "1. Opening Qwerty.mp3")}},
+             {"path": f"{QWERTY}/2. Closing Qwerty.mp3", "why": "similar", "match": {"path": str(old / "2. Closing Qwerty.mp3")}},
+             {"path": f"{QWERTY}/1. Opening Qwerty.mp3", "why": "similar", "match": {"path": str(single / "1. Opening Qwerty.mp3")}}]
+    monkeypatch.setattr(watch.duplicates, "check", lambda files, s: {"found": found, "skip": []})
+    monkeypatch.setattr(watch, "match", lambda songs, name, ctx=None: ("none", "", None))
+    assert watch.replaced(found) == [str(old)]
+    aside = lib / "Duplicates" / "Zyx Band" / f"{QWERTY} (2)"
+    with db.session() as s:
+        s.add(Root(path=str(lib), kind="music"))
+        s.commit()
+    try:
+        def broken(*a, **k):
+            raise RuntimeError("beet import failed (1)")
+        monkeypatch.setattr(watch.importer, "file_music", broken)
+        with pytest.raises(RuntimeError):
+            watch.import_watched(Ctx(), QWERTY, f"server:{root}", held="_Duplicates", how="replace")
+        assert (old / "1. Opening Qwerty.mp3").read_bytes() == b"old" and not aside.exists()      # back where it was
+
+        (root / "_Failed" / QWERTY).rename(root / "_Duplicates" / QWERTY)
+        calls = []
+        monkeypatch.setattr(watch.importer, "file_music", filed(calls))
+        got = watch.import_watched(Ctx(), QWERTY, f"server:{root}", held="_Duplicates", how="replace")
+    finally:
+        with db.session() as s:
+            s.query(Root).filter(Root.path == str(lib)).delete()
+            s.commit()
+    assert calls[0].get("duplicate") is None                                 # filed as any album
+    assert not old.exists() and (aside / "2. Closing Qwerty.mp3").read_bytes() == b"old"
+    assert single.is_dir() and got["replaced"] == [{"from": str(old), "to": str(aside)}]
+    with pytest.raises(ValueError):
+        watch.import_watched(Ctx(), QWERTY, f"server:{root}", held="_Failed", how="replace")

@@ -20,6 +20,7 @@ import threading
 from urllib.parse import urlsplit
 
 import certifi
+from PySide6.QtCore import QFile
 import httpx
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed, InvalidStatus
@@ -224,7 +225,39 @@ def _move(sid: str, m: dict) -> dict:
     return {"moved": True}
 
 
-WATCH = {"watch_browse": _browse, "watch_set": _set, "watch_list": _list, "watch_move": _move}
+def _album(sid: str, m: dict) -> str:
+    """An album (a folder or a file) right in the watch folder or one of its HELD folders."""
+    name = m.get("name") or ""
+    if not name or "/" in name or "\\" in name or name in (".", "..") or name.startswith(("_", ".")):
+        raise PermissionError("Not an album in the watch folder")
+    return watched(sid, m.get("path"), m.get("held") or "", name)
+
+
+def _delete(sid: str, m: dict) -> dict:
+    """An album the server filed whole (its library has every song of it): deleted here."""
+    path = _album(sid, m)
+    if os.path.isdir(path) and not os.path.islink(path):
+        shutil.rmtree(path)
+    elif os.path.lexists(path):
+        os.remove(path)
+    else:
+        return {"deleted": False}
+    log.info("The server filed %s: deleted from the watch folder", m.get("name"))
+    return {"deleted": True}
+
+
+def _trash(sid: str, m: dict) -> dict:
+    """An album set aside (_Duplicates, _Failed) the server's admin threw away: into this computer's trash."""
+    path = _album(sid, m)
+    if not os.path.lexists(path):
+        return {"trashed": False}
+    if not QFile.moveToTrash(path):
+        raise OSError("This computer's trash didn't take it")
+    return {"trashed": True}
+
+
+WATCH = {"watch_browse": _browse, "watch_set": _set, "watch_list": _list, "watch_move": _move,
+         "watch_delete": _delete, "watch_trash": _trash}
 
 
 class Sharing:

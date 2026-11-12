@@ -46,6 +46,30 @@ def get_watch(db: Session = Depends(get_db)):
             held = where.held()
         except Exception:       # a computer gone meanwhile
             pass
+    return {"folder": settings.get("watch_folder"), "computer": settings.get("watch_computer"), "computers": computers,
+            "reachable": where is not None, "state": watch.state(), "held": held, "why": _why(db, held["_Duplicates"]),
+            "trash": "deleted" if isinstance(where, watch.ServerPlace) else "trash", "recent": _recent(db)}
+
+
+def _why(db: Session, names: list[str]) -> dict[str, dict]:
+    """Why each album in _Duplicates was set aside: of how many songs, the ones the library seems to have and
+    what they're like there, and the library's albums filing it in their place would put aside."""
+    out: dict[str, dict] = {}
+    if not names:
+        return out
+    for j in db.scalars(select(Job).where(Job.type == "import_watched", Job.status == "done").order_by(Job.id.desc()).limit(400)):
+        name, r = (j.params or {}).get("name", ""), j.result or {}
+        if name in names and name not in out and r.get("duplicate"):
+            found = r.get("found") or []
+            out[name] = {"songs": r.get("songs") or 0, "replaces": watch.replaced(found),
+                         "found": [{"song": os.path.basename(f.get("path") or ""), "why": f.get("why", ""),
+                                    **{k: (f.get("match") or {}).get(k, "") for k in ("title", "artist", "album", "format")},
+                                    "folder": watch._album_folder((f.get("match") or {}).get("path") or "") if f.get("match") else ""}
+                                   for f in found]}
+    return out
+
+
+def _recent(db: Session) -> list[dict]:
     recent = []
     for j in db.scalars(select(Job).where(Job.type == "import_watched").order_by(Job.id.desc()).limit(12)):
         r = j.result or {}
@@ -55,9 +79,9 @@ def get_watch(db: Session = Depends(get_db)):
                        "error": j.message if j.status == "failed" else "",
                        # each album's own match counts (an import's own word from before 0.4.20 was the whole folder's)
                        "match": (got.pop() if len(got) == 1 else "mixed") if got else r.get("match", ""),
-                       "duplicate": bool(r.get("duplicate")), "albums": albums, "finished_at": iso(j.finished_at)})
-    return {"folder": settings.get("watch_folder"), "computer": settings.get("watch_computer"), "computers": computers,
-            "reachable": where is not None, "state": watch.state(), "held": held, "recent": recent}
+                       "duplicate": bool(r.get("duplicate")), "removed": bool(r.get("removed")),
+                       "replaced": len(r.get("replaced") or []), "albums": albums, "finished_at": iso(j.finished_at)})
+    return recent
 
 
 class WatchBody(BaseModel):
@@ -87,14 +111,54 @@ def browse(computer: str = "", path: str = "", db: Session = Depends(get_db)):
 class AgainBody(BaseModel):
     name: str
     held: str               # _Duplicates | _Failed
+    how: str = ""           # from _Duplicates: duplicates (the default) | album | replace (watch.HOW)
+
+
+def _place() -> watch.Place:
+    where = watch.place()
+    if where is None:
+        raise HTTPException(409, "The watch folder can't be reached right now")
+    return where
 
 
 @router.post("/again")
 def again(body: AgainBody):
-    """An album set aside, filed anyway (one in _Duplicates without looking for duplicates again)."""
+    """An album set aside, filed anyway (one in _Duplicates without looking for duplicates again): from
+    _Duplicates into the library's Duplicates folder, as an album of its own, or in place of the library's copy."""
     if body.held not in ("_Duplicates", "_Failed"):
         raise HTTPException(400, "Only albums set aside can be filed again")
-    where = watch.place()
-    if where is None:
-        raise HTTPException(409, "The watch folder can't be reached right now")
-    return {"job_id": jobs.submit("import_watched", f"Watch folder: {body.name}", name=body.name, key=where.key, held=body.held)}
+    if body.how and (body.held != "_Duplicates" or body.how not in watch.HOW):
+        raise HTTPException(400, "Not a way to file it")
+    where = _place()
+    how = {"how": body.how} if body.how else {}
+    return {"job_id": jobs.submit("import_watched", f"Watch folder: {body.name}", name=body.name, key=where.key,
+                                  held=body.held, **how)}
+
+
+class HeldBody(BaseModel):
+    name: str
+    held: str               # _Duplicates | _Failed
+
+
+@router.post("/remove")
+def remove(body: HeldBody):
+    """An album set aside, thrown away: into the computer's trash (Muzix Desktop 0.4.22 on), or on this server
+    deleted."""
+    if body.held not in ("_Duplicates", "_Failed") or not body.name or "/" in body.name or body.name in (".", ".."):
+        raise HTTPException(400, "Only albums set aside can be thrown away")
+    where = _place()
+    try:
+        return {"gone": where.trash(body.name, body.held)}
+    except tunnel.Refused as e:
+        raise HTTPException(409, f"{e} (Muzix Desktop 0.4.22 and later can do it)" if "Unknown request" in str(e) else str(e))
+    except tunnel.Gone as e:
+        raise HTTPException(409, str(e))
+
+
+@router.post("/now")
+def transfer_now():
+    """Transfer now: every album in the folder taken at once, but one still being copied in."""
+    try:
+        return watch.check(now=True)
+    except (tunnel.Refused, tunnel.Gone, RuntimeError, OSError) as e:
+        raise HTTPException(409, str(e) or e.__class__.__name__)

@@ -1,5 +1,6 @@
 """A server's watch folder on this computer (sharing.py): its admin may pick one only when Settings → Servers
-allows it, and then reads and moves files in that folder alone; a move never overwrites or deletes."""
+allows it, and then reads and moves files in that folder alone; a move never overwrites. An album it filed
+whole is deleted, one set aside it threw away goes to the trash; nothing outside the folder, nor its own."""
 import os
 
 import pytest
@@ -75,3 +76,35 @@ def test_its_say_so_and_the_folder_kept_between_runs(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "_current", None)            # Muzix Desktop started again
     s = config.load().server("srv")
     assert s.watch is True and s.watch_folder == "/home/me/Incoming"
+
+
+def test_an_album_filed_whole_is_deleted_one_thrown_away_goes_to_the_trash(server, tmp_path, monkeypatch):
+    server.watch = True
+    incoming = tmp_path / "Incoming"
+    (incoming / "Zyx - Qwerty" / "CD1").mkdir(parents=True)
+    (incoming / "Zyx - Qwerty" / "CD1" / "1. Song.flac").write_bytes(b"flac")
+    (incoming / "_Duplicates" / "Zyx - Again").mkdir(parents=True)
+    (incoming / "_Duplicates" / "Zyx - Again" / "1. Song.flac").write_bytes(b"flac")
+    (tmp_path / "secret.txt").write_text("not the server's")
+    server.watch_folder = str(incoming)
+    trashed = []
+    monkeypatch.setattr(sharing.QFile, "moveToTrash", lambda path: trashed.append(path) or True)
+
+    at = {"path": str(incoming)}
+    assert sharing._delete("srv", {**at, "name": "Zyx - Qwerty"}) == {"deleted": True}
+    assert not (incoming / "Zyx - Qwerty").exists()
+    assert sharing._delete("srv", {**at, "name": "Zyx - Qwerty"}) == {"deleted": False}          # gone already
+    assert sharing._trash("srv", {**at, "name": "Zyx - Again", "held": "_Duplicates"}) == {"trashed": True}
+    assert trashed == [str(incoming / "_Duplicates" / "Zyx - Again")]
+    monkeypatch.setattr(sharing.QFile, "moveToTrash", lambda path: False)
+    with pytest.raises(OSError):
+        sharing._trash("srv", {**at, "name": "Zyx - Again", "held": "_Duplicates"})
+    for bad in ({"name": "../secret.txt"}, {"name": ".."}, {"name": "_Duplicates"}, {"name": ""}, {"name": "x", "held": "Elsewhere"}):
+        with pytest.raises(PermissionError):
+            sharing._delete("srv", {**at, **bad})
+    with pytest.raises(PermissionError):
+        sharing._delete("srv", {"path": str(tmp_path), "name": "secret.txt"})                     # only the folder picked
+    assert (tmp_path / "secret.txt").exists() and (incoming / "_Duplicates").exists()
+    server.watch = False
+    with pytest.raises(PermissionError):
+        sharing._delete("srv", {**at, "name": "Zyx - Again", "held": "_Duplicates"})

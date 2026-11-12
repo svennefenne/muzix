@@ -130,6 +130,14 @@ The computer against a server. Muzix Desktop (the tray app) gets a window.
   Windows only as a preview (1.29, until 1.30 is out), Linux none: there it's the system's GStreamer.
   Linux first.
 - The visualizer gets the player's spectrum.
+- Seeks one after another (+15 again and again) are one, made 0.4 s after the last; meanwhile the player
+  says it's there already, so the next +15 counts from it (0.4.22).
+- A song that says it plays but stands still for 5 s (not buffering) is started again where it stood,
+  its sound output new; after three tries that don't play on, it pauses and says it couldn't play
+  (0.4.22). On 2026-11-12 the AppImage (GStreamer 1.20 and PulseAudio 15.99 from Ubuntu 22.04) on
+  PipeWire 1.6.11 stood still after +15 five times in seven seconds: PipeWire logged OVERFLOW at each,
+  its buffer for the app stayed empty and the stream waited, until the app was restarted. Not
+  reproduced since, with the same libraries.
 
 ### 3.3 Media keys and the system's player
 

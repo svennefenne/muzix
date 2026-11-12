@@ -7,12 +7,18 @@ the album's (match()); when none does, on Bandcamp, whose track list and cover t
 neither has it, it's filed as its own tags say and listed as unmatched for the admin to look at.
 
 The folder is looked at every minute; an album (a folder in it, or a single file) is taken once it hasn't
-changed for two minutes. Its music goes into the library: from the server's folder itself, and from a
-computer's as a copy, after which the computer's files go to _Done. What's left (covers, .cue, .nfo, .log)
-goes to _Done/<album>; an album the library seems to have already goes to _Duplicates/<album>, for the
-admin to look at and file anyway if they like (into the library's Duplicates/<artist>/<album> (2), beside its
-other copies); one that couldn't be filed goes to _Failed/<album>. Nothing
-is deleted. Folders whose names start with "_" or "." are the watch folder's own, and left alone.
+changed for two minutes, or at once with Transfer now (check(now=True): what doesn't change in a few
+seconds). Its music goes into the library: from the server's folder itself, and from a computer's as a copy,
+each file checked whole as it comes; once the library has every one of its songs, the computer's album is
+deleted there (2026-11-12, the admin's choice: the library has it), else it goes to _Done. On the server,
+what's left (covers, .cue, .nfo, .log) goes to _Done/<album>.
+
+An album at least half of whose songs the library seems to have already goes to _Duplicates/<album>; with
+fewer it's filed as any album. From _Duplicates the admin sees why (the songs and what they're like in the
+library) and files it anyway: into the library's Duplicates/<artist>/<album> (2) beside its other copies, as
+an album of its own, or in place of the library's copy, which goes to Duplicates instead; or throws it away
+(into the computer's trash; on the server, deleted). One that couldn't be filed goes to _Failed/<album>.
+Folders whose names start with "_" or "." are the watch folder's own, and left alone.
 """
 
 import logging
@@ -31,7 +37,7 @@ from sqlalchemy import select
 
 from . import db, env, formats, jobs, providers, settings, tunnel
 from .meta import tags, tagwrite
-from .models import Job, Peer
+from .models import Job, Peer, Root
 from .organize import duplicates, importer
 
 log = logging.getLogger(__name__)
@@ -40,18 +46,19 @@ POLL = 60               # seconds between looks at the folder
 DISC = re.compile(r"^(cd|dis[ck])[\s._-]*\d{1,2}$", re.I)    # an album's disc, in a folder of its own
 SETTLE = 120            # seconds an album must stay as it is before it's taken
 HELD = ("_Done", "_Duplicates", "_Failed")
+DUPES = "Duplicates"    # the library's own folder for its other copies (organize/beetsplug/musicorg.py), not scanned
 MUSIC = ("native", "decode")
 
 
 # ---------------------------------------------------------------- where the folder is
 
 class Place:
-    """The watch folder: list what's in it, bring an album here, move one aside."""
+    """The watch folder: list what's in it, bring an album here, move one aside, delete one."""
 
     key = ""
 
-    def entries(self) -> dict[str, list[tuple[str, int, float]]]:
-        """Each album: (path in it, size, modified) of its files."""
+    def entries(self, held: str = "") -> dict[str, list[tuple[str, int, float]]]:
+        """Each album (in the folder, or in `held`): (path in it, size, modified) of its files."""
         raise NotImplementedError
 
     def fetch(self, name: str, held: str, into: Path) -> Path:
@@ -64,6 +71,15 @@ class Place:
 
     def held(self) -> dict[str, list[str]]:
         """The albums in _Duplicates and _Failed."""
+        raise NotImplementedError
+
+    def remove(self, name: str, held: str):
+        """The album deleted: filed whole, the library has every song of it."""
+        raise NotImplementedError
+
+    def trash(self, name: str, held: str) -> str:
+        """An album set aside, thrown away by the admin: "trash" (the computer's) or "deleted" (on this server,
+        which has no trash)."""
         raise NotImplementedError
 
 
@@ -83,9 +99,12 @@ class ServerPlace(Place):
         self.root = Path(path)
         self.key = f"server:{path}"
 
-    def entries(self):
+    def entries(self, held=""):
+        base = self.root / held if held else self.root
         out = {}
-        for e in os.scandir(self.root):
+        if not base.is_dir():
+            return out
+        for e in os.scandir(base):
             if e.name.startswith(("_", ".")):
                 continue
             if e.is_file():
@@ -101,7 +120,7 @@ class ServerPlace(Place):
                             st = os.stat(p)
                         except OSError:
                             continue
-                        files.append((os.path.relpath(p, self.root), st.st_size, st.st_mtime))
+                        files.append((os.path.relpath(p, base), st.st_size, st.st_mtime))
                 out[e.name] = files
         return out
 
@@ -125,6 +144,19 @@ class ServerPlace(Place):
         return {h: sorted(e.name for e in os.scandir(self.root / h) if not e.name.startswith("."))
                 if (self.root / h).is_dir() else [] for h in HELD[1:]}
 
+    def remove(self, name, held):
+        if "/" in name or name in ("", ".", ".."):
+            raise ValueError("not an album in the watch folder")
+        path = self._at(name, held)
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+        elif path.exists() or path.is_symlink():
+            path.unlink()
+
+    def trash(self, name, held):
+        self.remove(name, held)
+        return "deleted"
+
 
 class ComputerPlace(Place):
     """A folder on a computer, through its connection (tunnel.py); Muzix Desktop allows it only for the folder
@@ -141,19 +173,26 @@ class ComputerPlace(Place):
         got = self._ask("watch_list", held=held)
         return {e["name"]: [(f[0], int(f[1]), float(f[2])) for f in e["files"]] for e in got}
 
+    def _file(self, rel: str, held: str):
+        return tunnel.get(self.peer_id).chunks("watch_file", timeout=120, path=self.path, held=held, rel=rel)
+
     def fetch(self, name, held, into):
+        """The album copied here, each file checked whole (as long as the computer said it is): one that comes
+        short fails the album, which then stays on the computer."""
         files = self.entries(held).get(name)
         if files is None:
             raise RuntimeError("it isn't in the watch folder any more")
         into.mkdir(parents=True, exist_ok=True)
-        for rel, _size, _ in files:
+        for rel, size, _ in files:
             dest = (into / rel).resolve()
             if into.resolve() not in dest.parents:
                 continue
             dest.parent.mkdir(parents=True, exist_ok=True)
             with open(dest, "wb") as out:
-                for chunk in tunnel.get(self.peer_id).chunks("watch_file", timeout=120, path=self.path, held=held, rel=rel):
+                for chunk in self._file(rel, held):
                     out.write(chunk)
+            if dest.stat().st_size != size:
+                raise RuntimeError(f"{rel} came short from the computer ({dest.stat().st_size} of {size} bytes)")
         return into / name
 
     def move(self, name, held, to):
@@ -161,6 +200,13 @@ class ComputerPlace(Place):
 
     def held(self):
         return {h: [e["name"] for e in self._ask("watch_list", held=h)] for h in HELD[1:]}
+
+    def remove(self, name, held):
+        self._ask("watch_delete", name=name, held=held)
+
+    def trash(self, name, held):
+        self._ask("watch_trash", name=name, held=held)
+        return "trash"
 
 
 def place() -> Place | None:
@@ -268,16 +314,59 @@ def _batch() -> str:
     return datetime.now().strftime("%Y%m%d-%H%M%S-") + secrets.token_hex(2)
 
 
+HOW = ("duplicates", "album", "replace")     # an album from _Duplicates filed: into Duplicates, as any, in place of
+
+
+def _album_folder(path: str) -> str:
+    """The album folder a song is in (the one above a disc's folder)."""
+    folder = os.path.dirname(path)
+    return os.path.dirname(folder) if DISC.match(os.path.basename(folder)) else folder
+
+
+def replaced(found: list[dict]) -> list[str]:
+    """The library's albums a copy put in the watch folder would replace: each folder of the library songs it
+    was found like, when at least half of that folder's songs were."""
+    count = Counter(_album_folder(f["match"]["path"]) for f in found if (f.get("match") or {}).get("path"))
+    out = []
+    for folder, n in count.items():
+        songs = sum(1 for _r, _d, fs in os.walk(folder) for f in fs if formats.family(f) in MUSIC)
+        if songs and 2 * n >= songs:
+            out.append(folder)
+    return sorted(out)
+
+
+def _aside(folder: str) -> str:
+    """A library album into the library's Duplicates/<artist>/<album> (2) and on (as the musicorg plugin names
+    them), which the library doesn't scan: its place is for the copy replacing it."""
+    with db.session() as s:
+        roots = [r.path for r in s.scalars(select(Root).where(Root.kind == "music"))]
+    root = next((r for r in roots if folder.startswith(r.rstrip("/") + "/")), None)
+    parts = os.path.relpath(folder, root).split(os.sep) if root else []
+    if root is None or len(parts) < 2 or parts[0] == DUPES:
+        raise RuntimeError(f"{folder} isn't an album in the library")
+    dest, n = os.path.join(root, DUPES, parts[-2], parts[-1]), 2
+    while os.path.lexists(dest):
+        dest, n = os.path.join(root, DUPES, parts[-2], f"{parts[-1]} ({n})"), n + 1
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    shutil.move(folder, dest)
+    return dest
+
+
 @jobs.job("import_watched")
-def import_watched(ctx: jobs.JobContext, name: str, key: str, held: str = ""):
-    """One album from the watch folder (`held`: from _Duplicates or _Failed, filed anyway)."""
+def import_watched(ctx: jobs.JobContext, name: str, key: str, held: str = "", how: str = ""):
+    """One album from the watch folder (`held`: from _Duplicates or _Failed, filed anyway; from _Duplicates
+    `how`: into the library's Duplicates folder (the default), as an album of its own, or in place of the
+    library's copy)."""
     where = place()
     if where is None or where.key != key:
         raise RuntimeError("the watch folder changed or can't be reached")
+    if how and (held != "_Duplicates" or how not in HOW):
+        raise ValueError(f"not a way to file it: {how}")
     out: dict = {"name": name}
-    duplicate = held == "_Duplicates"       # filed anyway: to the library's Duplicates folder, not beside its copy
+    duplicate = held == "_Duplicates" and how in ("", "duplicates")     # beside the library's copy, in Duplicates
     batch = _batch()
     work = env.UPLOAD_DIR / batch
+    moved: list[tuple[str, str]] = []       # the library's copies put aside for this one (how="replace")
     try:
         if not held:
             files = where.entries().get(name)
@@ -287,10 +376,21 @@ def import_watched(ctx: jobs.JobContext, name: str, key: str, held: str = ""):
             if music:
                 with db.session() as s:
                     found = duplicates.check(music, s)["found"]
-                if found:
+                if found and 2 * len(found) >= len(music):
                     where.move(name, "", "_Duplicates")
-                    ctx.log(f"{len(found)} of its songs seem to be in the library already: set aside in _Duplicates")
-                    return {**out, "duplicate": True, "found": found[:20]}
+                    ctx.log(f"{len(found)} of its {len(music)} songs seem to be in the library already: set aside in _Duplicates")
+                    return {**out, "duplicate": True, "songs": len(music), "found": found[:40]}
+                if found:
+                    ctx.log(f"{len(found)} of its {len(music)} songs seem to be in the library already, fewer than half: "
+                            "filed as any album")
+        if how == "replace":
+            files = where.entries(held).get(name) or []
+            music = [(rel, size) for rel, size, _ in files if formats.family(rel) in MUSIC]
+            with db.session() as s:
+                old = replaced(duplicates.check(music, s)["found"])
+            for f in old:       # first, so the new one takes their place
+                moved.append((f, _aside(f)))
+                ctx.log(f"the library's {f} put aside in {moved[-1][1]}")
         folder = where.fetch(name, held, work)
         if folder.is_file():        # a song by itself: in a folder of its own, as beets files albums
             (work / folder.stem).mkdir(parents=True, exist_ok=True)
@@ -330,14 +430,36 @@ def import_watched(ctx: jobs.JobContext, name: str, key: str, held: str = ""):
                     "bandcamp" if (a["artist"].lower(), a["album"].lower()) in bandcamp else "none"
             got = {a["match"] for a in out.get("albums") or []}
             out["match"] = got.pop() if len(got) == 1 else "mixed" if got else "none"
-        # what's left of it (from a computer, all of it: the library has a copy); the folders the music was in,
-        # emptied, go
-        _prune(folder)
-        if isinstance(where, ComputerPlace) or folder.exists():
-            where.move(name, held, "_Done")
+        if moved:
+            out["replaced"] = [{"from": a, "to": b} for a, b in moved]
+        # from a computer: once the library has every one of its songs, the album is deleted there (else it's
+        # kept in _Done); on the server, what's left of it, the folders the music was in emptied
+        songs = sum(int(a.get("songs") or 0) for a in out.get("albums") or [])
+        if isinstance(where, ComputerPlace):
+            if songs == len(music_paths):
+                try:
+                    where.remove(name, held)
+                    out["removed"] = True
+                    ctx.log(f"all {songs} of its songs are in the library: deleted from the computer's watch folder")
+                except Exception as e:      # a Muzix Desktop before 0.4.22, say
+                    ctx.log(f"couldn't delete it on the computer ({e}): kept in _Done")
+                    where.move(name, held, "_Done")
+            else:
+                ctx.log(f"{songs} of its {len(music_paths)} songs were filed: kept in _Done on the computer")
+                where.move(name, held, "_Done")
+        else:
+            _prune(folder)
+            if folder.exists():
+                where.move(name, held, "_Done")
         jobs.submit("scan", "Scan the watch folder's albums")
         return out
     except Exception:
+        for was, now in reversed(moved):        # the library's copies back where they were
+            try:
+                if not os.path.lexists(was):
+                    shutil.move(now, was)
+            except Exception:
+                log.exception("watch folder: couldn't put %s back", was)
         try:
             where.move(name, held, "_Failed")
         except Exception:
@@ -392,6 +514,8 @@ def _prune(folder: Path):
 
 _seen: dict[str, tuple[tuple, float]] = {}     # album → (how it looked, since when)
 _state: dict = {"checked": 0.0, "error": "", "waiting": []}
+_checking = threading.Lock()                    # the minute's look and Transfer now's, one at a time
+NOW_LOOK = 3.0      # seconds between Transfer now's two looks: an album that changes between them is still coming in
 
 
 def _busy() -> set[str]:
@@ -400,35 +524,51 @@ def _busy() -> set[str]:
             select(Job).where(Job.type == "import_watched", Job.status.in_(("queued", "running"))))}
 
 
-def check():
-    """One look: albums that stayed as they were for SETTLE are taken."""
-    where = place()
-    if where is None:
-        _seen.clear()
-        _state.update(error="" if not settings.get("watch_folder") else "the folder can't be reached", waiting=[])
-        return
-    try:
-        found = where.entries()
-    except Exception as e:      # a computer gone meanwhile, a share away: next time
-        _state.update(error=str(e) or e.__class__.__name__, checked=time.time())
-        return
-    now, busy, waiting = time.time(), _busy(), []
-    for name in list(_seen):
-        if name not in found:
-            del _seen[name]
-    for name, files in found.items():
-        if name in busy or not files:
-            continue
-        look = (len(files), sum(f[1] for f in files), max(f[2] for f in files))
-        before = _seen.get(name)
-        if before is None or before[0] != look:
-            _seen[name] = (look, now)
-        if now - _seen[name][1] >= SETTLE:
-            jobs.submit("import_watched", f"Watch folder: {name}", name=name, key=where.key)
-            _seen.pop(name, None)
-        else:
-            waiting.append(name)
-    _state.update(checked=now, error="", waiting=sorted(waiting))
+def _look(files) -> tuple:
+    return len(files), sum(f[1] for f in files), max(f[2] for f in files)
+
+
+def check(now: bool = False) -> dict:
+    """One look: albums that stayed as they were for SETTLE are taken. `now` (Transfer now): at once, each album
+    that stays as it is between two looks NOW_LOOK apart (one still being copied in waits). Says which were taken
+    and which wait."""
+    with _checking:
+        where = place()
+        if where is None:
+            _seen.clear()
+            _state.update(error="" if not settings.get("watch_folder") else "the folder can't be reached", waiting=[])
+            if now:
+                raise RuntimeError(_state["error"] or "no watch folder is set")
+            return {"taken": [], "waiting": []}
+        try:
+            found = where.entries()
+            if now:
+                time.sleep(NOW_LOOK)
+                again = where.entries()
+        except Exception as e:      # a computer gone meanwhile, a share away: next time
+            _state.update(error=str(e) or e.__class__.__name__, checked=time.time())
+            if now:
+                raise
+            return {"taken": [], "waiting": []}
+        t, busy, waiting, taken = time.time(), _busy(), [], []
+        for name in list(_seen):
+            if name not in found:
+                del _seen[name]
+        for name, files in found.items():
+            if name in busy or not files:
+                continue
+            look = _look(files)
+            before = _seen.get(name)
+            if before is None or before[0] != look:
+                _seen[name] = (look, t)
+            if (bool(again.get(name)) and _look(again[name]) == look) if now else t - _seen[name][1] >= SETTLE:
+                jobs.submit("import_watched", f"Watch folder: {name}", name=name, key=where.key)
+                _seen.pop(name, None)
+                taken.append(name)
+            else:
+                waiting.append(name)
+        _state.update(checked=t, error="", waiting=sorted(waiting))
+        return {"taken": sorted(taken), "waiting": sorted(waiting)}
 
 
 def state() -> dict:
