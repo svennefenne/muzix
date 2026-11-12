@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { ChevronRight, Disc3, Heart, ListPlus, MessageCircle, Mic2, Pause, Play, Plus, Shuffle, Tags, Trash2, UserRound } from "lucide-react";
+import { ChevronRight, Disc3, Heart, ListPlus, MessageCircle, Mic2, MoreVertical, Pause, Play, Plus, Shuffle, Tags, Trash2, UserRound } from "lucide-react";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Link, Navigate, NavLink, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, fmtLong, fmtNumber, sized } from "../api";
@@ -10,14 +10,15 @@ import {
 } from "../components/Browse";
 import { linkData, shareInChat, useChatOn } from "../chat/store";
 import { AdminCog } from "../components/AdminMode";
-import { DownloadButton } from "../components/DownloadButton";
+import { DownloadButton, useDownloadItem } from "../components/DownloadButton";
 import { likedCollection } from "../downloads";
+import { inAndroidApp } from "../player/app";
 import { engine } from "../player/engine";
 import { fromTrack, usePlayer } from "../store/player";
 import { AlbumCard, ArtistCard, MosaicCard, PlaylistCard } from "../components/Cards";
 import { RecentSearches, rememberSearch } from "../components/RecentSearches";
 import { TrackList } from "../components/TrackList";
-import { Art, Display, Empty, FromPeer, Kicker, Loading, Modal, Section, useInView } from "../components/ui";
+import { Art, Display, Empty, FromPeer, Kicker, Loading, Modal, Section, useInView, useMenu, type MenuItem } from "../components/ui";
 import { useUi } from "../store/ui";
 import type {
   Album, AlbumDetail, Artist, ArtistDetail, FilePlaylist, FilePlaylistDetail, Genre, LibraryView, Paged, Playlist, RecentKind, SearchResults,
@@ -463,10 +464,27 @@ export function AlbumPage() {
   // one of its songs is the player's: Play pauses and continues it instead of starting the album again
   const here = usePlayer((s) => s.current()?.albumId === Number(id));
   const playing = usePlayer((s) => s.current()?.albumId === Number(id) && (s.playing || s.buffering));
+  const showMenu = useMenu((s) => s.show);
+  const makeDownload = async () => {
+    const a = q.data!;
+    const full = a.track_count > a.tracks.length ? await api.get<AlbumDetail>(`/api/albums/${a.id}`, { limit: 5000 }) : a;
+    return { id: `album:${a.id}`, kind: "album" as const, title: a.title, subtitle: a.artist, art: a.art, path: `/album/${a.id}`,
+             pages: { [`/api/albums/${a.id}`]: full }, items: full.tracks.map(fromTrack) };
+  };
+  const download = useDownloadItem(`album:${id}`, q.data?.title ?? "", makeDownload);
   useEffect(() => { setLiked(null); setExtra([]); }, [id]);
   if (!q.data) return <div className="page"><Loading /></div>;
   const a = q.data;
   const isLiked = liked ?? a.liked;
+  // the Android app: Play and Shuffle, smaller, and the rest in a menu, so the songs start higher up
+  const more: MenuItem[] = [
+    { label: isLiked ? "Remove from your library" : "Save to your library", icon: <Heart size={16} fill={isLiked ? "currentColor" : "none"} />,
+      onClick: async () => setLiked(await toggleLike("album", a.id, isLiked)) },
+    { label: "Add to playlist…", icon: <ListPlus size={16} />, onClick: () => pick(a.tracks.map((t) => t.id)) },
+    ...(chat ? [{ label: "Share in chat", icon: <MessageCircle size={16} />,
+                  onClick: () => shareInChat({ kind: "album", id: a.id, title: a.title, sub: a.artist, art: a.art }) }] : []),
+    ...(download ? [download] : []),
+  ];
   const formats = a.formats.map((f) => f.toUpperCase()).join(" / ");
   const tint = a.colors[0];
   return (
@@ -484,6 +502,18 @@ export function AlbumPage() {
             {a.peer && <FromPeer peer={a.peer} />}
           </div>
           {a.artist_tags.length > 0 && <TagLinks tags={a.artist_tags.slice(0, 6)} />}
+          {inAndroidApp ? (
+            <div className="row-actions album-actions">
+              <button className="btn accent" onClick={() => (here ? engine.toggle() : playAlbum(a.id))}>
+                {playing ? <><Pause size={14} fill="currentColor" /> Pause</> : <><Play size={14} fill="currentColor" /> {here ? "Continue" : "Play"}</>}
+              </button>
+              <button className="btn" onClick={() => playAlbum(a.id, { shuffle: true })}><Shuffle size={14} /> Shuffle</button>
+              <button className="btn album-more" aria-label="More: save, add to playlist, share, download" onClick={(e) => showMenu(e, more)}>
+                <MoreVertical size={18} />
+              </button>
+              <AdminCog kind="album" id={a.id} title={a.title} className="inline" peer={a.peer} />
+            </div>
+          ) : (
           <div className="row-actions">
             <button className="btn accent" onClick={() => (here ? engine.toggle() : playAlbum(a.id))}>
               {playing ? <><Pause size={15} fill="currentColor" /> Pause</> : <><Play size={15} fill="currentColor" /> {here ? "Continue" : "Play"}</>}
@@ -500,16 +530,13 @@ export function AlbumPage() {
                 <MessageCircle size={15} /> Share
               </button>
             )}
-            <DownloadButton id={`album:${a.id}`} title={a.title} make={async () => {
-              const full = a.track_count > a.tracks.length ? await api.get<AlbumDetail>(`/api/albums/${a.id}`, { limit: 5000 }) : a;
-              return { id: `album:${a.id}`, kind: "album", title: a.title, subtitle: a.artist, art: a.art, path: `/album/${a.id}`,
-                       pages: { [`/api/albums/${a.id}`]: full }, items: full.tracks.map(fromTrack) };
-            }} />
+            <DownloadButton id={`album:${a.id}`} title={a.title} make={makeDownload} />
             <AdminCog kind="album" id={a.id} title={a.title} className="inline" peer={a.peer} />
           </div>
+          )}
         </div>
       </div>
-      <TrackList tracks={[...a.tracks, ...extra]} showAlbum={false} numbered="track" />
+      <TrackList tracks={[...a.tracks, ...extra]} showAlbum={false} numbered="track" plain={inAndroidApp} />
       {a.track_count > a.tracks.length + extra.length && (
         <div className="row-actions" style={{ marginTop: 14 }}>
           <span className="dim">Showing {fmtNumber(a.tracks.length + extra.length)} of {fmtNumber(a.track_count)} songs</span>

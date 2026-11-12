@@ -259,6 +259,7 @@ export interface Episode {
   new: boolean;                 // out since you subscribed, not started yet
   stream: string;
   feed_title?: string | null;
+  subscribed?: boolean;         // Continue listening's: whether its podcast is subscribed to
 }
 
 export interface PodcastHit {

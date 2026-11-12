@@ -6,12 +6,14 @@ import { queryClient } from "./actions";
 import App from "./App";
 import { guardExit } from "./backToExit";
 import { ErrorBoundary, reportGlobalErrors } from "./components/ErrorBoundary";
+import { inAndroidApp } from "./player/app";
 import "./styles/fonts";
 import "./styles/base.css";
 import "./styles/skins.css";
 import "./styles/chat.css";
 
 reportGlobalErrors();
+if (inAndroidApp) document.documentElement.dataset.shell = "android";
 keepPhonesUpright();
 guardExit();
 

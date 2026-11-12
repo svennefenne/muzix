@@ -258,4 +258,6 @@ def test_continue_listening_has_the_started_episodes_latest_first():
         listed = api.continue_listening(db=s, user=s.get(User, uid))
         assert [(e["title"], e["position"], e["feed_title"]) for e in listed] == [
             ("newer", 300, "Half"), ("unsubscribed", 60, "Once"), ("older", 120, "Half")]
+        # each says whether its podcast is subscribed to (the desktop's menu offers to unsubscribe from it)
+        assert [e["subscribed"] for e in listed] == [True, False, True]
         assert [e["title"] for e in api.continue_listening(db=s, user=s.get(User, oid))] == ["untouched"]

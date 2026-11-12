@@ -37,6 +37,14 @@ interface AppState {
   seekable: boolean; ended: boolean; left: number;
 }
 
+/** The page is the Android app's (its web view says MuzixApp/<version> (Android)); Muzix Desktop's isn't. A few
+ * pages are laid out for it alone (the album's buttons and songs, the cover's back, swiping episodes away),
+ * with <html data-shell="android"> for their styles. */
+export const inAndroidApp = typeof navigator !== "undefined" && /MuzixApp\//.test(navigator.userAgent);
+
+/** The page is Muzix Desktop's: it has the app's bridge and isn't the Android app. */
+export const inDesktopApp = typeof window !== "undefined" && !!window.MuzixApp && !inAndroidApp;
+
 const WINDOW = 100;    // songs handed over at a time
 const TOP_UP = 20;     // hand over more when the app gets down to this many
 

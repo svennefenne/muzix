@@ -242,6 +242,10 @@ img { display: block; }
 .btn.small { height: 30px; padding: 0 11px; font-size: 11px; }
 .btn.round { width: 52px; height: 52px; padding: 0; border-radius: 50%; }
 .row-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+/* the album in the Android app: Play and Shuffle smaller, the rest in a menu (Library.tsx) */
+.album-actions { gap: 8px; }
+.album-actions .btn { height: 32px; padding: 0 13px; font-size: 11px; gap: 6px; }
+.album-actions .album-more { width: 32px; padding: 0; border-color: transparent; background: none; }
 
 .input, .select, textarea.input {
   width: 100%; height: 38px; padding: 0 12px; border-radius: 6px;
@@ -418,6 +422,15 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
 .t-dur { font: 500 12.5px/1 var(--font-mono); color: var(--text-dim); text-align: right; }
 .trow.playing .t-num .t-n, .t-eq { display: none; }
 .t-actions { display: flex; justify-content: flex-end; gap: 2px; opacity: 0; transition: opacity .15s; }
+/* no numbers or lengths (the album in the Android app): titles from the page's left edge, in line with the
+   buttons above; the playing bars and the menu at the right */
+.tracks.plain .trow:not(.head) { grid-template-columns: minmax(0, 1fr) auto auto; grid-auto-flow: row; column-gap: 0; padding: 0; height: 56px; }
+.tracks.plain .trow .t-main { margin-left: 0; }
+.tracks.plain .trow .t-eq { display: flex; align-items: center; width: 13px; margin-left: 10px; }
+.tracks.plain .t-actions { opacity: 1; width: 32px; margin-left: 6px; }
+.tracks.plain .t-actions .t-like { display: none; }
+.tracks.plain .t-more { width: 32px; height: 40px; margin-right: -8px; }
+.tracks.plain .kicker { margin-left: 0 !important; }
 .trow:hover .t-actions, .t-actions .liked { opacity: 1; }
 @media (hover: none) {   /* touch screens can't hover: the menu stays visible and a tap plays the row */
   .t-actions { opacity: 1; }
@@ -777,6 +790,10 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
 .np-back-row .n { display: flex; justify-content: flex-end; font: 500 12.5px/1 var(--font-mono); color: var(--text-dim); }
 .np-back-row .dur { font: 500 12.5px/1 var(--font-mono); color: var(--text-dim); }
 @media (prefers-reduced-motion: reduce) { .np-flip-inner { transition: none; } }
+/* the Android app: each song's artist in small print under its title, no number or length */
+.np-back-row.plain { grid-template-columns: minmax(0, 1fr) auto; }
+.np-back-song { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.np-back-artist { font: 500 12px/1.3 var(--font-ui); color: var(--text-dim); }
 .nowplaying canvas.viz { width: 100%; height: 160px; display: block; }
 .np-seek { margin-top: 24px; max-width: 640px; }
 .np-phone { display: none; }
@@ -842,6 +859,17 @@ a.stat-link.warn .v { color: var(--warning); }
 .ep-card-title .ep-open { flex: 1; min-width: 0; }
 .ep-card-title span { flex-shrink: 0; font-size: 12px; color: var(--text-dim); }
 .ep-card .progressbar { height: 4px; margin-top: 7px; }
+/* the Android app: a Continue listening card swiped to either side (swipeAway.ts), what's behind it saying
+   what that does */
+.swipe-away { position: relative; touch-action: pan-y; }
+.swipe-under {
+  position: absolute; inset: 0; display: flex; align-items: center; gap: 8px; padding: 0 20px; border-radius: 8px;
+  background: color-mix(in srgb, var(--error) 18%, var(--surface)); color: var(--error-text);
+  font: 700 12px/1 var(--font-ui); letter-spacing: .08em; text-transform: uppercase; opacity: 0;
+}
+.swipe-away.swiping .swipe-under { opacity: 1; }
+.swipe-away[data-side="left"] .swipe-under { justify-content: flex-end; }
+.swipe-away.swiping > .swipe-row { background: var(--surface); }
 .ep-head .display.small { font-size: clamp(28px, 3.8cqi, 48px); line-height: 1; }
 .show-notes { max-width: 760px; font-size: 15px; line-height: 1.6; color: var(--text-dim); }
 .show-notes p { margin: 0 0 12px; }

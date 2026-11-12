@@ -81,6 +81,7 @@ class Engine {
   private retryTimer: number | undefined;   // a song waiting for the connection to come back
   private lastSave = 0;
   private saving: Promise<unknown> = Promise.resolve();   // places saved one after another, so the last one stays
+  private keepOut = "";          // an episode marked played or taken out of Continue listening while loaded (leaveAlone)
   private radioTimer: number | undefined;
   private stallTimer: number | undefined;   // a station that stops delivering
   private radioRetries = 0;
@@ -170,6 +171,7 @@ class Engine {
     usePlayer.subscribe((s, prev) => {
       if (s.position !== prev.position && s.current()?.key === this.loadedKey) this.loadedAt = s.position;
       if (prev.playing && !s.playing) this.saveProgress();    // paused: an episode's place, saved now
+      if (s.playing && !prev.playing) this.keepOut = "";        // played again: its place is the player's again
       if (s.volume !== prev.volume || s.muted !== prev.muted) this.applyVolume();
       if (s.speed !== prev.speed) this.el.playbackRate = s.speed;
       if (s.index !== prev.index || s.queue !== prev.queue || s.repeat !== prev.repeat || s.shuffle !== prev.shuffle) {
@@ -838,11 +840,17 @@ class Engine {
   /** An episode's or audiobook's place, saved. One left for another keeps the place it got to, in
    * the queue too, so going back to it carries on there; one left at its very end has been heard
    * (the app or a speaker goes on by itself, and tells where it is only every few seconds). */
+  /** An episode marked played or taken out of Continue listening (Podcasts.tsx) while it's the one loaded: what was
+   * set stays, the place where the player stopped isn't saved over it, until it's played again. */
+  leaveAlone(key: string) {
+    this.keepOut = key;
+  }
+
   saveProgress(finished = false) {
     if (this.remote === connect) return;      // the device that plays keeps the places
     const s = usePlayer.getState();
     const item = s.queue.find((i) => i.key === this.loadedKey);
-    if (!item) return;
+    if (!item || item.key === this.keepOut) return;
     this.lastSave = Date.now();
     if (item.kind !== "book" && item.kind !== "episode") return;
     const left = item.key !== s.current()?.key;

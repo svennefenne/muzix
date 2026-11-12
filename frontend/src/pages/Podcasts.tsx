@@ -1,17 +1,18 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { Check, CircleCheck, HardDriveDownload, ListChecks, MoreHorizontal, Pause, Play, Plus, RefreshCw, Rss, Upload } from "lucide-react";
+import { Check, CircleCheck, HardDriveDownload, ListChecks, MoreHorizontal, Pause, Play, Plus, RefreshCw, Rss, Trash2, Upload, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ago, api, fmtLong, fmtTime } from "../api";
 import { podcastsChanged, queryClient } from "../actions";
 import { AdminCog } from "../components/AdminMode";
-import { DownloadButton } from "../components/DownloadButton";
+import { DownloadButton, useDownloadItem } from "../components/DownloadButton";
 import { Segmented } from "../components/Browse";
 import { Art, Display, Empty, Kicker, Loading, Modal, NewDot, Section, Switch, useMenu } from "../components/ui";
-import { appPlayer, useShell } from "../player/app";
+import { appPlayer, inAndroidApp, inDesktopApp, useShell } from "../player/app";
 import { engine } from "../player/engine";
 import { fromEpisode, usePlayer, useStartedEpisodes } from "../store/player";
 import { useUi } from "../store/ui";
+import { useSwipeAway } from "../swipeAway";
 import type { Episode, EpisodeDetail, Feed, PodcastHit } from "../types";
 
 /** Everything under an episode on its podcast's page (the ones out before it) marked finished, with an undo. */
@@ -107,11 +108,94 @@ function EpisodeRow({ e, feed }: { e: Episode; feed?: Feed }) {
   );
 }
 
-/** A started episode in Continue listening, small: its show, its title and time left, how far, and play or pause. */
+/** Taken out of Continue listening (swiped away in the Android app, Remove in the desktop app's menu): it starts
+ * over, so the list leaves it out, with an undo. The one in the player goes back to the start there too, and
+ * pauses: what it saves next is the start. */
+function startOver(e: Episode, position: number) {
+  const key = `episode:${e.id}`;
+  const inPlayer = () => usePlayer.getState().current()?.key === key;
+  if (inPlayer()) {
+    engine.leaveAlone(key);
+    engine.seek(0);
+    if (usePlayer.getState().playing) engine.toggle();
+  }
+  queryClient.setQueryData<Episode[]>(["podcasts-continue"], (list) => list?.filter((x) => x.id !== e.id));
+  const put = (at: number) => api.put(`/api/podcasts/episodes/${e.id}/progress`, { position: at, finished: false }).then(podcastsChanged);
+  put(0).catch(() => {
+    useUi.getState().notify(`Couldn't start "${e.title}" over`, "error");
+    podcastsChanged();
+  });
+  useUi.getState().notify("Removed from Continue listening, back to the start", "info", {
+    label: "Undo",
+    run: () => {
+      if (inPlayer()) engine.seek(position);
+      void put(position);
+    },
+  });
+}
+
+/** Marked as played from Continue listening's menu: it leaves the list, with an undo. One in the player pauses
+ * there and keeps its place in the player, without saving it over this (until it's played again). */
+function markPlayed(e: Episode, position: number) {
+  const key = `episode:${e.id}`;
+  if (usePlayer.getState().current()?.key === key) {
+    engine.leaveAlone(key);
+    if (usePlayer.getState().playing) engine.toggle();
+  }
+  queryClient.setQueryData<Episode[]>(["podcasts-continue"], (list) => list?.filter((x) => x.id !== e.id));
+  const put = (at: number, finished: boolean) =>
+    api.put(`/api/podcasts/episodes/${e.id}/progress`, { position: at, finished }).then(podcastsChanged);
+  put(e.duration || position, true).catch(() => {
+    useUi.getState().notify(`Couldn't mark "${e.title}" as played`, "error");
+    podcastsChanged();
+  });
+  useUi.getState().notify("Marked as played", "info", { label: "Undo", run: () => void put(position, false) });
+}
+
+/** Unsubscribed from Continue listening's menu, after asking: where its episodes got to stays. */
+async function unsubscribe(e: Episode) {
+  const name = e.feed_title || "this podcast";
+  if (!confirm(`Unsubscribe from ${name}? Where you got to in its episodes is kept.`)) return;
+  try {
+    await api.del(`/api/podcasts/${e.feed_id}`);
+    for (const key of ["podcasts", "podcasts-latest", "podcasts-continue", "sidebar", "home"]) queryClient.invalidateQueries({ queryKey: [key] });
+    useUi.getState().notify(`Unsubscribed from ${name}`);
+  } catch (err) {
+    useUi.getState().notify((err as Error).message, "error");
+  }
+}
+
+/** A started episode in Continue listening, small: its show, its title and time left, how far, and play or pause.
+ * In the Android app a swipe to either side takes it out of the list (startOver); in the desktop app a menu
+ * (the … button, or a right-click) has that and more. */
 function ContinueCard({ e }: { e: Episode }) {
   const { here, playing, position, pct } = useEpisodeAt(e);
-  return (
-    <div className={`list-row ep-row ep-card ${here ? "on" : ""}`}>
+  const box = useRef<HTMLDivElement>(null);
+  const swiped = useSwipeAway(box, inAndroidApp, () => startOver(e, position));
+  const nav = useNavigate();
+  const notify = useUi((s) => s.notify);
+  const showMenu = useMenu((s) => s.show);
+  const download = useDownloadItem(`episode:${e.id}`, e.title, () => {
+    const it = fromEpisode(e, e.feed_title || "", e.image);
+    return { id: `episode:${e.id}`, kind: "episode", title: e.title, subtitle: e.feed_title || "", art: it.art,
+             path: `/podcasts/episode/${e.id}`, pages: { [`/api/podcasts/episodes/${e.id}`]: e }, items: [it] };
+  });
+  const menu = (ev: { clientX: number; clientY: number }) => showMenu(ev, [
+    { label: "Mark as played", icon: <CircleCheck size={16} />, onClick: () => markPlayed(e, position) },
+    { label: "Remove from Continue listening", icon: <X size={16} />, note: "It starts over next time", onClick: () => startOver(e, position) },
+    { sep: true },
+    { label: "Go to podcast", icon: <Rss size={16} />, onClick: () => nav(`/podcasts/${e.feed_id}`) },
+    ...(download ? [download] : []),
+    ...(e.downloaded ? [] : [{
+      label: "Save on the server", icon: <HardDriveDownload size={16} />,
+      onClick: () => void api.post(`/api/podcasts/episodes/${e.id}/download`).then(() => notify("Saving it on the server in the background"),
+                                                                                (err: Error) => notify(err.message, "error")),
+    }]),
+    ...(e.subscribed ? [{ sep: true }, { label: `Unsubscribe from ${e.feed_title || "the podcast"}`, icon: <Trash2 size={16} />, onClick: () => void unsubscribe(e) }] : []),
+  ]);
+  const card = (
+    <div className={`list-row ep-row ep-card ${here ? "on" : ""} ${inAndroidApp ? "swipe-row" : ""}`}
+         onContextMenu={inDesktopApp ? (ev) => { ev.preventDefault(); menu(ev); } : undefined}>
       <button className={`btn round ${here ? "accent" : ""}`} aria-label={`${playing ? "Pause" : "Continue"} ${e.title}`}
               onClick={here ? () => engine.toggle() : () => engine.play([fromEpisode(e)])}>
         {playing ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
@@ -125,6 +209,20 @@ function ContinueCard({ e }: { e: Episode }) {
         </div>
         <div className="progressbar"><div style={{ width: `${pct}%` }} /></div>
       </div>
+      {inDesktopApp && (
+        <button className="mini ep-card-more" aria-label={`More options for ${e.title}`}
+                data-tip="More: mark as played, remove, go to the podcast, download, unsubscribe" onClick={menu}>
+          <MoreHorizontal size={16} />
+        </button>
+      )}
+    </div>
+  );
+  if (!inAndroidApp) return card;
+  // what's behind it says what a swipe does; the click that ends a swipe isn't a tap
+  return (
+    <div ref={box} className="swipe-away" onClickCapture={(ev) => { if (swiped.current) { ev.preventDefault(); ev.stopPropagation(); } }}>
+      <div className="swipe-under" aria-hidden><X size={16} /> Remove</div>
+      {card}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { Clock, Disc3, Heart, ListEnd, ListPlus, ListStart, MessageCircle, MoreHorizontal, Play, Trash2, User } from "lucide-react";
+import { Clock, Disc3, Heart, ListEnd, ListPlus, ListStart, MessageCircle, MoreHorizontal, MoreVertical, Play, Trash2, User } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { fmtTime } from "../api";
@@ -43,9 +43,10 @@ interface Props {
   numbered?: "track" | "index";
   onRemove?: (t: Track) => void;
   onPlay?: (t: Track) => void;        // a row was started
+  plain?: boolean;                    // no numbers, lengths or heading: the titles from the left edge (the album in the Android app)
 }
 
-export function TrackList({ tracks, showArt, showAlbum = true, numbered = "index", onRemove, onPlay }: Props) {
+export function TrackList({ tracks, showArt, showAlbum = true, numbered = "index", onRemove, onPlay, plain }: Props) {
   const current = usePlayer((s) => (s.index >= 0 ? s.queue[s.index]?.key : null));
   const playing = usePlayer((s) => s.playing);
   const showMenu = useMenu((s) => s.show);
@@ -76,15 +77,15 @@ export function TrackList({ tracks, showArt, showAlbum = true, numbered = "index
 
   let lastDisc = -1;
   return (
-    <div className="tracks" role="table">
-      <div className={`trow head ${showAlbum ? "" : "no-album"}`} role="row">
+    <div className={`tracks ${plain ? "plain" : ""}`} role="table">
+      {!plain && <div className={`trow head ${showAlbum ? "" : "no-album"}`} role="row">
         <div style={{ textAlign: "right" }}>#</div>
         <div className="t-main">Title</div>
         {showAlbum && <div className="t-album">Album</div>}
         <div className="t-dur" data-tip="Length"><Clock size={13} aria-label="Length" /></div>
         <div className="t-eq" />
         <div className="t-actions" />
-      </div>
+      </div>}
       {tracks.map((t, i) => {
         const isCur = current === `track:${t.id}`;
         const on = isLiked(t);
@@ -97,13 +98,13 @@ export function TrackList({ tracks, showArt, showAlbum = true, numbered = "index
                  role="row" data-link={linkData("track", t.id, t.title, t.artist, t.art)} onDoubleClick={() => { onPlay?.(t); playTracks(tracks, i); }}
                  onClick={rowTap(() => { onPlay?.(t); if (isCur) { if (!playing) engine.toggle(); } else playTracks(tracks, i); })}
                  onContextMenu={(e) => { e.preventDefault(); showMenu(e, menuFor(t)); }}>
-              <div className="t-num">
+              {!plain && <div className="t-num">
                 {isCur && <span className="eq n"><i /><i /><i /></span>}
                 <span className="n t-n">{numbered === "track" && t.track_no ? t.track_no : i + 1}</span>
                 <button className="p" aria-label={`Play ${t.title}`} data-tip={isCur ? (playing ? "Playing now" : "Paused") : `Play ${t.title}`} onClick={() => { onPlay?.(t); playTracks(tracks, i); }}>
                   <Play size={15} fill="currentColor" />
                 </button>
-              </div>
+              </div>}
               <div className="t-main">
                 {showArt && <Art src={t.art} name={t.album || t.title} size={64} peer={t.peer} />}
                 <div style={{ minWidth: 0 }}>
@@ -117,7 +118,7 @@ export function TrackList({ tracks, showArt, showAlbum = true, numbered = "index
                 </div>
               </div>
               {showAlbum && <div className="t-album ellipsis">{t.album_id ? <Link to={`/album/${t.album_id}`}>{t.album}</Link> : t.album}</div>}
-              <div className="t-dur">{fmtTime(t.duration)}</div>
+              {!plain && <div className="t-dur">{fmtTime(t.duration)}</div>}
               {/* phones show the playing bars here, right of the time; desktops in place of the number */}
               <div className="t-eq">{isCur && <span className="eq"><i /><i /><i /></span>}</div>
               <div className="t-actions">
@@ -126,7 +127,7 @@ export function TrackList({ tracks, showArt, showAlbum = true, numbered = "index
                   <Heart size={15} fill={on ? "currentColor" : "none"} />
                 </button>
                 <button className="mini t-more" aria-label={`More options for ${t.title}`} data-tip="More: queue, playlists, album, artist" onClick={(e) => showMenu(e, menuFor(t))}>
-                  <MoreHorizontal size={16} />
+                  {plain ? <MoreVertical size={18} /> : <MoreHorizontal size={16} />}
                 </button>
               </div>
             </div>

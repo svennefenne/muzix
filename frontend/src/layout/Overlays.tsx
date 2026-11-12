@@ -10,6 +10,7 @@ import { CastButton, CastNote } from "../components/CastButton";
 import { hasLyrics, LyricsCard, LyricsLines, LyricsSource, noLyrics, tinted, useLyrics } from "../components/Lyrics";
 import { useStationHistory } from "../components/StationHistory";
 import { Art, Modal, Switch } from "../components/ui";
+import { inAndroidApp } from "../player/app";
 import { engine } from "../player/engine";
 import { usePlayer, type PlayItem } from "../store/player";
 import { useUi } from "../store/ui";
@@ -243,11 +244,21 @@ function FlipCover({ cur }: { cur: PlayItem | null }) {
               const on = cur?.key === `track:${t.id}`;
               return (
                 <li key={t.id}>
-                  <button className={`np-back-row ${on ? "on" : ""}`} tabIndex={flipped ? 0 : -1} aria-current={on || undefined}
+                  <button className={`np-back-row ${on ? "on" : ""} ${inAndroidApp ? "plain" : ""}`} tabIndex={flipped ? 0 : -1} aria-current={on || undefined}
                           onClick={() => playTracks(a!.tracks, i)}>
-                    <span className="n">{on ? <span className="eq"><i /><i /><i /></span> : t.track_no || i + 1}</span>
-                    <span className="ellipsis">{t.title}</span>
-                    <span className="dur">{fmtTime(t.duration)}</span>
+                    {inAndroidApp ? (
+                      // the Android app: each song's artist under its title, no number or length
+                      <>
+                        <span className="np-back-song"><span className="ellipsis">{t.title}</span><span className="ellipsis np-back-artist">{t.artist}</span></span>
+                        {on ? <span className="eq"><i /><i /><i /></span> : <span />}
+                      </>
+                    ) : (
+                      <>
+                        <span className="n">{on ? <span className="eq"><i /><i /><i /></span> : t.track_no || i + 1}</span>
+                        <span className="ellipsis">{t.title}</span>
+                        <span className="dur">{fmtTime(t.duration)}</span>
+                      </>
+                    )}
                   </button>
                 </li>
               );
