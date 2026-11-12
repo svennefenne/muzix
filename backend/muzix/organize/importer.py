@@ -88,18 +88,19 @@ class Beet:
         return out
 
     def albums(self, query: str) -> list[dict]:
-        """The albums of the songs a query finds, as filed: {artist, album, year, folder, songs} (the
-        genre is the folder's first part)."""
+        """The albums of the songs a query finds, as filed: {artist, album, year, folder, songs, mbid} (the
+        genre is the folder's first part; mbid: the MusicBrainz release it was matched with, or "")."""
         out: dict[str, dict] = {}
-        for line in self("ls", "-f", "$albumartist\t$album\t$year\t$path", query, quiet=True).splitlines():
-            r = line.split("\t", 3)
-            if len(r) != 4:
+        for line in self("ls", "-f", "$albumartist\t$album\t$year\t$mb_albumid\t$path", query, quiet=True).splitlines():
+            r = line.split("\t", 4)
+            if len(r) != 5:
                 continue
+            mbid = r.pop(3)
             folder = os.path.dirname(r[3])
             if os.path.basename(folder).lower().startswith(("cd", "disc", "disk")) and len(os.path.basename(folder)) < 8:
                 folder = os.path.dirname(folder)        # one album over its discs
             a = out.setdefault(folder, {"artist": r[0], "album": r[1], "year": int(r[2]) if r[2].isdigit() else 0,
-                                        "folder": folder, "songs": 0})
+                                        "folder": folder, "songs": 0, "mbid": mbid})
             a["songs"] += 1
         return list(out.values())
 

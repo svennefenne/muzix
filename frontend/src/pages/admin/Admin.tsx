@@ -229,7 +229,10 @@ interface Batch {
 interface ImportDone {
   id: number; batch: string; status: string; message: string; progress: number; started_at: string | null; finished_at: string | null;
   music: number | null; vgm: number | null; vgm_folder: string; left: string[];
-  albums: { artist: string; album: string; year: number; songs: number; where: string; album_id: number | null }[];
+  watched: string;          // from the watch folder: what was put there; "" for an upload
+  duplicate: boolean;       // the watch folder set it aside, as the library seems to have it
+  albums: { artist: string; album: string; year: number; songs: number; where: string; album_id: number | null;
+            match: "musicbrainz" | "bandcamp" | "none" | "" }[];
 }
 const MUSIC_KINDS = ["native", "decode"];
 
@@ -280,7 +283,8 @@ function batchState(b: Batch): { text: string; tone: "" | "busy" | "bad" | "done
 /** The latest imports: what each filed where, and what it left. */
 function RecentImports() {
   const q = useQuery({ queryKey: ["imports"], queryFn: () => api.get<ImportDone[]>("/api/upload/imports"), refetchInterval: 5000 });
-  const done = (q.data || []).filter((i) => i.status === "done" || i.status === "failed");
+  // what the watch folder set aside as duplicates is listed in its own panel (Watch.tsx), not here
+  const done = (q.data || []).filter((i) => (i.status === "done" || i.status === "failed") && !i.duplicate);
   if (!done.length) return null;
   return (
     <section className="panel">
@@ -297,7 +301,10 @@ function RecentImports() {
               <div className="upload-head">
                 <span className={`status-dot ${i.status === "failed" ? "bad" : "ok"}`} />
                 <div className="grow">
-                  <div className="upload-title">{i.status === "failed" ? "Import failed" : "Imported"} {i.finished_at ? ago(i.finished_at) : ""}</div>
+                  <div className="upload-title">
+                    {i.status === "failed" ? "Import failed" : "Imported"}{i.watched && <> from the watch folder <span className="dim">({i.watched})</span></>}{" "}
+                    {i.finished_at ? ago(i.finished_at) : ""}
+                  </div>
                   <div className={i.status === "failed" ? "error-text" : "dim"} style={{ fontSize: 12.5 }}>
                     {i.status === "failed" ? i.message || "See its log under Jobs" : counted.join(" · ") || "Nothing to import"}
                   </div>
@@ -310,6 +317,8 @@ function RecentImports() {
                       <Disc3 size={15} aria-hidden />
                       <span className="grow ellipsis"><b>{a.album}</b> <span className="dim">{a.artist}</span>{" "}
                         <span className="faint mono-path" data-tip="Where it was filed in the music upload folder">→ {a.where}</span></span>
+                      {a.match === "none" && <span className="badge" data-tip="Neither MusicBrainz nor Bandcamp had it: filed as its tags said, worth a look in admin mode">No match</span>}
+                      {a.match === "bandcamp" && <span className="badge" data-tip="Named as Bandcamp has it (MusicBrainz didn't)">Bandcamp</span>}
                       {a.album_id ? <Link className="btn small" to={`/album/${a.album_id}`}>Open</Link>
                         : <span className="faint" data-tip="It shows up once the library has read the folder">being added…</span>}
                     </li>

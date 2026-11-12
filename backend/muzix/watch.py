@@ -36,6 +36,7 @@ from .organize import duplicates, importer
 log = logging.getLogger(__name__)
 
 POLL = 60               # seconds between looks at the folder
+DISC = re.compile(r"^(cd|dis[ck])[\s._-]*\d{1,2}$", re.I)    # an album's disc, in a folder of its own
 SETTLE = 120            # seconds an album must stay as it is before it's taken
 HELD = ("_Done", "_Duplicates", "_Failed")
 MUSIC = ("native", "decode")
@@ -300,13 +301,33 @@ def import_watched(ctx: jobs.JobContext, name: str, key: str, held: str = ""):
         if chips:
             out["vgm_folder"] = _file_chips(ctx, chips, folder, name)
         if music_paths:
-            songs = _album(music_paths)
-            source, ref, d = match(songs, folder.name, ctx)
-            out["match"] = source
-            if source == "bandcamp":
-                _apply(songs, d, folder)
-            out.update(importer.file_music(ctx, folder, batch, autotag=False if source == "bandcamp" else None,
-                                           search_id=ref if source == "musicbrainz" else ""))
+            albums = _albums_in(folder, music_paths)
+            if len(albums) == 1:
+                songs = _album(albums[0][1])
+                source, ref, d = match(songs, albums[0][0].name, ctx)
+                if source == "bandcamp":
+                    _apply(songs, d, albums[0][0])
+                out.update(importer.file_music(ctx, folder, batch, autotag=False if source == "bandcamp" else None,
+                                               search_id=ref if source == "musicbrainz" else ""))
+                bandcamp = {(d["artist"].lower(), d["title"].lower())} if source == "bandcamp" else set()
+            else:
+                # several albums (an artist's, say): each looked up by itself; beets then matches each one with
+                # MusicBrainz in one go, and keeps Bandcamp's names for those only Bandcamp has
+                ctx.log(f"{len(albums)} albums in it")
+                bandcamp = set()
+                for where_, paths in albums:
+                    songs = _album(paths)
+                    source, _ref, d = match(songs, where_.name, ctx)
+                    if source == "bandcamp":
+                        _apply(songs, d, where_)
+                        bandcamp.add((d["artist"].lower(), d["title"].lower()))
+                out.update(importer.file_music(ctx, folder, batch))
+            # each album as it was filed: matched with MusicBrainz (beets says which release), Bandcamp, or neither
+            for a in out.get("albums") or []:
+                a["match"] = "musicbrainz" if a.get("mbid") else \
+                    "bandcamp" if (a["artist"].lower(), a["album"].lower()) in bandcamp else "none"
+            got = {a["match"] for a in out.get("albums") or []}
+            out["match"] = got.pop() if len(got) == 1 else "mixed" if got else "none"
         # what's left of it (from a computer, all of it: the library has a copy); the folders the music was in,
         # emptied, go
         _prune(folder)
@@ -339,6 +360,18 @@ def _file_chips(ctx, chips: list[Path], folder: Path, name: str) -> str:
         os.remove(p)
     ctx.log(f"copied {len(chips)} chiptune and tracker files to {dest_root}/Uploads")
     return str(Path(dest_root) / "Uploads")
+
+
+def _albums_in(folder: Path, music: list[Path]) -> list[tuple[Path, list[Path]]]:
+    """The albums in what was put in the watch folder, each with its songs: a folder with music in it is one,
+    a disc's folder (CD1, Disc 2) is part of the one above it."""
+    out: dict[Path, list[Path]] = {}
+    for p in music:
+        album = p.parent
+        if album != folder and DISC.match(album.name):
+            album = album.parent
+        out.setdefault(album, []).append(p)
+    return sorted(out.items(), key=lambda a: str(a[0]))
 
 
 def _prune(folder: Path):

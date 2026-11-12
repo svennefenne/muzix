@@ -154,21 +154,32 @@ def albums_of(batch: str, files: list[dict], db: Session) -> list[dict]:
     return sorted(out.values(), key=lambda a: (a["artist"].casefold(), a["album"].casefold()))
 
 
+def filed(r: dict, db: Session) -> list[dict]:
+    """An import's albums, with where each was filed, its page here (once scanned) and how it was matched:
+    "musicbrainz" (it has a MusicBrainz release: the import's word, or the library's for older imports),
+    "bandcamp", or "none" (as its tags said)."""
+    out = []
+    root = r.get("music_root") or ""
+    for a in r.get("albums") or []:
+        folder = a.get("folder") or ""
+        row = db.execute(select(Album.id, Album.mbid).where(Album.folder.in_((folder, os.path.dirname(folder)))).limit(1)).first() \
+            if folder else None
+        match = a.get("match") or ("musicbrainz" if a.get("mbid") or (row and row.mbid) else "none" if row else "")
+        out.append({**a, "where": os.path.relpath(folder, root) if root and folder.startswith(root) else folder,
+                    "album_id": row.id if row else None, "match": match})
+    return out
+
+
 @router.get("/imports")
 def imports(limit: int = 8, db: Session = Depends(get_db)):
-    """The latest imports, with where their albums were filed (and their pages here, once scanned)."""
+    """The latest imports, uploaded or from the watch folder (watch.py), with where their albums were filed."""
     out = []
-    for job in db.scalars(select(Job).where(Job.type == "import_upload").order_by(Job.id.desc()).limit(limit)):
+    for job in db.scalars(select(Job).where(Job.type.in_(("import_upload", "import_watched"))).order_by(Job.id.desc()).limit(limit)):
         r = job.result or {}
-        albums = []
-        for a in r.get("albums") or []:
-            folder = a.get("folder") or ""
-            album_id = db.scalar(select(Album.id).where(Album.folder.in_((folder, os.path.dirname(folder)))).limit(1)) \
-                if folder else None
-            root = r.get("music_root") or ""
-            albums.append({**a, "where": os.path.relpath(folder, root) if root and folder.startswith(root) else folder,
-                           "album_id": album_id})
+        albums = filed(r, db)
         out.append({"id": job.id, "batch": (job.params or {}).get("batch", ""), "status": job.status,
+                    "watched": (job.params or {}).get("name", "") if job.type == "import_watched" else "",
+                    "duplicate": bool(r.get("duplicate")),
                     "message": job.message, "progress": job.progress, "started_at": iso(job.started_at),
                     "finished_at": iso(job.finished_at), "music": r.get("music"), "vgm": r.get("vgm"),
                     "vgm_folder": r.get("vgm_folder") or "", "albums": albums, "left": r.get("left") or []})

@@ -18,12 +18,21 @@ interface Watched {
   held: { _Duplicates: string[]; _Failed: string[] };
   recent: {
     id: number; name: string; status: string; error: string; match: string; duplicate: boolean;
-    albums: { artist: string; album: string; songs: number }[]; finished_at: string | null;
+    albums: { artist: string; album: string; songs: number; match: string }[]; finished_at: string | null;
   }[];
 }
 
 const MATCHED: Record<string, string> = { musicbrainz: "Matched on MusicBrainz", bandcamp: "Matched on Bandcamp",
                                           none: "No match: filed as its tags say, worth a look in admin mode" };
+
+/** "19 albums: 15 matched on MusicBrainz, 4 filed as their tags say", for a folder of albums. */
+function matched(albums: Watched["recent"][number]["albums"], match: string) {
+  if (albums.length < 2) return MATCHED[match] ?? "Filed";
+  const n = (m: string) => albums.filter((a) => a.match === m).length;
+  const parts = [n("musicbrainz") && `${n("musicbrainz")} matched on MusicBrainz`, n("bandcamp") && `${n("bandcamp")} on Bandcamp`,
+                 n("none") && `${n("none")} filed as their tags say`].filter(Boolean);
+  return `${albums.length} albums${parts.length ? `: ${parts.join(", ")}` : ""}`;
+}
 
 export function WatchFolder() {
   const notify = useUi((s) => s.notify);
@@ -108,12 +117,12 @@ export function WatchFolder() {
             {w.recent.map((r) => {
               const busy = r.status === "queued" || r.status === "running";
               const text = busy ? "Being filed…" : r.status === "failed" ? r.error || "Couldn't be filed"
-                : r.duplicate ? "Set aside as a duplicate" : MATCHED[r.match] ?? "Filed";
+                : r.duplicate ? "Set aside as a duplicate" : matched(r.albums, r.match);
               return (
                 <div key={r.id} className="list-row">
-                  <span className={`status-dot ${busy ? "queued" : r.status === "failed" ? "bad" : r.match === "none" || r.duplicate ? "" : "ok"}`} />
+                  <span className={`status-dot ${busy ? "queued" : r.status === "failed" ? "bad" : r.match === "none" || r.match === "mixed" || r.duplicate ? "" : "ok"}`} />
                   <div className="grow">
-                    <div className="ellipsis">{r.albums.length ? r.albums.map((a) => `${a.artist} – ${a.album}`).join(", ") : r.name}</div>
+                    <div className="ellipsis">{r.albums.length === 1 ? `${r.albums[0].artist} – ${r.albums[0].album}` : r.name}</div>
                     <div className={r.status === "failed" ? "error-text" : "dim"}>{text}{r.finished_at && !busy ? ` · ${ago(r.finished_at)}` : ""}</div>
                   </div>
                 </div>
