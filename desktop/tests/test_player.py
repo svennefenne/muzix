@@ -86,10 +86,12 @@ def test_after_an_updates_restart_it_plays_on_from_where_it_was(tmp_path, monkey
 class _Speaker(player.QObject):
     """A Cast speaker that does as it's told, and remembers what."""
     speakers, state, status, finished = (player.Signal(), player.Signal(str, str), player.Signal(), player.Signal())
+    loudness = player.Signal(float, bool)
 
     def __init__(self):
         super().__init__()
         self.active, self.name, self.did, self.at = False, "Kitchen", [], 0.0
+        self.level, self.muted = 0.3, False
 
     def connect(self, uuid, then):
         self.active = True
@@ -127,6 +129,7 @@ def test_a_speaker_takes_the_queue_and_gives_it_back(tmp_path, monkeypatch):
     p.cast_to("kitchen")                    # where it plays here, on the speaker's own address
     speaker = p.caster
     assert speaker.did[0] == ("load", "https://muzix.example.com/api/stream/a?q=cast&ct=t", True, True)
+    assert "volume" not in speaker.did      # the speaker keeps its own volume: the window's isn't put on it
     p.handle(json.dumps({"t": "pause"}))
     assert "pause" in speaker.did
     p.handle(json.dumps({"t": "play"}))

@@ -135,3 +135,38 @@ def test_a_speakers_link_to_the_server_is_signed_by_the_server():
     assert relay.speaker_link("https://radio.example.com/s") == "https://radio.example.com/s"
     relay.stop()
     server.should_exit = True
+
+
+def test_the_windows_sockets_trust_what_the_app_brings_not_the_systems_certificates(monkeypatch):
+    """Muzix Connect over https: the AppImage's OpenSSL looks for certificates where the system it was built
+    on keeps them (/usr/lib/ssl), which others (Arch, CachyOS) don't have; certifi's go along with the app."""
+    import ssl
+
+    import certifi
+    import websockets.sync.client
+
+    from muzix_desktop import relay as relay_mod
+
+    asked: list[tuple[str, dict]] = []
+
+    def connect(url, **kw):
+        asked.append((url, kw))
+        raise websockets.exceptions.InvalidURI(url, "not really")        # gone again: no server needed
+
+    monkeypatch.setattr(relay_mod.websockets, "connect", connect)
+    relay = Relay("http://127.0.0.1:9")
+    _up(relay.origin + "/")
+    for address in ("https://muzix.example", "http://192.168.1.5:8484"):
+        relay.address = address
+        with websockets.sync.client.connect(relay.origin.replace("http", "ws") + "/api/connect",
+                                            additional_headers={"x-muzix-window": relay.secret}) as ws:
+            with pytest.raises(websockets.exceptions.ConnectionClosed):
+                ws.recv(timeout=5)
+    (wss, kw), (plain, kw2) = asked
+    assert wss == "wss://muzix.example/api/connect" and plain == "ws://192.168.1.5:8484/api/connect"
+    trusted = kw.get("ssl")
+    assert isinstance(trusted, ssl.SSLContext)
+    pem = open(certifi.where()).read()
+    assert len(trusted.get_ca_certs()) == pem.count("BEGIN CERTIFICATE") > 100
+    assert kw2.get("ssl") is None                                       # no TLS at home
+    relay.stop()

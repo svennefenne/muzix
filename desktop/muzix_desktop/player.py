@@ -147,6 +147,7 @@ class Player(QObject):
         self.pending: dict | None = None    # what played before an update's restart (snapshot()), for the page's hello
         self.starts = 0                     # songs started so far (what's asked meanwhile wins over _carry_on)
         self.level, self.muted = 1.0, False
+        self.turned = 0.0                   # when the volume was last set from here while a speaker plays
         self.failures = 0
         self.meta: dict = {}                # a station's song now (the page's "meta")
         # a Google Cast speaker (cast.py): while one plays, the songs go there one by one
@@ -155,6 +156,7 @@ class Player(QObject):
             self.caster.state.connect(lambda st, name: self._send(t="cast", state=st, device=name))
             self.caster.status.connect(self._state)
             self.caster.finished.connect(self._cast_next)
+            self.caster.loudness.connect(self._speaker_volume)
         QTimer(self, interval=40, timeout=self._messages).start()
         self.ticking = QTimer(self, interval=500, timeout=self._state)
         # what's downloaded, told to the page once things settle (a song done, two more begun)
@@ -190,7 +192,8 @@ class Player(QObject):
         last = self._kept() if not self.queue else None
         self._send(t="hello", version=f"MuzixDesktop/{__version__}", saves=False, updates=True, opens=True,
                    desktop={"version": __version__, "platform": system},
-                   device=platform.node() or "Computer", deviceId=self.device_id, volume=self.level, library=self.library(),
+                   device=platform.node() or "Computer", deviceId=self.device_id,
+                   volume=self.caster.level if self.casting else self.level, library=self.library(),
                    queue=[it.get("muzix", "") for it in self.queue], index=self.index, state=self._state_msg(),
                    **({"last": last} if last else {}), **has)
         if self.caster:
@@ -243,7 +246,7 @@ class Player(QObject):
             return
         at = max(0.0, float(m.get("position") or 0) - float(cur.get("offset") or 0))
         if self.casting:
-            return self.caster.seek(at)
+            return self.caster.seek(at, self.want)
         self.bin.seek_simple(Gst.Format.TIME, Gst.SeekFlags.FLUSH | Gst.SeekFlags.ACCURATE, int(at * Gst.SECOND))
         self.ended = False
 
@@ -256,12 +259,20 @@ class Player(QObject):
         self.repeat = m.get("mode") or "off"
 
     def _on_volume(self, m):
+        if self.casting:
+            # the speaker's own volume, which the slider shows meanwhile (_speaker_volume); the window's stays
+            self.turned = _now()
+            return self.caster.volume(float(m.get("level") or 0) if "level" in m else self.caster.level, bool(m.get("muted")))
         self.muted = bool(m.get("muted"))
         if "level" in m:
             self.level = float(m.get("level") or 0)
-        if self.casting:
-            return self.caster.volume(self.level, self.muted)        # the speaker's own
         self.bin.set_property("volume", 0.0 if self.muted else max(0.0, min(1.0, float(m.get("value") or 0))))
+
+    def _speaker_volume(self, level: float, muted: bool):
+        """The speaker says its volume (connecting, its buttons, another app): the page's slider shows it. Not
+        right after the slider was moved here: what comes back then is on its way to where the slider is."""
+        if self.casting and _now() - self.turned > 2:
+            self._send(t="volume", value=level, muted=muted)
 
     def _on_speed(self, m):
         if self.casting:
@@ -377,7 +388,6 @@ class Player(QObject):
                 return self._state()
             at = here + (_now() - asked if self.want else 0)
             self._start(self.index, max(0.0, at), self.want)
-            self.caster.volume(self.level, self.muted)
         self.caster.connect(uuid, there)
 
     def stop_casting(self):
@@ -385,6 +395,7 @@ class Player(QObject):
         cur = self._current()
         at = self.position() - float((cur or {}).get("offset") or 0)
         self.caster.disconnect()
+        self._send(t="volume", value=self.level, muted=self.muted)      # the window's own volume again
         if cur is not None:
             self._start(self.index, max(0.0, at), self.want)
 

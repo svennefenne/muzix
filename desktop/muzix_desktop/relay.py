@@ -18,11 +18,13 @@ import platform
 import re
 import secrets
 import socket
+import ssl
 import sys
 import threading
 import time
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+import certifi
 import httpx
 import uvicorn
 import websockets
@@ -128,6 +130,9 @@ class Relay:
         self.loop: asyncio.AbstractEventLoop | None = None
         self.client: httpx.AsyncClient | None = None
         self._picking: asyncio.Task | None = None
+        # the app's own certificates for the server's sockets (Muzix Connect): the AppImage's OpenSSL looks where
+        # the system it was built on keeps them, which others (Arch, CachyOS) don't have
+        self.ssl = ssl.create_default_context(cafile=certifi.where())
         self.sock = self._bind(port)
         self.port = self.sock.getsockname()[1]
         self.origin = f"http://127.0.0.1:{self.port}"
@@ -380,7 +385,8 @@ class Relay:
         url = base.replace("http", "ws", 1) + ws.url.path + (f"?{ws.url.query}" if ws.url.query else "")
         headers = [(k, v) for k, v in self._headers(ws, local) if k in ("cookie", "user-agent", "authorization")]
         try:
-            async with websockets.connect(url, additional_headers=headers, max_size=None, open_timeout=10) as up:
+            async with websockets.connect(url, additional_headers=headers, max_size=None, open_timeout=10,
+                                          ssl=self.ssl if url.startswith("wss://") else None) as up:
                 async def down():
                     async for m in up:
                         await (ws.send_text(m) if isinstance(m, str) else ws.send_bytes(m))

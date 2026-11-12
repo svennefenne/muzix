@@ -138,7 +138,11 @@ MPRIS on Linux, the media overlay on Windows, Now Playing on macOS: what plays, 
 ### 3.4 Casting
 
 The Cast button lists the speakers on the network (pychromecast); the queue goes to the speaker with
-its signed links, as from Chrome.
+its signed links, as from Chrome. The volume is the speaker's own while it plays (0.4.20): the slider
+shows it, connecting doesn't change it, and the window's own comes back when the speaker is let go. Each
+command waits for the speaker's answer, so the ones waiting are kept few: a new volume or place in the
+song replaces one still waiting, and Stop casting goes before everything (until 0.4.19 a slider dragged
+sent every step, a second apiece, and a stop waited behind them).
 
 ### 3.5 Packaging
 
@@ -150,6 +154,9 @@ builds the web interface first.
 - Windows and macOS: GStreamer's own Python packages, packed as they are; the app sets their paths before
   GStreamer loads (player.py).
 - Qt's parts the window doesn't use are left out (3D, charts, Quick's controls, QML, most languages).
+- TLS trusts certifi's certificates, which go along with the app, not the system's: the AppImage's OpenSSL
+  looks where Ubuntu keeps them (/usr/lib/ssl), which Arch and CachyOS don't have. Until 0.4.20 the
+  window's sockets (Muzix Connect) didn't, so there the app never joined the account's devices.
 - `--check` (run on each build) asks for the web interface, QtWebEngine, GStreamer with the decoders of
   the common formats, the Cast speakers' library and the system's media controls.
 
