@@ -292,11 +292,13 @@ def _bandcamp(kind, artist, title, album) -> list[dict]:
     return out[:LIMIT]
 
 
-def _bc_album(r: dict) -> dict:
-    """A Bandcamp album's fields. A label's compilation names every song "Artist - Title"."""
+def _bc_album(r: dict, whose: str = "") -> dict:
+    """A Bandcamp album's fields. A label's compilation names every song "Artist - Title"; an album by `whose` (the
+    artist its songs are tagged with) isn't one, however its songs are named ("Prologue - Opening Of The Gate")."""
     artist = r.get("tralbum_artist") or (r.get("band") or {}).get("name", "")
     rows = r.get("tracks") or []
-    split = len(rows) > 1 and all(" - " in (t.get("title") or "") for t in rows)
+    split = len(rows) > 1 and all(" - " in (t.get("title") or "") for t in rows) \
+        and whose.strip().casefold() != artist.strip().casefold()
     tracks = []
     for i, t in enumerate(rows):
         by, name = t["title"].split(" - ", 1) if split else (artist, t.get("title", ""))
@@ -370,9 +372,10 @@ def _artist(c: httpx.Client, source: str, id_: str) -> dict:
     raise SourceError(f"unknown source {source}")
 
 
-def details(source: str, kind: str, id_: str) -> dict:
+def details(source: str, kind: str, id_: str, artist: str = "") -> dict:
     """An album's fields and track list from one source: {title, artist, year, genre, tracks: [...], cover},
-    where cover is the source's own picture of it at full size (None when it has none). An artist: {name, cover}."""
+    where cover is the source's own picture of it at full size (None when it has none). An artist: {name, cover}.
+    `artist`: whose album it's thought to be, if known (Bandcamp's own albums from compilations, _bc_album)."""
     if kind not in ("album", "artist"):
         raise SourceError("only albums and artists have details")
     with _client() as c:
@@ -431,7 +434,7 @@ def details(source: str, kind: str, id_: str) -> dict:
             if not (band.isdigit() and num.isdigit()):
                 raise SourceError("doesn't know that album")
             return _bc_album(_get(c, f"{BANDCAMP}/mobile/24/tralbum_details",
-                                  {"band_id": band, "tralbum_type": "a", "tralbum_id": num}))
+                                  {"band_id": band, "tralbum_type": "a", "tralbum_id": num}), artist)
     raise SourceError(f"unknown source {source}")
 
 

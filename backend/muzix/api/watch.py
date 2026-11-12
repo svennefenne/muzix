@@ -61,13 +61,15 @@ def _why(db: Session, names: list[str]) -> dict[str, dict]:
         return out
     for j in db.scalars(select(Job).where(Job.type == "import_watched", Job.status == "done").order_by(Job.id.desc()).limit(400)):
         name, r = (j.params or {}).get("name", ""), j.result or {}
-        if name in names and name not in out and r.get("duplicate"):
-            found = r.get("found") or []
-            out[name] = {"songs": r.get("songs") or 0, "replaces": watch.replaced(found),
-                         "found": [{"song": os.path.basename(f.get("path") or ""), "why": f.get("why", ""),
-                                    **{k: (f.get("match") or {}).get(k, "") for k in ("title", "artist", "album", "format")},
-                                    "folder": watch._album_folder((f.get("match") or {}).get("path") or "") if f.get("match") else ""}
-                                   for f in found]}
+        if name not in names or name in out or not (r.get("duplicate") or r.get("aside")):
+            continue
+        r = r if r.get("duplicate") else r["aside"]         # set aside whole, or some of its albums
+        found = r.get("found") or []
+        out[name] = {"songs": r.get("songs") or 0, "replaces": watch.replaced(found),
+                     "found": [{"song": os.path.basename(f.get("path") or ""), "why": f.get("why", ""),
+                                **{k: (f.get("match") or {}).get(k, "") for k in ("title", "artist", "album", "format")},
+                                "folder": watch._album_folder((f.get("match") or {}).get("path") or "") if f.get("match") else ""}
+                               for f in found]}
     return out
 
 
@@ -82,7 +84,8 @@ def _recent(db: Session) -> list[dict]:
                        # each album's own match counts (an import's own word from before 0.4.20 was the whole folder's)
                        "match": (got.pop() if len(got) == 1 else "mixed") if got else r.get("match", ""),
                        "duplicate": bool(r.get("duplicate")), "removed": bool(r.get("removed")),
-                       "replaced": len(r.get("replaced") or []), "albums": albums, "finished_at": iso(j.finished_at)})
+                       "replaced": len(r.get("replaced") or []), "aside": len((r.get("aside") or {}).get("albums") or []),
+                       "albums": albums, "finished_at": iso(j.finished_at)})
     return recent
 
 

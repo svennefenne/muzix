@@ -66,11 +66,13 @@ def test_musicbrainz_first_then_bandcamp(monkeypatch):
     monkeypatch.setattr(watch.providers, "_bandcamp", lambda kind, a, t, al: [{"id": "1/2"}])
     details = {"mb-1": {"title": "Qwerty", "artist": "Zyx Band", "mbid": "mb-1", "tracks": [{"length": 100}, {"length": 260}]},
                "1/2": {"title": "Qwerty", "artist": "Zyx Band", "tracks": [{"length": 101}, {"length": 199}]}}
-    monkeypatch.setattr(watch.providers, "details", lambda source, kind, i: details[i])
+    asked = []
+    monkeypatch.setattr(watch.providers, "details", lambda source, kind, i, artist="": asked.append(artist) or details[i])
     assert watch.match(ours, "x")[:2] == ("bandcamp", "1/2")                 # MusicBrainz's second song is longer
+    assert set(asked) == {"Zyx Band"}           # whose album it is, as its songs say (not a compilation on Bandcamp)
     details["mb-1"]["tracks"][1]["length"] = 201
     assert watch.match(ours, "x")[:2] == ("musicbrainz", "mb-1")
-    monkeypatch.setattr(watch.providers, "details", lambda source, kind, i: {"tracks": []})
+    monkeypatch.setattr(watch.providers, "details", lambda source, kind, i, artist="": {"tracks": []})
     assert watch.match(ours, "x") == ("none", "", None)
 
 
@@ -310,6 +312,69 @@ def test_set_aside_only_when_at_least_half_its_songs_are_in_the_library(folder, 
     assert (root / "_Duplicates" / "Zyx Band - 2022 - Again").is_dir()
 
 
+def _discography(root):
+    """An artist's folder: two albums the library has (one with a disc of its own), one it hasn't."""
+    d = root / "zyx-band"
+    d.mkdir()
+    album(d, "known-one")
+    (d / "known-two").mkdir()
+    album(d / "known-two", "CD1")
+    album(d, "new-one", songs=("1. Fresh.mp3", "2. Fresher.mp3", "3. Freshest.mp3"))
+    return d
+
+
+def _found_in(*albums, one_of=""):
+    """The songs of `albums` found in the library, and one of `one_of`'s (fewer than half of it)."""
+    return lambda files, s: {"found": [{"path": f[0], "why": "same"} for f in files if f[0].split("/")[1] in albums
+                                       or f[0] == f"zyx-band/{one_of}/1. Fresh.mp3"], "skip": []}
+
+
+def test_of_an_artists_albums_those_the_library_has_are_set_aside_and_the_rest_filed(folder, monkeypatch):
+    """Each album of a folder of albums is judged by itself (Perturbator's, 2026-11-12: seven the library had,
+    Terror 404 new): those the library has go to _Duplicates/<the folder>, the new one is filed."""
+    root, _ = folder
+    _discography(root)
+    monkeypatch.setattr(watch.duplicates, "check", _found_in("known-one", "known-two", one_of="new-one"))
+    monkeypatch.setattr(watch, "match", lambda songs, name, ctx=None: ("none", "", None))
+    calls, ctx = [], Ctx()
+    monkeypatch.setattr(watch.importer, "file_music", filed(calls))
+    got = watch.import_watched(ctx, "zyx-band", f"server:{root}")
+    assert not got.get("duplicate") and len(calls) == 1
+    assert got["aside"]["albums"] == ["known-one", "known-two"] and got["aside"]["songs"] == 4
+    assert {f["path"].split("/")[1] for f in got["aside"]["found"]} == {"known-one", "known-two"}
+    assert (root / "_Duplicates" / "zyx-band" / "known-one" / "1. Opening Qwerty.mp3").exists()
+    assert (root / "_Duplicates" / "zyx-band" / "known-two" / "CD1" / "2. Closing Qwerty.mp3").exists()
+    assert not (root / "zyx-band").exists() and not (root / "_Done" / "zyx-band" / "known-one").exists()
+    assert any("2 of its 3 albums" in line for line in ctx.lines)
+
+    # all of them the library has: the folder set aside whole, as one album is
+    _discography(root)
+    monkeypatch.setattr(watch.duplicates, "check", _found_in("known-one", "known-two", "new-one"))
+    got = watch.import_watched(Ctx(), "zyx-band", f"server:{root}")
+    assert got["duplicate"] and len(calls) == 1 and (root / "_Duplicates" / "zyx-band (2)" / "new-one").is_dir()
+
+
+def test_from_a_computer_too_and_with_an_older_desktop_the_folder_as_one(folder, monkeypatch):
+    root, _ = folder
+    _discography(root)
+    comp = Computer(root)
+    calls = _from_a_computer(monkeypatch, comp, albums=[{"artist": "Zyx Band", "album": "New One", "folder": "/lib/x", "songs": 3}])
+    monkeypatch.setattr(watch.duplicates, "check", _found_in("known-one", "known-two"))
+    got = watch.import_watched(Ctx(), "zyx-band", comp.key)
+    assert got["aside"]["albums"] == ["known-one", "known-two"] and got["removed"] and len(calls) == 1
+    assert (root / "_Duplicates" / "zyx-band" / "known-one").is_dir() and not (root / "zyx-band").exists()
+
+    # a Muzix Desktop before 0.4.23 can't set part of a folder aside: judged as one, as before
+    _discography(root)
+    comp = Computer(root, old=True)
+    _from_a_computer(monkeypatch, comp)
+    monkeypatch.setattr(watch.duplicates, "check", _found_in("known-one", "known-two"))
+    ctx = Ctx()
+    got = watch.import_watched(ctx, "zyx-band", comp.key)
+    assert got["duplicate"] and "aside" not in got and (root / "_Duplicates" / "zyx-band (2)" / "new-one").is_dir()
+    assert any("couldn't set some of its albums aside" in line for line in ctx.lines)
+
+
 def test_transfer_now_takes_what_isnt_still_coming_in(folder, monkeypatch):
     root, submitted = folder
     album(root)
@@ -350,6 +415,8 @@ class Computer(watch.ComputerPlace):
             return self.here.move(args["name"], held, args["to"])
         if op == "watch_delete" and not self.old:
             return self.here.remove(args["name"], held)
+        if op == "watch_aside" and not self.old:
+            return self.here.aside(args["name"], args["parts"], args["to"])
         raise watch.tunnel.Refused(f"Unknown request {op}")
 
     def _file(self, rel, held):
@@ -462,3 +529,42 @@ def test_in_place_of_the_librarys_copy(folder, monkeypatch, tmp_path_factory):
     assert single.is_dir() and got["replaced"] == [{"from": str(old), "to": str(aside)}]
     with pytest.raises(ValueError):
         watch.import_watched(Ctx(), QWERTY, f"server:{root}", held="_Failed", how="replace")
+
+
+def test_why_an_artists_albums_were_set_aside_and_what_was_filed_says_so():
+    """The admin page's word on a folder some of whose albums were set aside: why (as for an album set aside
+    whole, from an import before "found" was kept too), and in the latest imports how many."""
+    from muzix import db
+    from muzix.api import watch as api
+    from muzix.models import Job
+    found = [{"path": "zyx-band/known-one/1. A.mp3", "why": "same",
+              "match": {"title": "A", "artist": "Zyx Band", "album": "Known One", "format": "mp3",
+                        "path": "/music/Rock/Zyx Band/Zyx Band - 2020 - Known One/1. A.mp3"}}]
+    with db.session() as s:
+        s.add(Job(type="import_watched", status="done", params={"name": "zyx-band"},
+                  result={"albums": [], "aside": {"albums": ["known-one"], "songs": 2, "found": found}}))
+        s.add(Job(type="import_watched", status="done", params={"name": "Old One"}, result={"duplicate": True}))
+        s.commit()
+        why = api._why(s, ["zyx-band", "Old One"])
+        assert why["zyx-band"]["songs"] == 2
+        assert why["zyx-band"]["found"][0]["song"] == "1. A.mp3"
+        assert why["zyx-band"]["found"][0]["folder"] == "/music/Rock/Zyx Band/Zyx Band - 2020 - Known One"
+        assert why["Old One"] == {"songs": 0, "replaces": [], "found": []}
+        assert next(r for r in api._recent(s) if r["name"] == "zyx-band")["aside"] == 1
+
+
+def test_bandcamps_genre_goes_into_files_that_have_none(tmp_path, monkeypatch):
+    """Bandcamp's genre (its first tag) is the files' own word for musicorg to go by, as MusicBrainz's genres
+    are for an album it matched (Horned Relic Self and others were filed in Uncategorized without it); a file's
+    own genre is kept."""
+    written = {}
+    monkeypatch.setattr(watch.tagwrite, "writable", lambda p: True)
+    monkeypatch.setattr(watch.tagwrite, "write", lambda p, changes: written.__setitem__(Path(p).name, changes))
+    songs = [{**song(1, 100), "path": tmp_path / "1.mp3", "genre": ""},
+             {**song(2, 200), "path": tmp_path / "2.mp3", "genre": "Synthwave"}]
+    d = {"title": "Qwerty", "artist": "Zyx Band", "year": 2022, "genre": "Electronic", "cover": None,
+         "tracks": [{"no": 1, "title": "A"}, {"no": 2, "title": "B"}]}
+    watch._apply(songs, d, tmp_path)
+    assert written["1.mp3"]["genre"] == "Electronic" and "genre" not in written["2.mp3"]
+    watch._apply(songs, {**d, "genre": ""}, tmp_path)
+    assert "genre" not in written["1.mp3"]                  # none from Bandcamp: the file's left as it is

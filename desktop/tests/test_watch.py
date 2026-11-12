@@ -108,3 +108,27 @@ def test_an_album_filed_whole_is_deleted_one_thrown_away_goes_to_the_trash(serve
     server.watch = False
     with pytest.raises(PermissionError):
         sharing._delete("srv", {**at, "name": "Zyx - Again", "held": "_Duplicates"})
+
+
+def test_of_a_folder_of_albums_those_the_library_has_go_aside_under_its_name(server, tmp_path):
+    server.watch = True
+    incoming = tmp_path / "Incoming"
+    for part in ("known-one", "known-two/CD1", "new-one", "Live: Somewhere"):
+        (incoming / "zyx-band" / part).mkdir(parents=True)
+        (incoming / "zyx-band" / part / "1. Song.flac").write_bytes(b"flac")
+    (incoming / "_Duplicates" / "zyx-band" / "known-one").mkdir(parents=True)        # set aside before: (2)
+    (tmp_path / "secret").mkdir()
+    server.watch_folder = str(incoming)
+    at = {"path": str(incoming), "name": "zyx-band", "to": "_Duplicates"}
+
+    (incoming / "zyx-band" / "out").symlink_to(tmp_path / "secret")
+    assert sharing._aside("srv", {**at, "parts": ["known-one", "known-two/CD1", "gone", "Live: Somewhere"]}) == {"moved": 3}
+    aside = incoming / "_Duplicates" / "zyx-band"
+    assert (aside / "known-one (2)" / "1. Song.flac").exists() and (aside / "known-two" / "CD1" / "1. Song.flac").exists()
+    assert sorted(p.name for p in (incoming / "zyx-band").iterdir()) == ["known-two", "new-one", "out"]
+    for bad in ({"parts": ["../../secret"]}, {"parts": [".."]}, {"parts": [""]}, {"parts": ["/etc"]}, {"parts": ["out"]},
+                {"parts": ["a\\b"]}, {"to": "Elsewhere"},
+                {"name": "../secret"}, {"name": "_Duplicates"}):
+        with pytest.raises(PermissionError):
+            sharing._aside("srv", {**at, "parts": ["new-one"], **bad})
+    assert (incoming / "zyx-band" / "new-one").is_dir() and (tmp_path / "secret").is_dir()

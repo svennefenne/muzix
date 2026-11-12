@@ -30,7 +30,7 @@ import threading
 import time
 from collections import Counter
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import httpx
 from sqlalchemy import select
@@ -71,6 +71,11 @@ class Place:
 
     def held(self) -> dict[str, list[str]]:
         """The albums in _Duplicates and _Failed."""
+        raise NotImplementedError
+
+    def aside(self, name: str, parts: list[str], to: str):
+        """Some of the albums of a folder of albums (`parts`: their folders in it) into `to`, under the folder's
+        name (_Duplicates/<name>/<part>): the rest of it is filed."""
         raise NotImplementedError
 
     def remove(self, name: str, held: str):
@@ -144,6 +149,19 @@ class ServerPlace(Place):
         return {h: sorted(e.name for e in os.scandir(self.root / h) if not e.name.startswith("."))
                 if (self.root / h).is_dir() else [] for h in HELD[1:]}
 
+    def aside(self, name, parts, to):
+        if to not in HELD:
+            raise ValueError("not one of the watch folder's own folders")
+        entry = self._at(name, "")
+        for part in parts:
+            src = entry / part
+            if entry.resolve() not in src.resolve().parents:
+                raise ValueError("not in the album folder")
+            if src.exists():
+                dest = self.root / to / name / Path(part).parent
+                dest.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(src), str(_unique(dest, src.name)))
+
     def remove(self, name, held):
         if "/" in name or name in ("", ".", ".."):
             raise ValueError("not an album in the watch folder")
@@ -198,6 +216,9 @@ class ComputerPlace(Place):
     def move(self, name, held, to):
         self._ask("watch_move", name=name, held=held, to=to)
 
+    def aside(self, name, parts, to):
+        self._ask("watch_aside", name=name, parts=parts, to=to)        # Muzix Desktop 0.4.23 on
+
     def held(self):
         """Each folder asked for itself: one the computer hasn't got (no album has failed there yet, say) holds
         none, and doesn't hide the others."""
@@ -245,7 +266,8 @@ def _album(files: list[Path]) -> list[dict]:
             t = None
         out.append({"path": p, "disc": (t and t.disc_no) or 1, "no": (t and t.track_no) or 0,
                     "title": (t and t.title) or p.stem, "artist": (t and t.artist) or "", "albumartist": (t and t.albumartist) or "",
-                    "album": (t and t.album) or "", "year": (t and t.year) or 0, "length": (t and t.duration) or 0})
+                    "album": (t and t.album) or "", "year": (t and t.year) or 0, "length": (t and t.duration) or 0,
+                    "genre": (t and t.genre) or ""})
     return sorted(out, key=lambda s: (s["disc"], s["no"], str(s["path"])))
 
 
@@ -289,7 +311,7 @@ def match(songs: list[dict], folder: str, ctx=None) -> tuple[str, str, dict | No
         found.sort(key=lambda r: r.get("tracks") not in (None, 0, len(songs)))
         for r in found[:4]:
             try:
-                d = providers.details(source, "album", r["id"])
+                d = providers.details(source, "album", r["id"], artist=artist)
             except (providers.SourceError, httpx.HTTPError, ValueError, KeyError):
                 continue
             if fits(songs, d["tracks"]):
@@ -301,12 +323,15 @@ def match(songs: list[dict], folder: str, ctx=None) -> tuple[str, str, dict | No
 
 def _apply(songs: list[dict], d: dict, folder: Path):
     """A release's names into the album's files (Bandcamp's: MusicBrainz's beets writes itself), and its cover
-    beside them for beets to take."""
+    beside them for beets to take. Its genre too, into a file with none of its own: musicorg goes by a file's
+    genre as by MusicBrainz's, and without it an album Last.fm doesn't know is filed in Uncategorized."""
     for s, t in zip(songs, d["tracks"]):
         if tagwrite.writable(str(s["path"])):
+            genre = {"genre": d["genre"]} if d.get("genre") and not s.get("genre") else {}
             tagwrite.write(str(s["path"]), {"title": t["title"], "artist": t.get("artist") or d["artist"],
                                             "albumartist": d["artist"], "album": d["title"], "track_no": t["no"],
-                                            "disc_no": t.get("disc") or 1, "year": d.get("year") or s["year"] or ""})
+                                            "disc_no": t.get("disc") or 1, "year": d.get("year") or s["year"] or "",
+                                            **genre})
     if d.get("cover") and not any(p.name.lower().startswith(("cover.", "folder.", "front.")) for p in folder.iterdir()):
         try:
             with httpx.Client(timeout=20, follow_redirects=True) as c:
@@ -385,6 +410,8 @@ def import_watched(ctx: jobs.JobContext, name: str, key: str, held: str = "", ho
             if music:
                 with db.session() as s:
                     found = duplicates.check(music, s)["found"]
+                if found:
+                    music, found = _set_aside(ctx, where, name, music, found, out)
                 if found and 2 * len(found) >= len(music):
                     where.move(name, "", "_Duplicates")
                     ctx.log(f"{len(found)} of its {len(music)} songs seem to be in the library already: set aside in _Duplicates")
@@ -493,6 +520,32 @@ def _file_chips(ctx, chips: list[Path], folder: Path, name: str) -> str:
         os.remove(p)
     ctx.log(f"copied {len(chips)} chiptune and tracker files to {dest_root}/Uploads")
     return str(Path(dest_root) / "Uploads")
+
+
+def _set_aside(ctx, where: Place, name: str, music: list[tuple[str, int]], found: list[dict], out: dict):
+    """A folder of albums (an artist's, say): each judged by itself, those the library has (at least half their
+    songs found) set aside in _Duplicates/<name>/ so the rest are filed. The music and the songs found left.
+    One album, or all of them or none the library's: the folder judged as one, as one album is."""
+    top = PurePosixPath(name)
+    albums = _albums_in(top, [PurePosixPath(rel) for rel, _ in music])
+    if len(albums) < 2:
+        return music, found
+    of = {str(p): a for a, songs in albums for p in songs}          # each song's album
+    hits = Counter(of.get(str(PurePosixPath(f["path"]))) for f in found)
+    dup = {a for a, songs in albums if hits[a] and 2 * hits[a] >= len(songs)}
+    if not dup or len(dup) == len(albums) or top in dup:        # songs right in the folder: can't be parted
+        return music, found
+    parts = [str(a.relative_to(top)) for a, _ in albums if a in dup]
+    try:
+        where.aside(name, parts, "_Duplicates")
+    except tunnel.Refused as e:         # a Muzix Desktop before 0.4.23
+        ctx.log(f"couldn't set some of its albums aside on the computer ({e}): the folder judged as one")
+        return music, found
+    out["aside"] = {"albums": parts, "songs": sum(len(songs) for a, songs in albums if a in dup),
+                    "found": [f for f in found if of.get(str(PurePosixPath(f["path"]))) in dup][:40]}
+    ctx.log(f"{len(parts)} of its {len(albums)} albums seem to be in the library already: set aside in _Duplicates/{name}")
+    return ([m for m in music if of[str(PurePosixPath(m[0]))] not in dup],
+            [f for f in found if of.get(str(PurePosixPath(f["path"]))) not in dup])
 
 
 def _albums_in(folder: Path, music: list[Path]) -> list[tuple[Path, list[Path]]]:

@@ -225,6 +225,32 @@ def _move(sid: str, m: dict) -> dict:
     return {"moved": True}
 
 
+def _aside(sid: str, m: dict) -> dict:
+    """Of a folder of albums (an artist's, say), those the server's library has (`parts`: their folders in it)
+    into one of HELD under the folder's name, _Duplicates/<name>/<part>: the server files the rest. Nothing is
+    deleted, and a move never overwrites."""
+    to = m.get("to") or ""
+    if to not in HELD:
+        raise PermissionError("Not a move the watch folder makes")
+    entry, name, moved = _album(sid, m), m.get("name") or "", 0
+    for part in m.get("parts") or []:
+        steps = part.split("/") if isinstance(part, str) else []
+        src = os.path.join(entry, *steps)
+        if not steps or any(x in ("", ".", "..") or "\\" in x for x in steps) \
+                or not os.path.realpath(src).startswith(entry + os.sep):        # nor a link out of it
+            raise PermissionError("Not an album in that folder")
+        if not os.path.exists(src):
+            continue
+        dest_dir = watched(sid, m.get("path"), to, os.path.join(name, *steps[:-1]))
+        os.makedirs(dest_dir, exist_ok=True)
+        dest, n = os.path.join(dest_dir, steps[-1]), 2
+        while os.path.exists(dest):
+            dest, n = os.path.join(dest_dir, f"{steps[-1]} ({n})"), n + 1
+        shutil.move(src, dest)
+        moved += 1
+    return {"moved": moved}
+
+
 def _album(sid: str, m: dict) -> str:
     """An album (a folder or a file) right in the watch folder or one of its HELD folders."""
     name = m.get("name") or ""
@@ -257,7 +283,7 @@ def _trash(sid: str, m: dict) -> dict:
 
 
 WATCH = {"watch_browse": _browse, "watch_set": _set, "watch_list": _list, "watch_move": _move,
-         "watch_delete": _delete, "watch_trash": _trash}
+         "watch_delete": _delete, "watch_trash": _trash, "watch_aside": _aside}
 
 
 class Sharing:

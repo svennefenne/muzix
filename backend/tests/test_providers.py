@@ -219,6 +219,18 @@ def test_bandcamp_albums_artists_and_compilations(web):
     comp = providers.details("bandcamp", "album", "542550141/2762363630")       # a label's: "Artist - Title"
     assert comp["artist"] == "Various Artists" and comp["year"] == 0
     assert [(t["artist"], t["title"]) for t in comp["tracks"]] == [("Argyria", "Magic Realms"), ("Oblium", "Letame - Live")]
+    # an artist's own album whose songs are named "Part - Title" (Giants of Discovery's Out Of Time, on its
+    # label's page): not a compilation when its songs are tagged with that artist
+    answers["https://bandcamp.com/api/mobile/24/tralbum_details"] = lambda req: {
+        "title": "Out Of Time", "tralbum_artist": "Giants Of Discovery", "band": {"name": "Library Of The Occult"},
+        "art_id": 1, "release_date": None, "tags": [],
+        "tracks": [{"track_num": 1, "title": "Prologue - Opening Of The Gate", "duration": 101},
+                   {"track_num": 2, "title": "Main Act - Out of Time", "duration": 1302}]}
+    own = providers.details("bandcamp", "album", "1545992000/1308529127", artist="Giants of Discovery")
+    assert own["artist"] == "Giants Of Discovery"
+    assert [(t["artist"], t["title"]) for t in own["tracks"]] == [
+        ("Giants Of Discovery", "Prologue - Opening Of The Gate"), ("Giants Of Discovery", "Main Act - Out of Time")]
+    assert providers.details("bandcamp", "album", "1545992000/1308529127")["artist"] == "Various Artists"   # no word of whose
     with pytest.raises(providers.SourceError):
         providers.details("bandcamp", "album", "../../elsewhere")
 

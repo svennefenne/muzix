@@ -188,6 +188,9 @@ shared with the others on your server if you like.
   music goes to `_Done/<album>`. One that couldn't be filed goes to
   `_Failed/<album>`, and an album
   at least half of whose songs the library seems to have to `_Duplicates/<album>`.
+  A folder of albums (an artist's, say) is judged album by album: those the
+  library has go to `_Duplicates/<folder>/<album>` (from a computer, Muzix
+  Desktop 0.4.23 or later) and the rest are filed.
   There you see why (its songs and what they're like in the library) and file it
   as an album of its own, in place of the library's copy (which goes to the
   library's `Duplicates/<artist>/<album> (2)`), beside it in that folder, or

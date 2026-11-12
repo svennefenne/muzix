@@ -20,7 +20,7 @@ interface Watched {
   trash: "trash" | "deleted";             // what throwing one away does: the computer's trash, or (on the server) deletes it
   recent: {
     id: number; name: string; status: string; error: string; match: string; duplicate: boolean; removed: boolean;
-    replaced: number; albums: { artist: string; album: string; songs: number; match: string }[]; finished_at: string | null;
+    replaced: number; aside: number; albums: { artist: string; album: string; songs: number; match: string }[]; finished_at: string | null;
   }[];
 }
 
@@ -130,7 +130,8 @@ export function WatchFolder() {
         Each album is looked up on MusicBrainz, where a release counts when its songs are as many and as long; when none does, on
         Bandcamp. It gets a main genre and cover art, and is filed as Genre/Artist/Artist - Year - Album, as uploads are. An album is
         taken two minutes after its last file arrived, or at once with Transfer now. An album at least half of whose songs the library
-        seems to have already goes to _Duplicates, and one that couldn't be filed to _Failed.{computer
+        seems to have already goes to _Duplicates (of a folder of albums, an artist's say, each album by itself: those the library has
+        go to _Duplicates under the folder's name, the rest are filed), and one that couldn't be filed to _Failed.{computer
           ? ` On ${computer.name}, an album is deleted once the library has every song of it; one that isn't all filed goes to _Done.`
           : " What's left of an album (covers, .cue, .log) goes to _Done."} A folder on a computer: in Muzix Desktop there,
         Settings → Servers → "May pick a folder here to watch".
@@ -159,6 +160,7 @@ export function WatchFolder() {
               const text = busy ? "Being filed…" : r.status === "failed" ? r.error || "Couldn't be filed"
                 : r.duplicate ? "Set aside as a duplicate"
                 : [matched(r.albums, r.match), r.replaced && "the library's copy put aside in Duplicates",
+                   r.aside && `${r.aside} the library has set aside in _Duplicates`,
                    r.removed && "deleted from the computer"].filter(Boolean).join(" · ");
               return (
                 <div key={r.id} className="list-row">
