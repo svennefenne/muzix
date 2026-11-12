@@ -343,6 +343,8 @@ class Computer(watch.ComputerPlace):
         self.asked.append(op)
         held = args.get("held") or ""
         if op == "watch_list":
+            if not (self.root / held).is_dir():         # as Muzix Desktop answers for a folder that isn't there
+                raise watch.tunnel.Refused(f"[Errno 2] No such file or directory: '{self.path}/{held}'")
             return [{"name": n, "files": [list(f) for f in fs]} for n, fs in self.here.entries(held).items()]
         if op == "watch_move":
             return self.here.move(args["name"], held, args["to"])
@@ -392,6 +394,15 @@ def test_from_a_computer_an_album_not_filed_whole_is_kept(folder, monkeypatch):
     _from_a_computer(monkeypatch, comp)
     got = watch.import_watched(Ctx(), "Zyx Band - 2022 - Old", comp.key)
     assert not got.get("removed") and (root / "_Done" / "Zyx Band - 2022 - Old" / "info.nfo").exists()
+
+
+def test_from_a_computer_the_albums_set_aside_show_without_a_failed_folder(folder):
+    """A computer's _Duplicates is listed though it has no _Failed (Muzix Desktop says that one isn't there)."""
+    root, _ = folder
+    (root / "_Duplicates").mkdir()
+    album(root / "_Duplicates")
+    comp = Computer(root)
+    assert comp.held() == {"_Duplicates": [QWERTY], "_Failed": []}
 
 
 def test_from_a_computer_a_file_that_comes_short_fails_the_album(folder, monkeypatch):

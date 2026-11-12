@@ -199,7 +199,16 @@ class ComputerPlace(Place):
         self._ask("watch_move", name=name, held=held, to=to)
 
     def held(self):
-        return {h: [e["name"] for e in self._ask("watch_list", held=h)] for h in HELD[1:]}
+        """Each folder asked for itself: one the computer hasn't got (no album has failed there yet, say) holds
+        none, and doesn't hide the others."""
+        out = {}
+        for h in HELD[1:]:
+            try:
+                out[h] = [e["name"] for e in self._ask("watch_list", held=h)]
+            except tunnel.Refused as e:
+                log.info("The watch folder's %s on the computer: %s", h, e)
+                out[h] = []
+        return out
 
     def remove(self, name, held):
         self._ask("watch_delete", name=name, held=held)

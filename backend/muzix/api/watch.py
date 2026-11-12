@@ -1,6 +1,7 @@
 """The watch folder on the admin page (watch.py): where it is (on this server, or on a computer whose Muzix
 Desktop lets this server pick one), what's waiting in it, its albums set aside, and the latest ones filed."""
 
+import logging
 import os
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -16,6 +17,7 @@ from ..serial import iso
 from .admin import browse as browse_server
 from .upload import filed
 
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/admin/watch", tags=["watch"], dependencies=[Depends(admin_user)])
 
 
@@ -44,8 +46,8 @@ def get_watch(db: Session = Depends(get_db)):
     if where is not None:
         try:
             held = where.held()
-        except Exception:       # a computer gone meanwhile
-            pass
+        except Exception as e:  # a computer gone meanwhile
+            log.warning("The watch folder's albums set aside couldn't be listed: %s", e)
     return {"folder": settings.get("watch_folder"), "computer": settings.get("watch_computer"), "computers": computers,
             "reachable": where is not None, "state": watch.state(), "held": held, "why": _why(db, held["_Duplicates"]),
             "trash": "deleted" if isinstance(where, watch.ServerPlace) else "trash", "recent": _recent(db)}
