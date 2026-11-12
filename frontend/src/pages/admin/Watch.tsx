@@ -97,7 +97,7 @@ export function WatchFolder() {
           {w.held._Duplicates.map((name) => (
             <div key={`d-${name}`} className="list-row">
               <span className="status-dot queued" />
-              <div className="grow"><div className="ellipsis">{name}</div><div className="dim">In _Duplicates: the library seems to have it already</div></div>
+              <div className="grow"><div className="ellipsis">{name}</div><div className="dim">In _Duplicates: the library seems to have it already. Filed anyway, it goes to the library's Duplicates folder</div></div>
               <button className="btn small" onClick={() => again(name, "_Duplicates")}>File anyway</button>
             </div>
           ))}

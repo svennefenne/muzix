@@ -726,6 +726,8 @@ class MusicOrgPlugin(BeetsPlugin):
         g.func = self.cmd_mgenre
 
         p = Subcommand("mplan", help="compute destination path fields")
+        p.parser.add_option("--duplicates", action="store_true",
+                            help="the library has these albums already: Duplicates/<artist>/<album> (2), (3), ...")
         p.func = self.cmd_mplan
 
         r = Subcommand("mreport", help="summarise the plan")
@@ -1207,7 +1209,7 @@ class MusicOrgPlugin(BeetsPlugin):
                     and d["artist"] and d["title"]:
                 groups[(nkey(d["artist"]), nkey(d["dir"]))].append(d)
         for grp in groups.values():
-            if len(grp) < 2:
+            if len(grp) < 2 or opts.duplicates:      # all of them are; numbered below
                 continue
             grp.sort(key=lambda d: (d["lossless"], bool(d["album"].mb_albumid),
                                     len(d["items"]), d["bitrate"]), reverse=True)
@@ -1218,7 +1220,7 @@ class MusicOrgPlugin(BeetsPlugin):
         # every album gets a folder of its own
         taken = Counter()
         for d in sorted(info.values(), key=lambda d: d["orig_dir"]):
-            if d.get("dupe_of"):
+            if d.get("dupe_of") or opts.duplicates:
                 d["top"] = DUPES
             elif d["reason"]:
                 d["top"] = UNCAT
@@ -1228,6 +1230,13 @@ class MusicOrgPlugin(BeetsPlugin):
             if d["artist_dir"] == "_Untagged":
                 continue  # named after the original folder, file names kept
             base = d["dir"]
+            if opts.duplicates:
+                # beside the library's other copies of it: the first number not taken, there or in this batch
+                n = 2
+                while (nkey(DUPES), nkey(d["artist_dir"]), nkey(f"{base} ({n})")) in taken \
+                        or os.path.exists(os.path.join(root, DUPES, d["artist_dir"], f"{base} ({n})")):
+                    n += 1
+                d["dir"] = base = f"{base} ({n})"
             while True:
                 key = (nkey(d["top"]), nkey(d["artist_dir"]), nkey(d["dir"]))
                 taken[key] += 1

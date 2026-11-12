@@ -10,7 +10,8 @@ The folder is looked at every minute; an album (a folder in it, or a single file
 changed for two minutes. Its music goes into the library: from the server's folder itself, and from a
 computer's as a copy, after which the computer's files go to _Done. What's left (covers, .cue, .nfo, .log)
 goes to _Done/<album>; an album the library seems to have already goes to _Duplicates/<album>, for the
-admin to look at and file anyway if they like; one that couldn't be filed goes to _Failed/<album>. Nothing
+admin to look at and file anyway if they like (into the library's Duplicates/<artist>/<album> (2), beside its
+other copies); one that couldn't be filed goes to _Failed/<album>. Nothing
 is deleted. Folders whose names start with "_" or "." are the watch folder's own, and left alone.
 """
 
@@ -274,6 +275,7 @@ def import_watched(ctx: jobs.JobContext, name: str, key: str, held: str = ""):
     if where is None or where.key != key:
         raise RuntimeError("the watch folder changed or can't be reached")
     out: dict = {"name": name}
+    duplicate = held == "_Duplicates"       # filed anyway: to the library's Duplicates folder, not beside its copy
     batch = _batch()
     work = env.UPLOAD_DIR / batch
     try:
@@ -308,7 +310,7 @@ def import_watched(ctx: jobs.JobContext, name: str, key: str, held: str = ""):
                 if source == "bandcamp":
                     _apply(songs, d, albums[0][0])
                 out.update(importer.file_music(ctx, folder, batch, autotag=False if source == "bandcamp" else None,
-                                               search_id=ref if source == "musicbrainz" else ""))
+                                               search_id=ref if source == "musicbrainz" else "", duplicate=duplicate))
                 bandcamp = {(d["artist"].lower(), d["title"].lower())} if source == "bandcamp" else set()
             else:
                 # several albums (an artist's, say): each looked up by itself; beets then matches each one with
@@ -321,7 +323,7 @@ def import_watched(ctx: jobs.JobContext, name: str, key: str, held: str = ""):
                     if source == "bandcamp":
                         _apply(songs, d, where_)
                         bandcamp.add((d["artist"].lower(), d["title"].lower()))
-                out.update(importer.file_music(ctx, folder, batch))
+                out.update(importer.file_music(ctx, folder, batch, duplicate=duplicate))
             # each album as it was filed: matched with MusicBrainz (beets says which release), Bandcamp, or neither
             for a in out.get("albums") or []:
                 a["match"] = "musicbrainz" if a.get("mbid") else \

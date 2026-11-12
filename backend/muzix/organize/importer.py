@@ -162,9 +162,11 @@ def import_upload(ctx: jobs.JobContext, batch: str):
     return result
 
 
-def file_music(ctx: jobs.JobContext, source, batch: str, autotag: bool | None = None, search_id: str = "") -> dict:
+def file_music(ctx: jobs.JobContext, source, batch: str, autotag: bool | None = None, search_id: str = "",
+               duplicate: bool = False) -> dict:
     """The music in `source` matched with MusicBrainz (with `search_id`, as that release; with `autotag` False,
-    as its tags have it), given a main genre and cover art, and moved into the music upload folder."""
+    as its tags have it), given a main genre and cover art, and moved into the music upload folder. `duplicate`:
+    the library has it already, filed anyway: to Duplicates/<artist>/<album> (2), (3), ... as the library's own."""
     out: dict = {}
     music_root = upload_root("music")
     if not music_root or not os.access(music_root, os.W_OK):
@@ -172,16 +174,17 @@ def file_music(ctx: jobs.JobContext, source, batch: str, autotag: bool | None = 
     write_artist_genres()
     beet = Beet(ctx, beets_config(music_root, batch, autotag))
     tag = f"mo_batch:{batch}"
+    plan = ("mplan", "--duplicates", tag) if duplicate else ("mplan", tag)
     ctx.update(0.05, "matching with MusicBrainz")
     beet("import", *(["-S", search_id] if search_id else []), "--", str(source))
     beet("modify", "-y", "-a", f"mo_batch={batch}", f"path:{source}")
     ctx.update(0.35, "deciding genres")
-    beet("mplan", tag)
+    beet(*plan)
     beet("mgenre", tag)
     if settings.get("upload_fetch_art"):
         ctx.update(0.5, "finding cover art")
         beet("fetchart", "-q", tag, check=False)
-    beet("mplan", tag)
+    beet(*plan)
     ctx.update(0.65, "writing tags and moving files")
     before = beet.songs(tag)
     beet("write", tag)

@@ -1,5 +1,11 @@
 """The watch folder (watch.py): an album is taken once it stays as it is, looked up on MusicBrainz and then
 Bandcamp by its songs' lengths, filed as uploads are, and what's left, a duplicate or a failure set aside."""
+import json
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 
 from muzix import settings, watch
@@ -90,8 +96,8 @@ def test_taken_once_it_stays_as_it_is(folder, monkeypatch):
 
 def filed(calls, gone=True, albums=None):
     """file_music as beets does it: the music moved out of the folder, and the albums as filed."""
-    def fake(ctx, source, batch, autotag=None, search_id=""):
-        calls.append({"source": source, "autotag": autotag, "search_id": search_id})
+    def fake(ctx, source, batch, autotag=None, search_id="", duplicate=False):
+        calls.append({"source": source, "autotag": autotag, "search_id": search_id, **({"duplicate": True} if duplicate else {})})
         if gone:
             for p in list(source.rglob("*.mp3")):
                 p.unlink()
@@ -146,6 +152,65 @@ def test_duplicates_and_failures_set_aside(folder, monkeypatch):
         watch.import_watched(Ctx(), "Zyx Band - 2021 - Qwerty Songs", f"server:{root}", held="_Duplicates")
     assert (root / "_Failed" / "Zyx Band - 2021 - Qwerty Songs" / "info.nfo").exists()
     assert not (root / "_Duplicates" / "Zyx Band - 2021 - Qwerty Songs").exists()
+
+
+def test_filed_anyway_goes_to_the_librarys_duplicates_tried_again_as_any_album(folder, monkeypatch):
+    root, _ = folder
+    for held in ("_Duplicates", "_Failed"):
+        (root / held).mkdir()
+        album(root / held, "Zyx Band - 2021 - Qwerty Songs")
+    calls = []
+    monkeypatch.setattr(watch.duplicates, "check", lambda files, s: pytest.fail("not looked for again"))
+    monkeypatch.setattr(watch, "match", lambda songs, name, ctx=None: ("musicbrainz", "mb-1", {}))
+    monkeypatch.setattr(watch.importer, "file_music", filed(calls))
+    watch.import_watched(Ctx(), "Zyx Band - 2021 - Qwerty Songs", f"server:{root}", held="_Duplicates")
+    watch.import_watched(Ctx(), "Zyx Band - 2021 - Qwerty Songs", f"server:{root}", held="_Failed")
+    assert [c.get("duplicate", False) for c in calls] == [True, False]
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg") or not (Path(sys.executable).parent / "beet").exists(),
+                    reason="needs beets (pip install -e './backend[organize]') and ffmpeg")
+def test_a_duplicate_filed_with_beets_lands_beside_the_librarys_other_copies(tmp_path, monkeypatch):
+    """Duplicates/<artist>/<Artist - Year - Album> (n), the first n the library hasn't got, as the library's
+    own duplicates are named; never beside the copy in its genre folder with beets' ".1" names."""
+    from muzix import db, env
+    from muzix.models import Root
+    from muzix.organize import importer
+
+    lib = tmp_path / "lib"
+    (lib / "Rock" / "Zyx Band" / "Zyx Band - 2021 - Qwerty Songs").mkdir(parents=True)
+    (lib / "Duplicates" / "Zyx Band" / "Zyx Band - 2021 - Qwerty Songs (2)").mkdir(parents=True)
+    src = tmp_path / "in" / "qwerty"
+    src.mkdir(parents=True)
+    for n in (1, 2):
+        subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", "anullsrc=r=44100", "-t", "1",
+                        *[x for k, v in {"artist": "Zyx Band", "album_artist": "Zyx Band", "album": "Qwerty Songs",
+                                         "date": "2021", "track": str(n), "title": f"Song {n}"}.items()
+                          for x in ("-metadata", f"{k}={v}")], str(src / f"{n}.mp3")], check=True)
+    beets = tmp_path / "beets"
+    beets.mkdir()
+    # Last.fm's word on the band, so nothing is asked online
+    (beets / "lastfm-cache.json").write_text(json.dumps({"artist\x1fzyx band": [["rock", 100]],
+                                                         "album\x1fzyx band\x1fqwerty songs": [["rock", 100]]}))
+    monkeypatch.setattr(env, "BEETS_DIR", beets)
+    monkeypatch.setattr(importer, "BEET", str(Path(sys.executable).parent / "beet"))
+    was = {k: settings.get(k) for k in ("upload_genre_folders", "upload_fetch_art")}
+    settings.set_many({"upload_genre_folders": True, "upload_fetch_art": False})
+    with db.session() as s:
+        s.add(Root(path=str(lib), kind="music", upload_target=True))
+        s.commit()
+    try:
+        got = importer.file_music(Ctx(), src, "dupe-test", autotag=False, duplicate=True)
+    finally:
+        settings.set_many(was)
+        with db.session() as s:
+            s.query(Root).filter(Root.path == str(lib)).delete()
+            s.commit()
+    there = lib / "Duplicates" / "Zyx Band" / "Zyx Band - 2021 - Qwerty Songs (3)"
+    assert sorted(p.name for p in there.iterdir()) == ["1. Zyx Band - Qwerty Songs - Song 1 (2021).mp3",
+                                                         "2. Zyx Band - Qwerty Songs - Song 2 (2021).mp3"]
+    assert not any((lib / "Rock" / "Zyx Band" / "Zyx Band - 2021 - Qwerty Songs").iterdir())
+    assert [a["folder"] for a in got["albums"]] == [str(there)]
 
 
 def test_a_song_by_itself_gets_a_folder(folder, monkeypatch):

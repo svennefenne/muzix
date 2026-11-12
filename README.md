@@ -185,7 +185,8 @@ shared with the others on your server if you like.
   tags say and listed for a look. An album is taken two minutes after its last
   file arrived (the folder is looked at every minute). What isn't music goes to
   `_Done/<album>`, an album the library seems to have to `_Duplicates/<album>`
-  (*File anyway* there), one that couldn't be filed to `_Failed/<album>`:
+  (*File anyway* there files it into the library's `Duplicates/<artist>/<album> (2)`),
+  one that couldn't be filed to `_Failed/<album>`:
   nothing is deleted. From a computer the music is copied, and its files there
   go to `_Done`; the computer has to be on with Muzix Desktop running and
   sharing.
