@@ -11,6 +11,7 @@ import { useUi } from "../store/ui";
 import type { Album, Artist, DisplayMode, Genre } from "../types";
 import { AdminCog } from "./AdminMode";
 import { AlbumCard, ArtistCard, GenreCard, useNow } from "./Cards";
+import { releaseLabel } from "./Discography";
 import { Art } from "./ui";
 
 export interface Choice<T extends string> { value: T; label: string; icon?: ReactNode; title?: string }
@@ -120,7 +121,7 @@ export function AlbumItems({ items, display, vgm }: { items: Album[]; display: D
         <Link key={a.id} to={`/album/${a.id}`} className="lrow">
           <PlayThumb art={a.art} name={a.title} onPlay={() => playAlbum(a.id)} peer={a.peer} what={{ kind: "album", id: a.id }} />
           <div className="l-main">
-            <div className="l-title ellipsis">{a.title}</div>
+            <div className="l-title ellipsis">{a.title}{releaseLabel(a) && <span className="badge l-type">{releaseLabel(a)}</span>}</div>
             <div className="l-sub ellipsis l-sm">{[a.artist, a.year || null].filter(Boolean).join(" · ")}</div>
           </div>
           <span className="l-col ellipsis l-opt">{a.artist}</span>

@@ -52,6 +52,10 @@ def read(path: str) -> AudioInfo:
         compilation=bool(f.comp), mbid=_s(f.mb_trackid), album_mbid=_s(f.mb_albumid),
         artist_mbid=_s(f.mb_artistid), albumartist_mbid=_s(f.mb_albumartistid),
     )
+    # MusicBrainz's release group types, as beets writes them: album, ep, single, and live, compilation... (releases.py)
+    types = [t for t in (f.albumtypes or ([f.albumtype] if f.albumtype else [])) if t]
+    if types:
+        info.extra["albumtypes"] = ",".join(str(t).strip().lower() for t in types)
     try:
         info.embedded_art = bool(f.images)
     except Exception:  # broken picture frames shouldn't hide the track

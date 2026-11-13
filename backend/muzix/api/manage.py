@@ -147,6 +147,24 @@ def delete(kind: str, id_: int):
     return _do(manage.delete_item, _kind(kind), id_)
 
 
+class Release(BaseModel):
+    type: str = ""          # album, ep or single; "": as the tags have it, or a guess (releases.py)
+
+
+@router.put("/album/{id_}/release")
+def set_release(id_: int, body: Release, db: Session = Depends(get_db)):
+    """An admin's choice of the album's type (album, EP or single), over its tags' and the guess; none: theirs again."""
+    from .. import releases, serial
+    if body.type and body.type not in releases.TYPES:
+        raise HTTPException(400, "Album, EP or single")
+    a = db.get(Album, id_)
+    if a is None:
+        raise HTTPException(404, "No such album")
+    a.release_set = body.type
+    db.commit()
+    return {"release_type": serial.album(a)["release_type"], "release_guessed": serial.album(a)["release_guessed"]}
+
+
 class Albums(BaseModel):
     ids: list[int] = Field(min_length=1, max_length=500)
 

@@ -249,10 +249,15 @@ def artist(artist_id: int, db: Session = Depends(get_db), user: User = Depends(c
                            .order_by(func.random()).limit(10 - len(top))).all()
         top += extra
     lk = liked(db, user, "album")
+    # album, EP or single: its guessed albums looked up at MusicBrainz, once, in the background (releases.py)
+    from .. import releases
+    if releases.unchecked(db, artist_id):
+        releases.check_artist(artist_id)
     return {**serial.artist(a, liked(db, user, "artist"), len(albums_)),
             "tag_groups": tagging.groups(db, a),
             "albums": [serial.album(x, lk) for x in albums_],
-            "top_tracks": tracks_json(db, user, top)}
+            "top_tracks": tracks_json(db, user, top),
+            "checking": releases.checking(artist_id)}     # the page asks again until it's done
 
 
 @router.get("/tracks")

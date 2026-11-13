@@ -2,7 +2,7 @@
  * stations) with Edit metadata, Hide from library and Delete (and an artist's Edit tags, an album's Merge). Deleted files go to a trash on
  * their share; hidden things and the trash are on the admin page. */
 
-import { Combine, EyeOff, Pencil, Settings, Tags, Trash2 } from "lucide-react";
+import { Combine, Disc3, EyeOff, Pencil, Settings, Tags, Trash2 } from "lucide-react";
 import { create } from "zustand";
 import { queryClient } from "../actions";
 import { api } from "../api";
@@ -133,6 +133,12 @@ export function AdminCog({ kind, id, title, className = "", peer }: {
                 { label: "Edit metadata", icon: <Pencil size={16} />, onClick: () => setEdit(t) },
                 ...(kind === "artist" ? [{ label: "Edit tags", icon: <Tags size={16} />, onClick: () => setTags(id) }] : []),
                 ...(kind === "album" ? [{ label: "Merge with another album", icon: <Combine size={16} />, onClick: () => setMerge(id) }] : []),
+                ...(kind === "album" ? [
+                  { sep: true as const }, { heading: "Album, EP or single" },
+                  ...([["album", "It's an album"], ["ep", "It's an EP"], ["single", "It's a single"], ["", "As its tags say (or a guess)"]] as const)
+                    .map(([type, label]) => ({ label, icon: <Disc3 size={16} />, onClick: () => void setRelease(id, type) })),
+                  { sep: true as const },
+                ] : []),
                 { label: "Hide from library", icon: <EyeOff size={16} />, onClick: () => hide(t) },
                 { label: "Delete", icon: <Trash2 size={16} />, onClick: () => setConfirm(t) },
               ]);
@@ -140,6 +146,18 @@ export function AdminCog({ kind, id, title, className = "", peer }: {
       <Settings size={15} />
     </button>
   );
+}
+
+/** An admin's choice of an album's type, over its tags' and the guess (backend/muzix/releases.py); "": theirs again. */
+async function setRelease(id: number, type: "" | "album" | "ep" | "single") {
+  const notify = useUi.getState().notify;
+  try {
+    await api.put(`/api/manage/album/${id}/release`, { type });
+    queryClient.invalidateQueries();
+    notify(type ? `Marked as ${({ album: "an album", ep: "an EP", single: "a single" })[type]}` : "Its type as its tags say");
+  } catch (e) {
+    notify((e as Error).message, "error");
+  }
 }
 
 /** The edit window and the delete question, wherever a cog was clicked. */

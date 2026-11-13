@@ -74,6 +74,9 @@ def album(a: Album, liked: set[int] | None = None) -> dict:
         "added_at": iso(a.added_at),
         "liked": bool(liked and a.id in liked),
         "peer": peer(a.peer_id),
+        # album, ep or single (releases.py): an admin's choice, the tags', or a guess
+        "release_type": a.release_set or a.release_type or "album",
+        "release_guessed": not a.release_set and a.release_guessed,
     }
 
 

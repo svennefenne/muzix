@@ -16,6 +16,7 @@ import { inAndroidApp } from "../player/app";
 import { engine } from "../player/engine";
 import { fromTrack, usePlayer } from "../store/player";
 import { AlbumCard, ArtistCard, MosaicCard, PlaylistCard } from "../components/Cards";
+import { Discography, releaseOf } from "../components/Discography";
 import { TrackList } from "../components/TrackList";
 import { Art, Display, Empty, FromPeer, Kicker, Loading, Modal, Section, useInView, useMenu, type MenuItem } from "../components/ui";
 import { useSectionOfPage } from "../search/here";
@@ -354,8 +355,9 @@ export function LibraryArtists() {
 export function LibraryArtistAlbums() {
   const { id = "", genre } = useParams();
   const b = useBrowse("library.artist-albums", ALBUM_SORTS, "year", "albums");
-  const artist = useQuery({ queryKey: ["artist", Number(id)], queryFn: () => api.get<ArtistDetail>(`/api/artists/${id}`) });
-  const q = usePaged<Album>(["albums", "artist", id], "/api/albums", { kind: "all", artist_id: id, sort: b.sort });
+  const artist = useArtist(Number(id));
+  // all of them at once: sorted by type below (Discography)
+  const q = usePaged<Album>(["albums", "artist", id], "/api/albums", { kind: "all", artist_id: id, sort: b.sort }, 500);
   const name = artist.data?.name || "…";
   const total = q.data?.pages[0]?.total;
   const crumbs: [string, string?][] = genre
@@ -368,7 +370,7 @@ export function LibraryArtistAlbums() {
                    <button className="btn" onClick={() => playRandom({ artist_id: Number(id), kind: "all" })}><Shuffle size={15} /> Shuffle</button>
                    <Link className="btn" to={`/artist/${id}`} data-tip="Top songs and more"><UserRound size={15} /> Artist page</Link>
                  </>}>
-      <Infinite q={q}>{(items) => <AlbumItems items={items} display={b.display} />}</Infinite>
+      <Infinite q={q}>{(items) => <Discography albums={items}>{(xs) => <AlbumItems items={xs} display={b.display} />}</Discography>}</Infinite>
     </BrowseShell>
   );
 }
@@ -495,7 +497,7 @@ export function AlbumPage() {
       <div className="detail-head">
         <Art src={a.art} name={a.title} size={600} peer={a.peer} link={linkData("album", a.id, a.title, a.artist, a.art)} />
         <div style={{ minWidth: 0 }}>
-          <Kicker parts={[a.kind === "vgm" ? "Game / collection" : "Album", a.genre, formats]} />
+          <Kicker parts={[a.kind === "vgm" ? "Game / collection" : ({ album: "Album", ep: "EP", single: "Single" })[releaseOf(a)], a.genre, formats]} />
           <Display l1={a.title} small />
           <div className="detail-meta">
             {a.artist_id ? <Link to={`/artist/${a.artist_id}`}><b>{a.artist}</b></Link> : <b>{a.artist}</b>}
@@ -559,9 +561,25 @@ export function AlbumPage() {
   );
 }
 
+/** An artist, from its page or the library's: while its albums' types are looked up (releases.py, the first time it's
+ * opened) it's asked again every few seconds, and its albums once that's done, so the types change by themselves. */
+function useArtist(id: number) {
+  const q = useQuery({
+    queryKey: ["artist", id], queryFn: () => api.get<ArtistDetail>(`/api/artists/${id}`),
+    refetchInterval: (query) => (query.state.data?.checking ? 4000 : false),
+  });
+  const checking = !!q.data?.checking;
+  const was = useRef(checking);
+  useEffect(() => {
+    if (was.current && !checking) queryClient.invalidateQueries({ queryKey: ["albums", "artist", String(id)] });
+    was.current = checking;
+  }, [checking, id]);
+  return q;
+}
+
 export function ArtistPage() {
   const { id } = useParams();
-  const q = useQuery({ queryKey: ["artist", Number(id)], queryFn: () => api.get<ArtistDetail>(`/api/artists/${id}`) });
+  const q = useArtist(Number(id));
   if (!q.data) return <div className="page"><Loading /></div>;
   const a = q.data;
   return (
@@ -583,8 +601,8 @@ export function ArtistPage() {
       <Section kicker={a.top_tracks.length ? "Most played" : ""} title="Top songs">
         <TrackList tracks={a.top_tracks} showArt />
       </Section>
-      <Section kicker="Discography" title="Albums">
-        <div className="grid">{a.albums.map((x) => <AlbumCard key={x.id} a={x} />)}</div>
+      <Section title="Discography">
+        <Discography albums={a.albums}>{(xs) => <div className="grid">{xs.map((x) => <AlbumCard key={x.id} a={x} />)}</div>}</Discography>
       </Section>
     </div>
   );

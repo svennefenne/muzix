@@ -105,6 +105,14 @@ class Album(Base):
     hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # admin: hidden from everyone
     peer_id: Mapped[int | None] = mapped_column(Integer, nullable=True)   # another server's (network.py)
     shadowed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # another library's copy shows
+    # album, EP or single (releases.py): MusicBrainz's types from the tags ("" not read yet, "none": read, none
+    # there), what that makes it (or a guess), and an admin's choice over both
+    release_tag: Mapped[str] = mapped_column(String(64), default="", server_default="")
+    release_type: Mapped[str] = mapped_column(String(16), default="", server_default="")
+    release_guessed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    release_set: Mapped[str] = mapped_column(String(16), default="", server_default="")
+    # when a guessed one was looked up at MusicBrainz (its artist's page opened: releases.py), found or not
+    release_checked: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     artist: Mapped[Artist | None] = relationship()
 
 

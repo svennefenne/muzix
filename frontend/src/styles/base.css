@@ -1275,6 +1275,12 @@ a.stat-link.warn .v { color: var(--warning); }
 }
 .lib-chip:hover { color: var(--text); border-color: var(--text-dim); }
 .lib-chip.on { background: var(--text); border-color: var(--text); color: var(--bg); }
+/* an artist's releases by type (Discography.tsx): the chips, and with none picked each type below the other */
+.disco-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; }
+.disco-group + .disco-group { margin-top: 30px; }
+.disco-title { margin: 0 0 12px; }
+.disco-title .faint { font-weight: 600; }
+.l-type { margin-left: 8px; vertical-align: 1px; }
 .lib-list { flex: 1; min-height: 0; overflow-y: auto; padding: 0 6px 12px; }
 .lib-row {
   display: grid; grid-template-columns: 48px minmax(0, 1fr); align-items: center; gap: 12px; width: 100%;

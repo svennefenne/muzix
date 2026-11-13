@@ -382,6 +382,14 @@ def finish_scan(ctx):
               SELECT coalesce(nullif(albumartist, ''), artist) FROM tracks t WHERE t.album_id = albums.id
               GROUP BY 1 ORDER BY count(*) DESC LIMIT 1), artist_name)
         """))
+        # album, EP or single (releases.py): its songs' MusicBrainz types when they have them, then what that makes it
+        s.execute(text("""
+            UPDATE albums SET release_tag = coalesce((
+              SELECT json_extract(t.extra, '$.albumtypes') FROM tracks t WHERE t.album_id = albums.id
+                AND json_extract(t.extra, '$.albumtypes') IS NOT NULL LIMIT 1), release_tag)
+        """))
+        from . import releases
+        releases.update(s)
         s.execute(text("""
             DELETE FROM artists WHERE id NOT IN (SELECT artist_id FROM tracks WHERE artist_id IS NOT NULL)
               AND id NOT IN (SELECT artist_id FROM albums WHERE artist_id IS NOT NULL)

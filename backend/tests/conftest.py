@@ -16,4 +16,7 @@ def muzix_db():
     for name in ("CACHE_DIR", "ART_DIR", "PODCAST_DIR", "UPLOAD_DIR", "BEETS_DIR", "SCHEME_DIR", "AVATAR_DIR"):
         setattr(env, name, env.DATA_DIR / name.lower().replace("_dir", ""))
     db.init(f"sqlite:///{env.DB_PATH}")
+    # an artist's page asks MusicBrainz for its albums' types (releases.py): not from the tests
+    from muzix import releases
+    releases.ask_musicbrainz = lambda artist, title: []
     yield

@@ -7,6 +7,7 @@ import { engine } from "../player/engine";
 import { usePlayer } from "../store/player";
 import type { Album, Artist, Genre, Playlist } from "../types";
 import { AdminCog, type ItemKind } from "./AdminMode";
+import { releaseLabel } from "./Discography";
 import { Art } from "./ui";
 
 export type Now = "" | "playing" | "paused";
@@ -34,7 +35,7 @@ export function AlbumCard({ a }: { a: Album }) {
       </button>
       <AdminCog kind="album" id={a.id} title={a.title} peer={a.peer} />
       <div className="card-title ellipsis">{a.title}</div>
-      <div className="card-sub ellipsis">{[a.year || null, a.artist].filter(Boolean).join(" · ")}</div>
+      <div className="card-sub ellipsis">{[a.year || null, releaseLabel(a), a.artist].filter(Boolean).join(" · ")}</div>
     </Link>
   );
 }

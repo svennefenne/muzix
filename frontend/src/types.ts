@@ -109,6 +109,8 @@ export interface Album {
   added_at: string | null;
   liked: boolean;
   peer?: string | null;       // the server in the Library Network it's from (null: this one's)
+  release_type?: "album" | "ep" | "single";   // backend/muzix/releases.py (none from an older server: an album)
+  release_guessed?: boolean;  // not from the tags (MusicBrainz's) or an admin: from the title or the length
 }
 
 export interface AlbumDetail extends Album {
@@ -141,6 +143,7 @@ export interface ArtistDetail extends Artist {
   tag_groups: { name: string; tags: string[] }[];     // tags in categories shown on a row of their own
   albums: Album[];
   top_tracks: Track[];
+  checking?: boolean;         // its albums' types are being looked up (backend/muzix/releases.py): ask again soon
 }
 
 export interface Genre {

@@ -44,6 +44,8 @@ SCHEMA: list[Spec] = [
     Spec("tags_drop_places", "bool", True, "Tags", "Place names off",
          "Countries, cities, regions and nationalities (\"finland\", \"DE\", \"U.S.A\", \"british\") taken off "
          "every artist's genre tags, but one an admin added to an artist."),
+    Spec("release_tags_read", "str", "", "Tags", "Album types read",
+         "Whether the albums scanned before album types were read have had their files read (releases.py)."),
     Spec("tag_rules_applied", "str", "", "Tags", "General tag rules applied",
          "Which general rules every artist's tags were last worked out with (tagging.RULES_VERSION)."),
     Spec("lyrics_online", "bool", True, "Library", "Look up lyrics online",

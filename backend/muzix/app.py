@@ -42,6 +42,8 @@ def create_app() -> FastAPI:
     # job implementations register themselves on import
     from . import books, enrich, maintenance, mirror, podcasts, scanner, tagging  # noqa: F401
     tagging.catch_up()          # the artists' tags as new general rules have them, once
+    from . import releases
+    releases.catch_up()         # album, EP or single for the albums scanned before, once, in the background
     from .organize import importer  # noqa: F401
     from .api import admin, android, auth, books as books_api, chat as chat_api, library, me, podcasts as podcasts_api
     from .api import connect, manage as manage_api, network as network_api, online, radio, setup
