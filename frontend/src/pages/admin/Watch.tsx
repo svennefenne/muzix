@@ -2,27 +2,38 @@
  * Muzix Desktop lets this server pick one there, are filed into the library by themselves. */
 
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, Folder, FolderOpen, Laptop, MoreHorizontal, Send, Server } from "lucide-react";
+import { ChevronDown, Folder, FolderOpen, Laptop, MoreHorizontal, Plus, Send, Server } from "lucide-react";
 import { useState } from "react";
 import { ago, api } from "../../api";
 import { Segmented } from "../../components/Browse";
 import { Modal, useMenu } from "../../components/ui";
 import { useUi } from "../../store/ui";
 
-interface Watched {
+/** One watch folder: where, how its albums are matched, how it stands, its albums set aside and why. */
+interface Folder {
+  key: string;                           // which one, for the calls about it
   folder: string;
   computer: string;                      // "" when the folder is on this server
-  computers: { id: string; name: string; online: boolean }[];
+  only: Only;                            // "bandcamp": its albums matched with Bandcamp alone
   reachable: boolean;
   state: { checked: number; error: string; waiting: string[] };
   held: { _Duplicates: string[]; _Failed: string[] };
-  why: Record<string, Why>;               // each album in _Duplicates: why it was set aside
-  trash: "trash" | "deleted";             // what throwing one away does: the computer's trash, or (on the server) deletes it
+  why: Record<string, Why>;              // each album in _Duplicates: why it was set aside
+  trash: "trash" | "deleted";            // what throwing one away does: the computer's trash, or (on the server) deletes it
+}
+
+interface Watched {
+  folders: Folder[];
+  computers: { id: string; name: string; online: boolean }[];
   recent: {
-    id: number; name: string; status: string; error: string; match: string; duplicate: boolean; removed: boolean;
+    id: number; name: string; key: string; status: string; error: string; match: string; duplicate: boolean; removed: boolean;
     replaced: number; aside: number; albums: { artist: string; album: string; songs: number; match: string }[]; finished_at: string | null;
   }[];
 }
+
+type Only = "" | "bandcamp";
+
+const MATCHING: { value: Only; label: string }[] = [{ value: "", label: "MusicBrainz, then Bandcamp" }, { value: "bandcamp", label: "Bandcamp only" }];
 
 interface Why {
   songs: number;                          // of how many (0: set aside before this was kept)
@@ -47,25 +58,82 @@ function matched(albums: Watched["recent"][number]["albums"], match: string) {
 export function WatchFolder() {
   const notify = useUi((s) => s.notify);
   const q = useQuery({ queryKey: ["watch"], queryFn: () => api.get<Watched>("/api/admin/watch"), refetchInterval: 10_000 });
-  const [picking, setPicking] = useState(false);
-  const [sending, setSending] = useState(false);
+  const [picking, setPicking] = useState<{ at: number; only: Only; computer: string } | null>(null);
   const w = q.data;
   if (!w) return null;
-  const computer = w.computers.find((c) => c.id === w.computer);
-  const set = async (folder: string, on: string) => {
+  const set = async (at: number, folder: string, computer: string, only: Only) => {
     try {
-      await api.put("/api/admin/watch", { folder, computer: on });
-      setPicking(false);
+      await api.put("/api/admin/watch", { folder, computer, only, at });
+      setPicking(null);
       q.refetch();
     } catch (e) {
       notify((e as Error).message, "error");
     }
   };
+  const folders = w.folders.length ? w.folders : [null];
+  const bandcampOnly = w.folders.some((f) => f.only === "bandcamp");
+
+  return (
+    <>
+      {folders.map((f, at) => (
+        <WatchCard key={f?.key ?? "none"} f={f} at={at} computers={w.computers} refetch={() => q.refetch()}
+                   onPick={() => setPicking({ at, only: f?.only ?? "", computer: f?.computer ?? "" })}
+                   onSet={(folder, computer, only) => set(at, folder, computer, only)} />
+      ))}
+      {w.folders.length > 0 && (
+        <div className="row-actions watch-more">
+          <button className="btn ghost" onClick={() => setPicking({ at: w.folders.length, only: bandcampOnly ? "" : "bandcamp", computer: w.folders[0].computer })}>
+            <Plus size={15} /> Another watch folder
+          </button>
+        </div>
+      )}
+      {w.recent.length > 0 && (
+        <section className="panel watch">
+          <details className="watch-recent" open>
+            <summary className="dim">Lately from the watch folder{w.folders.length > 1 ? "s" : ""}</summary>
+            <div className="list">
+              {w.recent.map((r) => {
+                const busy = r.status === "queued" || r.status === "running";
+                const text = busy ? "Being filed…" : r.status === "failed" ? r.error || "Couldn't be filed"
+                  : r.duplicate ? "Set aside as a duplicate"
+                  : [matched(r.albums, r.match), r.replaced && "the library's copy put aside in Duplicates",
+                     r.aside && `${r.aside} the library has set aside in _Duplicates`,
+                     r.removed && "deleted from the computer"].filter(Boolean).join(" · ");
+                return (
+                  <div key={r.id} className="list-row">
+                    <span className={`status-dot ${busy ? "queued" : r.status === "failed" ? "bad" : r.match === "none" || r.match === "mixed" || r.duplicate ? "" : "ok"}`} />
+                    <div className="grow">
+                      <div className="ellipsis">{r.albums.length === 1 ? `${r.albums[0].artist} – ${r.albums[0].album}` : r.name}</div>
+                      <div className={r.status === "failed" ? "error-text" : "dim"}>{text}{r.finished_at && !busy ? ` · ${ago(r.finished_at)}` : ""}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </details>
+        </section>
+      )}
+      {picking && <WatchPicker computers={w.computers} start={picking.computer} only={picking.only} adding={picking.at >= w.folders.length && w.folders.length > 0}
+                               onPick={(folder, computer, only) => set(picking.at, folder, computer, only)} onClose={() => setPicking(null)} />}
+    </>
+  );
+}
+
+/** One watch folder (none yet: how to set one): where it is, how its albums are matched, how it stands, and its
+ * albums set aside, with what can be done with them. */
+function WatchCard({ f, at, computers, refetch, onPick, onSet }: {
+  f: Folder | null; at: number; computers: Watched["computers"]; refetch: () => void;
+  onPick: () => void; onSet: (folder: string, computer: string, only: Only) => void;
+}) {
+  const notify = useUi((s) => s.notify);
+  const [sending, setSending] = useState(false);
+  const computer = f ? computers.find((c) => c.id === f.computer) : undefined;
+  const key = f?.key ?? "";
   const again = async (name: string, held: "_Duplicates" | "_Failed", how?: How) => {
     try {
-      await api.post("/api/admin/watch/again", { name, held, ...(how ? { how } : {}) });
+      await api.post("/api/admin/watch/again", { name, held, key, ...(how ? { how } : {}) });
       notify(`${name}: being filed`);
-      q.refetch();
+      refetch();
     } catch (e) {
       notify((e as Error).message, "error");
     }
@@ -74,9 +142,9 @@ export function WatchFolder() {
     const where = computer ? `${computer.name}'s trash` : "";
     if (!confirm(where ? `Move "${name}" to ${where}?` : `Delete "${name}" from the watch folder? It can't be undone.`)) return;
     try {
-      await api.post("/api/admin/watch/remove", { name, held: "_Duplicates" });
+      await api.post("/api/admin/watch/remove", { name, held: "_Duplicates", key });
       notify(where ? `${name}: in ${where}` : `${name}: deleted`);
-      q.refetch();
+      refetch();
     } catch (e) {
       notify((e as Error).message, "error");
     }
@@ -84,65 +152,74 @@ export function WatchFolder() {
   const transferNow = async () => {
     setSending(true);
     try {
-      const got = await api.post<{ taken: string[]; waiting: string[] }>("/api/admin/watch/now", {});
+      const got = await api.post<{ taken: string[]; waiting: string[] }>("/api/admin/watch/now", { key });
       const n = got.taken.length;
       notify(n ? `${n} album${n > 1 ? "s" : ""} being filed${got.waiting.length ? `; still coming in: ${got.waiting.join(", ")}` : ""}`
         : got.waiting.length ? `Still coming in: ${got.waiting.join(", ")}` : "Nothing waiting in the watch folder");
-      q.refetch();
+      refetch();
     } catch (e) {
       notify((e as Error).message, "error");
     } finally {
       setSending(false);
     }
   };
-  const looked = !w.reachable
+  const looked = !f ? "" : !f.reachable
     ? (computer ? `${computer.name} isn't connected (Muzix Desktop isn't running, or isn't sharing): the folder is looked at again when it is`
                 : "The folder can't be reached")
-    : w.state.error ? `Couldn't look in it: ${w.state.error}`
-    : w.state.checked ? `Looked in ${ago(new Date(w.state.checked * 1000).toISOString())}` : "Looked in every minute";
+    : f.state.error ? `Couldn't look in it: ${f.state.error}`
+    : f.state.checked ? `Looked in ${ago(new Date(f.state.checked * 1000).toISOString())}` : "Looked in every minute";
+  const bandcamp = f?.only === "bandcamp";
 
   return (
     <section className="panel watch">
       <div className="panel-head">
-        <div><div className="kicker">Watch folder</div><div className="h3">{w.folder ? "Albums put here are filed by themselves" : "Fill the library from a folder"}</div></div>
+        <div>
+          <div className="kicker">Watch folder{bandcamp ? " · Bandcamp only" : ""}</div>
+          <div className="h3">{f ? "Albums put here are filed by themselves" : "Fill the library from a folder"}</div>
+        </div>
         <div className="row-actions">
-          {w.folder && w.reachable && (
+          {f?.reachable && (
             <button className="btn accent" onClick={transferNow} disabled={sending}
                     data-tip="Take what's in the folder now, without waiting two minutes (an album still being copied in waits)">
               <Send size={15} /> {sending ? "Looking…" : "Transfer now"}
             </button>
           )}
-          <button className="btn" onClick={() => setPicking(true)}><FolderOpen size={15} /> {w.folder ? "Another folder" : "Choose a folder"}</button>
-          {w.folder && <button className="btn ghost" onClick={() => set("", "")}>Turn off</button>}
+          <button className="btn" onClick={onPick}><FolderOpen size={15} /> {f ? "Another folder" : "Choose a folder"}</button>
+          {f && <button className="btn ghost" onClick={() => onSet("", "", "")}>Turn off</button>}
         </div>
       </div>
-      {w.folder && (
+      {f && (
         <div className="watch-where">
           {computer ? <Laptop size={18} /> : <Server size={18} />}
           <div className="grow">
-            <div className="mono watch-path">{w.folder}{computer && <span className="dim"> on {computer.name}</span>}</div>
-            <div className={!w.reachable || w.state.error ? "error-text" : "dim"}>{looked}</div>
-            {w.state.waiting.length > 0 && <div className="dim">Coming in: {w.state.waiting.join(", ")}</div>}
+            <div className="mono watch-path">{f.folder}{computer && <span className="dim"> on {computer.name}</span>}</div>
+            <div className={!f.reachable || f.state.error ? "error-text" : "dim"}>{looked}</div>
+            {f.state.waiting.length > 0 && <div className="dim">Coming in: {f.state.waiting.join(", ")}</div>}
           </div>
+          <Segmented label="Matched with" value={f.only} options={MATCHING} onChange={(v) => v !== f.only && onSet(f.folder, f.computer, v as Only)} />
         </div>
       )}
-      <p className="dim watch-about">
-        Each album is looked up on MusicBrainz, where a release counts when its songs are as many and as long; when none does, on
-        Bandcamp. It gets a main genre and cover art, and is filed as Genre/Artist/Artist - Year - Album, as uploads are. An album is
-        taken two minutes after its last file arrived, or at once with Transfer now. An album at least half of whose songs the library
-        seems to have already goes to _Duplicates (of a folder of albums, an artist's say, each album by itself: those the library has
-        go to _Duplicates under the folder's name, the rest are filed), and one that couldn't be filed to _Failed.{computer
-          ? ` On ${computer.name}, an album is deleted once the library has every song of it; one that isn't all filed goes to _Done.`
-          : " What's left of an album (covers, .cue, .log) goes to _Done."} A folder on a computer: in Muzix Desktop there,
-        Settings → Servers → "May pick a folder here to watch".
-      </p>
-      {(w.held._Duplicates.length > 0 || w.held._Failed.length > 0) && (
+      {at === 0 && (
+        <p className="dim watch-about">
+          Each album is looked up on MusicBrainz, where a release counts when its songs are as many and as long; when none does, on
+          Bandcamp (in a folder set to Bandcamp only, on Bandcamp alone). Its main genre goes by Bandcamp's genre and tags too, and
+          the artist's genre tags are Bandcamp's when MusicBrainz has none. It gets cover art, and is filed as Genre/Artist/Artist -
+          Year - Album, as uploads are. An album is taken two minutes after its last file arrived, or at once with Transfer now. An
+          album at least half of whose songs the library seems to have already goes to _Duplicates (of a folder of albums, an
+          artist's say, each album by itself: those the library has go to _Duplicates under the folder's name, the rest are filed),
+          and one that couldn't be filed to _Failed.{computer
+            ? ` On ${computer.name}, an album is deleted once the library has every song of it; one that isn't all filed goes to _Done.`
+            : " What's left of an album (covers, .cue, .log) goes to _Done."} A folder on a computer: in Muzix Desktop there,
+          Settings → Servers → "May pick a folder here to watch" (0.4.24 and later for more than one).
+        </p>
+      )}
+      {f && (f.held._Duplicates.length > 0 || f.held._Failed.length > 0) && (
         <div className="list watch-held">
-          {w.held._Duplicates.map((name) => (
-            <Duplicate key={`d-${name}`} name={name} why={w.why[name]} trash={w.trash} computer={computer?.name}
+          {f.held._Duplicates.map((name) => (
+            <Duplicate key={`d-${name}`} name={name} why={f.why[name]} trash={f.trash} computer={computer?.name}
                        onFile={(how) => again(name, "_Duplicates", how)} onThrowAway={() => throwAway(name)} />
           ))}
-          {w.held._Failed.map((name) => (
+          {f.held._Failed.map((name) => (
             <div key={`f-${name}`} className="list-row">
               <span className="status-dot bad" />
               <div className="grow"><div className="ellipsis">{name}</div><div className="dim">In _Failed: it couldn't be filed</div></div>
@@ -151,31 +228,6 @@ export function WatchFolder() {
           ))}
         </div>
       )}
-      {w.recent.length > 0 && (
-        <details className="watch-recent" open>
-          <summary className="dim">Lately from the watch folder</summary>
-          <div className="list">
-            {w.recent.map((r) => {
-              const busy = r.status === "queued" || r.status === "running";
-              const text = busy ? "Being filed…" : r.status === "failed" ? r.error || "Couldn't be filed"
-                : r.duplicate ? "Set aside as a duplicate"
-                : [matched(r.albums, r.match), r.replaced && "the library's copy put aside in Duplicates",
-                   r.aside && `${r.aside} the library has set aside in _Duplicates`,
-                   r.removed && "deleted from the computer"].filter(Boolean).join(" · ");
-              return (
-                <div key={r.id} className="list-row">
-                  <span className={`status-dot ${busy ? "queued" : r.status === "failed" ? "bad" : r.match === "none" || r.match === "mixed" || r.duplicate ? "" : "ok"}`} />
-                  <div className="grow">
-                    <div className="ellipsis">{r.albums.length === 1 ? `${r.albums[0].artist} – ${r.albums[0].album}` : r.name}</div>
-                    <div className={r.status === "failed" ? "error-text" : "dim"}>{text}{r.finished_at && !busy ? ` · ${ago(r.finished_at)}` : ""}</div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </details>
-      )}
-      {picking && <WatchPicker computers={w.computers} start={w.computer} onPick={set} onClose={() => setPicking(false)} />}
     </section>
   );
 }
@@ -183,7 +235,7 @@ export function WatchFolder() {
 /** An album in _Duplicates: why it was set aside (its songs the library seems to have, and where), filed anyway
  * as an album of its own, in place of the library's copy or beside it in the Duplicates folder, or thrown away. */
 function Duplicate({ name, why, trash, computer, onFile, onThrowAway }: {
-  name: string; why?: Why; trash: Watched["trash"]; computer?: string; onFile: (how: How) => void; onThrowAway: () => void;
+  name: string; why?: Why; trash: Folder["trash"]; computer?: string; onFile: (how: How) => void; onThrowAway: () => void;
 }) {
   const show = useMenu((s) => s.show);
   const [open, setOpen] = useState(false);
@@ -234,10 +286,12 @@ function Duplicate({ name, why, trash, computer, onFile, onThrowAway }: {
 }
 
 /** The folder to watch: on this server, or on a computer that's on and lets this server pick one. */
-function WatchPicker({ computers, start, onPick, onClose }: {
-  computers: Watched["computers"]; start: string; onPick: (folder: string, computer: string) => void; onClose: () => void;
+function WatchPicker({ computers, start, only: startOnly, adding, onPick, onClose }: {
+  computers: Watched["computers"]; start: string; only: Only; adding: boolean;
+  onPick: (folder: string, computer: string, only: Only) => void; onClose: () => void;
 }) {
   const [on, setOn] = useState(start);
+  const [only, setOnly] = useState<Only>(startOnly);
   const [path, setPath] = useState("");
   const q = useQuery({
     queryKey: ["watch-browse", on, path], retry: false,
@@ -248,8 +302,9 @@ function WatchPicker({ computers, start, onPick, onClose }: {
   const here = q.data?.path ?? path;
   return (
     <Modal onClose={onClose}>
-      <div className="kicker">Watch folder</div>
+      <div className="kicker">{adding ? "Another watch folder" : "Watch folder"}</div>
       {places.length > 1 && <Segmented label="Where" value={on} options={places} onChange={(v) => { setOn(v); setPath(""); }} />}
+      <Segmented label="Matched with" value={only} options={MATCHING} onChange={(v) => setOnly(v as Only)} />
       <div className="h2" style={{ margin: "12px 0 10px", wordBreak: "break-all" }}>{here || "…"}</div>
       {q.isError ? (
         <p className="error-text" style={{ marginBottom: 14 }}>
@@ -269,7 +324,7 @@ function WatchPicker({ computers, start, onPick, onClose }: {
       )}
       <div className="row-actions" style={{ justifyContent: "flex-end" }}>
         <button className="btn ghost" onClick={onClose}>Cancel</button>
-        <button className="btn accent" disabled={!q.data} onClick={() => onPick(here, on)}>Watch this folder</button>
+        <button className="btn accent" disabled={!q.data} onClick={() => onPick(here, on, only)}>Watch this folder</button>
       </div>
     </Modal>
   );

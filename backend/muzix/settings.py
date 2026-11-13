@@ -101,6 +101,9 @@ SCHEMA: list[Spec] = [
          "Albums put here are filed into the library by themselves. Empty: none."),
     Spec("watch_computer", "str", "", "Watch folder", "On the computer",
          "The id of the computer (Muzix Desktop) the watch folder is on; empty: on this server."),
+    Spec("watch_folders", "json", [], "Watch folder", "Watch folders",
+         "Every watch folder: [{folder, computer, only}], only \"bandcamp\" for one whose albums are matched "
+         "with Bandcamp alone. The first is watch_folder and watch_computer too."),
     # admin mode's edit window
     Spec("discogs_token", "secret", "", "Library", "Discogs personal access token",
          "Album and artist matches and pictures from Discogs when editing in admin mode. Free: sign in at "

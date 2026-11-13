@@ -144,11 +144,11 @@ def _server(sid: str) -> config.Server:
 
 
 def watched(sid: str, path, held: str, rel: str = "") -> str:
-    """A path in the watch folder the server's admin picked here (or in one of its HELD folders), or why not."""
+    """A path in a watch folder the server's admin picked here (or in one of its HELD folders), or why not."""
     s = _server(sid)
-    folder = os.path.realpath(s.watch_folder) if s.watch_folder else ""
-    if not folder or os.path.realpath(path or "") != folder:
-        raise PermissionError("That isn't the folder picked here for the watch folder")
+    folder = os.path.realpath(path or "") if path else ""
+    if not folder or folder not in {os.path.realpath(f) for f in s.watch_folders}:
+        raise PermissionError("That isn't a folder picked here for a watch folder")
     if held and held not in HELD:
         raise PermissionError("Not one of the watch folder's own folders")
     base = os.path.join(folder, held) if held else folder
@@ -167,17 +167,34 @@ def _browse(sid: str, m: dict) -> dict:
     return {"path": path, "parent": parent if parent != path else None, "folders": dirs[:500]}
 
 
-def _set(sid: str, m: dict) -> dict:
-    """The folder the server's admin picked here: the only one it may read and move files in from now on."""
-    s = _server(sid)
+def _usable(m: dict) -> str:
     path = os.path.realpath(os.path.expanduser(m.get("path") or ""))
     if not os.path.isdir(path) or not os.access(path, os.W_OK):
         raise PermissionError("That folder isn't here, or Muzix Desktop can't move files in it")
-    cfg = config.load()
+    return path
+
+
+def _set(sid: str, m: dict) -> dict:
+    """The folder the admin of a server before 0.4.24 picked here: the only one it may read and move files in."""
+    s, path = _server(sid), _usable(m)
     with config._lock:
-        cfg.server(sid).watch_folder = path
+        s.watch_folders = [path]
         config.save()
     log.info("%s watches %s", s.name, path)
+    return {"path": path}
+
+
+def _pick(sid: str, m: dict) -> dict:
+    """A folder the server's admin picked here for one of its watch folders (`path`), in place of one it no longer
+    watches (`was`), or that one let go of alone (no `path`): it may read and move files in those it picked."""
+    s = _server(sid)
+    path = _usable(m) if m.get("path") else ""
+    was = os.path.realpath(os.path.expanduser(m["was"])) if m.get("was") else ""
+    with config._lock:
+        kept = [f for f in s.watch_folders if os.path.realpath(f) not in (was, path)]
+        s.watch_folders = kept + ([path] if path else [])
+        config.save()
+    log.info("%s watches %s", s.name, ", ".join(s.watch_folders) or "nothing here")
     return {"path": path}
 
 
@@ -282,7 +299,7 @@ def _trash(sid: str, m: dict) -> dict:
     return {"trashed": True}
 
 
-WATCH = {"watch_browse": _browse, "watch_set": _set, "watch_list": _list, "watch_move": _move,
+WATCH = {"watch_browse": _browse, "watch_set": _set, "watch_pick": _pick, "watch_list": _list, "watch_move": _move,
          "watch_delete": _delete, "watch_trash": _trash, "watch_aside": _aside}
 
 

@@ -35,7 +35,7 @@ from pathlib import Path, PurePosixPath
 import httpx
 from sqlalchemy import select
 
-from . import db, env, formats, jobs, providers, settings, tunnel
+from . import db, enrich, env, formats, jobs, providers, settings, tunnel
 from .meta import tags, tagwrite
 from .models import Job, Peer, Root
 from .organize import duplicates, importer
@@ -56,6 +56,7 @@ class Place:
     """The watch folder: list what's in it, bring an album here, move one aside, delete one."""
 
     key = ""
+    only = ""       # "bandcamp": its albums matched with Bandcamp alone
 
     def entries(self, held: str = "") -> dict[str, list[tuple[str, int, float]]]:
         """Each album (in the folder, or in `held`): (path in it, size, modified) of its files."""
@@ -239,19 +240,52 @@ class ComputerPlace(Place):
         return "trash"
 
 
-def place() -> Place | None:
-    """The watch folder as the admin set it, or None (none set, or its computer isn't connected)."""
-    path = settings.get("watch_folder")
-    if not path:
+ONLY = ("", "bandcamp")      # a folder's albums matched with MusicBrainz then Bandcamp, or with Bandcamp alone
+
+
+def folders() -> list[dict]:
+    """The watch folders as the admin set them: [{"folder", "computer" (a computer's id; "" for this server),
+    "only" (ONLY)}]. The one set before there could be more (watch_folder, watch_computer) is the first."""
+    got = [f for f in settings.get("watch_folders") or [] if isinstance(f, dict) and f.get("folder")]
+    if not got and settings.get("watch_folder"):
+        got = [{"folder": settings.get("watch_folder"), "computer": settings.get("watch_computer") or ""}]
+    return [{"folder": f["folder"], "computer": f.get("computer") or "", "only": f.get("only") or ""} for f in got]
+
+
+def set_folders(fs: list[dict]):
+    """The watch folders, the first in watch_folder and watch_computer too (what older apps' admin pages read)."""
+    first = fs[0] if fs else {"folder": "", "computer": ""}
+    settings.set_many({"watch_folders": fs, "watch_folder": first["folder"], "watch_computer": first["computer"]})
+
+
+def _peer_id(computer: str) -> int | None:
+    with db.session() as s:
+        return s.scalar(select(Peer.id).where(Peer.server_id == computer, Peer.kind == "computer"))
+
+
+def key_of(f: dict) -> str:
+    """A folder's key, as its Place has it (whether it can be reached or not)."""
+    return f"computer:{_peer_id(f['computer'])}:{f['folder']}" if f["computer"] else f"server:{f['folder']}"
+
+
+def place(key: str = "") -> Place | None:
+    """The watch folder with that key (the first, without one), or None: none set, or its computer isn't
+    connected."""
+    fs = folders()
+    f = next((f for f in fs if key_of(f) == key), None) if key else (fs[0] if fs else None)
+    if f is None:
         return None
-    computer = settings.get("watch_computer")
-    if computer:
-        with db.session() as s:
-            peer = s.scalar(select(Peer).where(Peer.server_id == computer, Peer.kind == "computer"))
-        if peer is None or not tunnel.connected(peer.id):
+    if f["computer"]:
+        peer = _peer_id(f["computer"])
+        if peer is None or not tunnel.connected(peer):
             return None
-        return ComputerPlace(peer.id, path)
-    return ServerPlace(path) if os.path.isdir(path) else None
+        where: Place = ComputerPlace(peer, f["folder"])
+    elif os.path.isdir(f["folder"]):
+        where = ServerPlace(f["folder"])
+    else:
+        return None
+    where.only = f["only"]
+    return where
 
 
 # ---------------------------------------------------------------- matching
@@ -266,8 +300,7 @@ def _album(files: list[Path]) -> list[dict]:
             t = None
         out.append({"path": p, "disc": (t and t.disc_no) or 1, "no": (t and t.track_no) or 0,
                     "title": (t and t.title) or p.stem, "artist": (t and t.artist) or "", "albumartist": (t and t.albumartist) or "",
-                    "album": (t and t.album) or "", "year": (t and t.year) or 0, "length": (t and t.duration) or 0,
-                    "genre": (t and t.genre) or ""})
+                    "album": (t and t.album) or "", "year": (t and t.year) or 0, "length": (t and t.duration) or 0})
     return sorted(out, key=lambda s: (s["disc"], s["no"], str(s["path"])))
 
 
@@ -296,42 +329,62 @@ def fits(songs: list[dict], tracks: list[dict]) -> bool:
     return close >= 0.9 * len(known) and all(abs(a - b) <= 15 for a, b in known)
 
 
-def match(songs: list[dict], folder: str, ctx=None) -> tuple[str, str, dict | None]:
+SOURCES = ("musicbrainz", "bandcamp")     # where an album is looked up, in turn (a Bandcamp-only folder: Bandcamp)
+
+
+def _found(source: str, songs: list[dict], artist: str, album: str, ctx=None) -> tuple[str, dict] | None:
+    """The release on `source` that has this album's songs (as many, as long): (its id, its details), or None."""
+    search = providers._musicbrainz if source == "musicbrainz" else providers._bandcamp
+    try:
+        found = search("album", artist, album, "")
+    except (providers.SourceError, httpx.HTTPError, ValueError, KeyError) as e:
+        ctx and ctx.log(f"{source}: {e}")
+        return None
+    # those as long as the album first (MusicBrainz says how many songs a release has)
+    found.sort(key=lambda r: r.get("tracks") not in (None, 0, len(songs)))
+    for r in found[:4]:
+        try:
+            d = providers.details(source, "album", r["id"], artist=artist)
+        except (providers.SourceError, httpx.HTTPError, ValueError, KeyError):
+            continue
+        if fits(songs, d["tracks"]):
+            return d.get("mbid") or r["id"], d
+    return None
+
+
+def match(songs: list[dict], folder: str, ctx=None, sources: tuple[str, ...] = SOURCES) -> tuple[str, str, dict | None]:
     """("musicbrainz", release id, its details), ("bandcamp", id, its details) or ("none", "", None)."""
     artist, album = _named(songs, folder)
     if not album:
         return "none", "", None
-    for source, search in (("musicbrainz", providers._musicbrainz), ("bandcamp", providers._bandcamp)):
-        try:
-            found = search("album", artist, album, "")
-        except (providers.SourceError, httpx.HTTPError, ValueError, KeyError) as e:
-            ctx and ctx.log(f"{source}: {e}")
-            continue
-        # those as long as the album first (MusicBrainz says how many songs a release has)
-        found.sort(key=lambda r: r.get("tracks") not in (None, 0, len(songs)))
-        for r in found[:4]:
-            try:
-                d = providers.details(source, "album", r["id"], artist=artist)
-            except (providers.SourceError, httpx.HTTPError, ValueError, KeyError):
-                continue
-            if fits(songs, d["tracks"]):
-                ctx and ctx.log(f"{source}: {d['artist']} - {d['title']} has the same songs")
-                return source, d.get("mbid") or r["id"], d
+    for source in sources:
+        got = _found(source, songs, artist, album, ctx)
+        if got:
+            ctx and ctx.log(f"{source}: {got[1]['artist']} - {got[1]['title']} has the same songs")
+            return source, got[0], got[1]
         ctx and ctx.log(f"{source}: nothing with these songs ({artist} - {album})")
     return "none", "", None
 
 
+def bandcamp_tags(songs: list[dict], folder: str, ctx=None) -> list[str]:
+    """Bandcamp's tags for an album MusicBrainz matched (its genre first), for its main genre to go by too:
+    MusicBrainz often has none for what's mostly on Bandcamp."""
+    artist, album = _named(songs, folder)
+    got = _found("bandcamp", songs, artist, album, ctx) if album else None
+    tags = (got[1].get("tags") or []) if got else []
+    if tags:
+        ctx and ctx.log(f"bandcamp's tags: {', '.join(tags)}")
+    return tags
+
+
 def _apply(songs: list[dict], d: dict, folder: Path):
     """A release's names into the album's files (Bandcamp's: MusicBrainz's beets writes itself), and its cover
-    beside them for beets to take. Its genre too, into a file with none of its own: musicorg goes by a file's
-    genre as by MusicBrainz's, and without it an album Last.fm doesn't know is filed in Uncategorized."""
+    beside them for beets to take. (Its tags go to musicorg, for the main genre: import_watched.)"""
     for s, t in zip(songs, d["tracks"]):
         if tagwrite.writable(str(s["path"])):
-            genre = {"genre": d["genre"]} if d.get("genre") and not s.get("genre") else {}
             tagwrite.write(str(s["path"]), {"title": t["title"], "artist": t.get("artist") or d["artist"],
                                             "albumartist": d["artist"], "album": d["title"], "track_no": t["no"],
-                                            "disc_no": t.get("disc") or 1, "year": d.get("year") or s["year"] or "",
-                                            **genre})
+                                            "disc_no": t.get("disc") or 1, "year": d.get("year") or s["year"] or ""})
     if d.get("cover") and not any(p.name.lower().startswith(("cover.", "folder.", "front.")) for p in folder.iterdir()):
         try:
             with httpx.Client(timeout=20, follow_redirects=True) as c:
@@ -391,7 +444,7 @@ def import_watched(ctx: jobs.JobContext, name: str, key: str, held: str = "", ho
     """One album from the watch folder (`held`: from _Duplicates or _Failed, filed anyway; from _Duplicates
     `how`: into the library's Duplicates folder (the default), as an album of its own, or in place of the
     library's copy)."""
-    where = place()
+    where = place(key)
     if where is None or where.key != key:
         raise RuntimeError("the watch folder changed or can't be reached")
     if how and (held != "_Duplicates" or how not in HOW):
@@ -440,26 +493,34 @@ def import_watched(ctx: jobs.JobContext, name: str, key: str, held: str = "", ho
             out["vgm_folder"] = _file_chips(ctx, chips, folder, name)
         if music_paths:
             albums = _albums_in(folder, music_paths)
-            if len(albums) == 1:
-                songs = _album(albums[0][1])
-                source, ref, d = match(songs, albums[0][0].name, ctx)
+            only = where.only == "bandcamp"         # a Bandcamp-only folder: no MusicBrainz, beets' either
+            bandcamp, tags = set(), {}              # Bandcamp's albums; each album's Bandcamp tags, by its folder
+
+            def look_up(songs: list[dict], at: Path) -> tuple[str, str, dict | None]:
+                source, ref, d = match(songs, at.name, ctx, sources=("bandcamp",) if only else SOURCES)
                 if source == "bandcamp":
-                    _apply(songs, d, albums[0][0])
-                out.update(importer.file_music(ctx, folder, batch, autotag=False if source == "bandcamp" else None,
-                                               search_id=ref if source == "musicbrainz" else "", duplicate=duplicate))
-                bandcamp = {(d["artist"].lower(), d["title"].lower())} if source == "bandcamp" else set()
+                    _apply(songs, d, at)
+                    bandcamp.add((d["artist"].lower(), d["title"].lower()))
+                found = d.get("tags") if source == "bandcamp" else \
+                    bandcamp_tags(songs, at.name, ctx) if source == "musicbrainz" else []
+                if found:
+                    tags[str(at)] = found
+                return source, ref, d
+
+            if len(albums) == 1:
+                source, ref, _d = look_up(_album(albums[0][1]), albums[0][0])
+                out.update(importer.file_music(ctx, folder, batch, autotag=False if source == "bandcamp" or only else None,
+                                               search_id=ref if source == "musicbrainz" else "", duplicate=duplicate,
+                                               bandcamp_tags=tags))
             else:
                 # several albums (an artist's, say): each looked up by itself; beets then matches each one with
                 # MusicBrainz in one go, and keeps Bandcamp's names for those only Bandcamp has
                 ctx.log(f"{len(albums)} albums in it")
-                bandcamp = set()
                 for where_, paths in albums:
-                    songs = _album(paths)
-                    source, _ref, d = match(songs, where_.name, ctx)
-                    if source == "bandcamp":
-                        _apply(songs, d, where_)
-                        bandcamp.add((d["artist"].lower(), d["title"].lower()))
-                out.update(importer.file_music(ctx, folder, batch, duplicate=duplicate))
+                    look_up(_album(paths), where_)
+                out.update(importer.file_music(ctx, folder, batch, autotag=False if only else None, duplicate=duplicate,
+                                               bandcamp_tags=tags))
+            enrich.keep_bandcamp_tags(out.get("albums") or [])
             # each album as it was filed: matched with MusicBrainz (beets says which release), Bandcamp, or neither
             for a in out.get("albums") or []:
                 a["match"] = "musicbrainz" if a.get("mbid") else \
@@ -574,67 +635,94 @@ def _prune(folder: Path):
 
 # ---------------------------------------------------------------- looking every minute
 
-_seen: dict[str, tuple[tuple, float]] = {}     # album → (how it looked, since when)
-_state: dict = {"checked": 0.0, "error": "", "waiting": []}
+_seen: dict[str, dict[str, tuple[tuple, float]]] = {}      # folder's key → album → (how it looked, since when)
+_states: dict[str, dict] = {}                                # folder's key → {checked, error, waiting}
 _checking = threading.Lock()                    # the minute's look and Transfer now's, one at a time
 NOW_LOOK = 3.0      # seconds between Transfer now's two looks: an album that changes between them is still coming in
 
 
-def _busy() -> set[str]:
+def _busy(key: str) -> set[str]:
     with db.session() as s:
         return {(j.params or {}).get("name", "") for j in s.scalars(
-            select(Job).where(Job.type == "import_watched", Job.status.in_(("queued", "running"))))}
+            select(Job).where(Job.type == "import_watched", Job.status.in_(("queued", "running"))))
+            if (j.params or {}).get("key") == key}
 
 
 def _look(files) -> tuple:
     return len(files), sum(f[1] for f in files), max(f[2] for f in files)
 
 
-def check(now: bool = False) -> dict:
-    """One look: albums that stayed as they were for SETTLE are taken. `now` (Transfer now): at once, each album
-    that stays as it is between two looks NOW_LOOK apart (one still being copied in waits). Says which were taken
-    and which wait."""
+def check(now: bool = False, key: str = "") -> dict:
+    """One look in each watch folder (with `key`, in that one): albums that stayed as they were for SETTLE are
+    taken. `now` (Transfer now, in one folder: the first without `key`): at once, each album that stays as it is
+    between two looks NOW_LOOK apart (one still being copied in waits). Says which were taken and which wait."""
     with _checking:
-        where = place()
-        if where is None:
-            _seen.clear()
-            _state.update(error="" if not settings.get("watch_folder") else "the folder can't be reached", waiting=[])
-            if now:
-                raise RuntimeError(_state["error"] or "no watch folder is set")
-            return {"taken": [], "waiting": []}
-        try:
-            found = where.entries()
-            if now:
-                time.sleep(NOW_LOOK)
-                again = where.entries()
-        except Exception as e:      # a computer gone meanwhile, a share away: next time
-            _state.update(error=str(e) or e.__class__.__name__, checked=time.time())
-            if now:
-                raise
-            return {"taken": [], "waiting": []}
-        t, busy, waiting, taken = time.time(), _busy(), [], []
-        for name in list(_seen):
-            if name not in found:
-                del _seen[name]
-        for name, files in found.items():
-            if name in busy or not files:
-                continue
-            look = _look(files)
-            before = _seen.get(name)
-            if before is None or before[0] != look:
-                _seen[name] = (look, t)
-            if (bool(again.get(name)) and _look(again[name]) == look) if now else t - _seen[name][1] >= SETTLE:
-                jobs.submit("import_watched", f"Watch folder: {name}", name=name, key=where.key)
-                _seen.pop(name, None)
-                taken.append(name)
-            else:
-                waiting.append(name)
-        _state.update(checked=t, error="", waiting=sorted(waiting))
-        return {"taken": sorted(taken), "waiting": sorted(waiting)}
+        fs = folders()
+        keys = [key_of(f) for f in fs]
+        for k in list(_seen):           # folders no longer watched
+            if k not in keys:
+                _seen.pop(k, None)
+                _states.pop(k, None)
+        if now:
+            keys = [k for k in keys if k == (key or keys[0])] if keys else []
+            if not keys:
+                raise RuntimeError("no watch folder is set")
+        elif key:
+            keys = [k for k in keys if k == key]
+        out = {"taken": [], "waiting": []}
+        for k in keys:
+            got = _check_one(k, now)
+            out["taken"] += got["taken"]
+            out["waiting"] += got["waiting"]
+        return {"taken": sorted(out["taken"]), "waiting": sorted(out["waiting"])}
 
 
-def state() -> dict:
-    return dict(_state)
+def _check_one(key: str, now: bool) -> dict:
+    seen, st = _seen.setdefault(key, {}), _states.setdefault(key, {"checked": 0.0, "error": "", "waiting": []})
+    where = place(key)
+    if where is None:
+        seen.clear()
+        st.update(error="the folder can't be reached", waiting=[])
+        if now:
+            raise RuntimeError(st["error"])
+        return {"taken": [], "waiting": []}
+    try:
+        found = where.entries()
+        if now:
+            time.sleep(NOW_LOOK)
+            again = where.entries()
+    except Exception as e:      # a computer gone meanwhile, a share away: next time
+        st.update(error=str(e) or e.__class__.__name__, checked=time.time())
+        if now:
+            raise
+        return {"taken": [], "waiting": []}
+    t, busy, waiting, taken = time.time(), _busy(key), [], []
+    for name in list(seen):
+        if name not in found:
+            del seen[name]
+    for name, files in found.items():
+        if name in busy or not files:
+            continue
+        look = _look(files)
+        before = seen.get(name)
+        if before is None or before[0] != look:
+            seen[name] = (look, t)
+        if (bool(again.get(name)) and _look(again[name]) == look) if now else t - seen[name][1] >= SETTLE:
+            jobs.submit("import_watched", f"Watch folder: {name}", name=name, key=key)
+            seen.pop(name, None)
+            taken.append(name)
+        else:
+            waiting.append(name)
+    st.update(checked=t, error="", waiting=sorted(waiting))
+    return {"taken": sorted(taken), "waiting": sorted(waiting)}
+
+
+def state(key: str = "") -> dict:
+    """How a watch folder stands (the first, without `key`): {checked, error, waiting}."""
+    if not key:
+        fs = folders()
+        key = key_of(fs[0]) if fs else ""
+    return dict(_states.get(key) or {"checked": 0.0, "error": "", "waiting": []})
 
 
 def start():

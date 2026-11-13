@@ -529,6 +529,17 @@ class TagRule(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class BandcampTags(Base):
+    """Bandcamp's tags of an album filed from the watch folder (its genre first, not where it's from): its
+    artist's genre tags when MusicBrainz (or Last.fm) has none for them (enrich.artist_tags)."""
+    __tablename__ = "bandcamp_tags"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    artist: Mapped[str] = mapped_column(String(512), index=True)        # as filed: the album's artist
+    album: Mapped[str] = mapped_column(String(512))
+    tags: Mapped[list] = mapped_column(JSON, default=list)
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 # what an admin can hide: hidden rows stay out of every page and list (db.py)
 HIDEABLE = (Artist, Album, Track, Playlist, FilePlaylist, Book, Feed, Station)
 # what's in more than one library of the Library Network: only one library's copy is listed (mirror.dedupe)

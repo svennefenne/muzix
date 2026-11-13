@@ -23,8 +23,9 @@ PLUGIN_DIR = Path(__file__).parent / "beetsplug"
 BEET = shutil.which("beet") or "beet"
 
 
-def beets_config(music_root: str, batch: str, autotag: bool | None = None) -> str:
-    """beets' settings for one import; `autotag` False: the files' tags as they are (matched already)."""
+def beets_config(music_root: str, batch: str, autotag: bool | None = None, bandcamp_tags: str = "") -> str:
+    """beets' settings for one import; `autotag` False: the files' tags as they are (matched already);
+    `bandcamp_tags`: a file of Bandcamp's tags for the albums, by their folders (musicorg's genres go by them)."""
     cfg = {
         "directory": music_root,
         "library": str(env.BEETS_DIR / "library.db"),
@@ -51,6 +52,7 @@ def beets_config(music_root: str, batch: str, autotag: bool | None = None) -> st
         "musicorg": {"lastfm_cache": str(env.BEETS_DIR / "lastfm-cache.json"),
                      "overrides": str(env.DATA_DIR / "genre-overrides.yaml"),
                      "artist_genres": str(env.BEETS_DIR / "artist-genres.json"),
+                     "bandcamp_tags": bandcamp_tags,
                      # the owner's rule: soundtracks go to Soundtrack, whatever else the artist plays
                      "soundtrack_titles": "always"},
         "ui": {"color": False},
@@ -88,19 +90,21 @@ class Beet:
         return out
 
     def albums(self, query: str) -> list[dict]:
-        """The albums of the songs a query finds, as filed: {artist, album, year, folder, songs, mbid} (the
-        genre is the folder's first part; mbid: the MusicBrainz release it was matched with, or "")."""
+        """The albums of the songs a query finds, as filed: {artist, album, year, folder, songs, mbid, came} (the
+        genre is the folder's first part; mbid: the MusicBrainz release it was matched with, or ""; came: the
+        folder it came in)."""
         out: dict[str, dict] = {}
-        for line in self("ls", "-f", "$albumartist\t$album\t$year\t$mb_albumid\t$path", query, quiet=True).splitlines():
-            r = line.split("\t", 4)
-            if len(r) != 5:
+        for line in self("ls", "-f", "$albumartist\t$album\t$year\t$mb_albumid\t$mo_orig_path\t$path", query,
+                         quiet=True).splitlines():
+            r = line.split("\t", 5)
+            if len(r) != 6:
                 continue
-            mbid = r.pop(3)
+            mbid, came = r.pop(3), os.path.dirname(r.pop(3))
             folder = os.path.dirname(r[3])
             if os.path.basename(folder).lower().startswith(("cd", "disc", "disk")) and len(os.path.basename(folder)) < 8:
                 folder = os.path.dirname(folder)        # one album over its discs
             a = out.setdefault(folder, {"artist": r[0], "album": r[1], "year": int(r[2]) if r[2].isdigit() else 0,
-                                        "folder": folder, "songs": 0, "mbid": mbid})
+                                        "folder": folder, "songs": 0, "mbid": mbid, "came": came})
             a["songs"] += 1
         return list(out.values())
 
@@ -163,16 +167,22 @@ def import_upload(ctx: jobs.JobContext, batch: str):
 
 
 def file_music(ctx: jobs.JobContext, source, batch: str, autotag: bool | None = None, search_id: str = "",
-               duplicate: bool = False) -> dict:
+               duplicate: bool = False, bandcamp_tags: dict[str, list[str]] | None = None) -> dict:
     """The music in `source` matched with MusicBrainz (with `search_id`, as that release; with `autotag` False,
     as its tags have it), given a main genre and cover art, and moved into the music upload folder. `duplicate`:
-    the library has it already, filed anyway: to Duplicates/<artist>/<album> (2), (3), ... as the library's own."""
+    the library has it already, filed anyway: to Duplicates/<artist>/<album> (2), (3), ... as the library's own.
+    `bandcamp_tags`: Bandcamp's tags of its albums, by the folders they're in (its genre first): the main genre
+    goes by them too, and each album filed says its own ("tags")."""
     out: dict = {}
     music_root = upload_root("music")
     if not music_root or not os.access(music_root, os.W_OK):
         raise RuntimeError("the music upload folder is missing or read-only; check the admin page")
     write_artist_genres()
-    beet = Beet(ctx, beets_config(music_root, batch, autotag))
+    bc_file = ""
+    if bandcamp_tags:
+        bc_file = str(env.BEETS_DIR / f"bandcamp-{batch}.json")
+        Path(bc_file).write_text(json.dumps(bandcamp_tags, ensure_ascii=False))
+    beet = Beet(ctx, beets_config(music_root, batch, autotag, bc_file))
     tag = f"mo_batch:{batch}"
     plan = ("mplan", "--duplicates", tag) if duplicate else ("mplan", tag)
     ctx.update(0.05, "matching with MusicBrainz")
@@ -201,5 +211,11 @@ def file_music(ctx: jobs.JobContext, source, batch: str, autotag: bool | None = 
                 os.chmod(os.path.join(r, f), 0o644)
     out["report"] = beet("mreport", tag, check=False)[-2000:]
     out["albums"] = beet.albums(tag)
+    for a in out["albums"]:
+        came = a.pop("came", "")
+        if found := (bandcamp_tags or {}).get(came) or (bandcamp_tags or {}).get(os.path.dirname(came)):
+            a["tags"] = found
     out["music_root"] = music_root
+    if bc_file:
+        Path(bc_file).unlink(missing_ok=True)
     return out

@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import jobs, settings, tunnel, watch
+from .. import jobs, tunnel, watch
 from ..db import get_db
 from ..models import Job, Peer
 from ..security import admin_user
@@ -37,23 +37,34 @@ def _ask(peer: Peer, op: str, **args):
         raise HTTPException(409, f"{peer.name}: {e}")
 
 
-@router.get("")
-def get_watch(db: Session = Depends(get_db)):
-    computers = [{"id": p.server_id, "name": p.name, "online": tunnel.connected(p.id)}
-                 for p in db.scalars(select(Peer).where(Peer.kind == "computer", Peer.sent.is_(True), Peer.received.is_(True)))]
-    where = watch.place()
+def _folder(db: Session, f: dict) -> dict:
+    """One watch folder: where, how its albums are matched, how it stands, its albums set aside and why."""
+    key = watch.key_of(f)
+    where = watch.place(key)
     held = {"_Duplicates": [], "_Failed": []}
     if where is not None:
         try:
             held = where.held()
         except Exception as e:  # a computer gone meanwhile
             log.warning("The watch folder's albums set aside couldn't be listed: %s", e)
-    return {"folder": settings.get("watch_folder"), "computer": settings.get("watch_computer"), "computers": computers,
-            "reachable": where is not None, "state": watch.state(), "held": held, "why": _why(db, held["_Duplicates"]),
-            "trash": "deleted" if isinstance(where, watch.ServerPlace) else "trash", "recent": _recent(db)}
+    return {**f, "key": key, "reachable": where is not None, "state": watch.state(key), "held": held,
+            "why": _why(db, held["_Duplicates"], key), "trash": "deleted" if not f["computer"] else "trash"}
 
 
-def _why(db: Session, names: list[str]) -> dict[str, dict]:
+@router.get("")
+def get_watch(db: Session = Depends(get_db)):
+    """Every watch folder ("folders"), the first one's fields at the top too (as older apps' admin pages read
+    them), and the latest filed from them."""
+    computers = [{"id": p.server_id, "name": p.name, "online": tunnel.connected(p.id)}
+                 for p in db.scalars(select(Peer).where(Peer.kind == "computer", Peer.sent.is_(True), Peer.received.is_(True)))]
+    folders = [_folder(db, f) for f in watch.folders()]
+    first = folders[0] if folders else {"folder": "", "computer": "", "reachable": False, "state": watch.state(),
+                                        "held": {"_Duplicates": [], "_Failed": []}, "why": {}, "trash": "trash"}
+    return {**{k: first[k] for k in ("folder", "computer", "reachable", "state", "held", "why", "trash")},
+            "computers": computers, "folders": folders, "recent": _recent(db)}
+
+
+def _why(db: Session, names: list[str], key: str = "") -> dict[str, dict]:
     """Why each album in _Duplicates was set aside: of how many songs, the ones the library seems to have and
     what they're like there, and the library's albums filing it in their place would put aside."""
     out: dict[str, dict] = {}
@@ -61,6 +72,8 @@ def _why(db: Session, names: list[str]) -> dict[str, dict]:
         return out
     for j in db.scalars(select(Job).where(Job.type == "import_watched", Job.status == "done").order_by(Job.id.desc()).limit(400)):
         name, r = (j.params or {}).get("name", ""), j.result or {}
+        if key and (j.params or {}).get("key") not in (key, None):     # another watch folder's
+            continue
         if name not in names or name in out or not (r.get("duplicate") or r.get("aside")):
             continue
         r = r if r.get("duplicate") else r["aside"]         # set aside whole, or some of its albums
@@ -79,7 +92,8 @@ def _recent(db: Session) -> list[dict]:
         r = j.result or {}
         albums = filed(r, db)
         got = {a["match"] for a in albums if a["match"]}
-        recent.append({"id": j.id, "name": (j.params or {}).get("name", ""), "status": j.status,
+        recent.append({"id": j.id, "name": (j.params or {}).get("name", ""), "key": (j.params or {}).get("key", ""),
+                       "status": j.status,
                        "error": j.message if j.status == "failed" else "",
                        # each album's own match counts (an import's own word from before 0.4.20 was the whole folder's)
                        "match": (got.pop() if len(got) == 1 else "mixed") if got else r.get("match", ""),
@@ -90,18 +104,73 @@ def _recent(db: Session) -> list[dict]:
 
 
 class WatchBody(BaseModel):
-    folder: str = ""
+    folder: str = ""        # "": that watch folder no longer watched
     computer: str = ""      # a computer's id, or "" for a folder on this server
+    only: str = ""          # watch.ONLY: "bandcamp" for albums matched with Bandcamp alone
+    at: int = 0             # which watch folder (one past the last: another one)
+
+
+def _let(db: Session, computer: str, path: str, was: str = "", alone: bool = True):
+    """Muzix Desktop on the computer lets this server watch `path` there (and no longer `was`), or says why not.
+    One before 0.4.24 knows one folder only (watch_set): fine when it's the only one there (`alone`)."""
+    peer = _computer(db, computer)
+    try:
+        tunnel.get(peer.id).ask("watch_pick", path=path, was=was)
+    except tunnel.Refused as e:
+        if "Unknown request" not in str(e):
+            raise HTTPException(403, str(e))
+        if not path:
+            return              # an older one: what it was let watch is replaced when it's let watch another
+        if not alone:
+            raise HTTPException(409, f"Muzix Desktop on {peer.name} watches one folder for this server: "
+                                     "0.4.24 and later can watch more")
+        _ask(peer, "watch_set", path=path)
+    except tunnel.Gone as e:
+        raise HTTPException(409, f"{peer.name}: {e}")
 
 
 @router.put("")
 def set_watch(body: WatchBody, db: Session = Depends(get_db)):
+    """A watch folder set (`at`: which; one past the last adds one), its way of matching changed, or (no
+    folder) no longer watched."""
+    fs = watch.folders()
+    at = max(0, min(body.at, len(fs)))
+    old = fs[at] if at < len(fs) else None
     folder = body.folder.strip()
-    if folder and body.computer:
-        _ask(_computer(db, body.computer), "watch_set", path=folder)     # its Muzix Desktop says yes, or why not
-    elif folder and not (os.path.isdir(folder) and os.access(folder, os.W_OK)):
-        raise HTTPException(400, "Muzix can't write to that folder (its albums are moved out of it)")
-    settings.set_many({"watch_folder": folder, "watch_computer": body.computer if folder else ""})
+    if body.only not in watch.ONLY:
+        raise HTTPException(400, "Not a way to match a folder's albums")
+    if not folder:
+        if old is None:
+            return get_watch(db)
+        fs.pop(at)
+        if old["computer"]:
+            try:
+                _let(db, old["computer"], "", was=old["folder"])
+            except HTTPException:
+                pass            # the computer's off: it keeps letting this server watch it until told otherwise
+        watch.set_folders(fs)
+        return get_watch(db)
+    new = {"folder": folder, "computer": body.computer, "only": body.only}
+    if any(i != at and f["folder"] == folder and f["computer"] == body.computer for i, f in enumerate(fs)):
+        raise HTTPException(400, "That folder is watched already")
+    same = old is not None and old["folder"] == folder and old["computer"] == body.computer
+    if not same:
+        if body.computer:
+            others = [f for i, f in enumerate(fs) if i != at and f["computer"] == body.computer]
+            _let(db, body.computer, folder, was=old["folder"] if old and old["computer"] == body.computer else "",
+                 alone=not others)
+        elif not (os.path.isdir(folder) and os.access(folder, os.W_OK)):
+            raise HTTPException(400, "Muzix can't write to that folder (its albums are moved out of it)")
+        if old and old["computer"] and old["computer"] != body.computer:
+            try:
+                _let(db, old["computer"], "", was=old["folder"])
+            except HTTPException:
+                pass
+    if old is None:
+        fs.append(new)
+    else:
+        fs[at] = new
+    watch.set_folders(fs)
     return get_watch(db)
 
 
@@ -117,10 +186,11 @@ class AgainBody(BaseModel):
     name: str
     held: str               # _Duplicates | _Failed
     how: str = ""           # from _Duplicates: duplicates (the default) | album | replace (watch.HOW)
+    key: str = ""           # which watch folder ("": the first)
 
 
-def _place() -> watch.Place:
-    where = watch.place()
+def _place(key: str = "") -> watch.Place:
+    where = watch.place(key)
     if where is None:
         raise HTTPException(409, "The watch folder can't be reached right now")
     return where
@@ -134,7 +204,7 @@ def again(body: AgainBody):
         raise HTTPException(400, "Only albums set aside can be filed again")
     if body.how and (body.held != "_Duplicates" or body.how not in watch.HOW):
         raise HTTPException(400, "Not a way to file it")
-    where = _place()
+    where = _place(body.key)
     how = {"how": body.how} if body.how else {}
     return {"job_id": jobs.submit("import_watched", f"Watch folder: {body.name}", name=body.name, key=where.key,
                                   held=body.held, **how)}
@@ -143,6 +213,7 @@ def again(body: AgainBody):
 class HeldBody(BaseModel):
     name: str
     held: str               # _Duplicates | _Failed
+    key: str = ""           # which watch folder ("": the first)
 
 
 @router.post("/remove")
@@ -151,7 +222,7 @@ def remove(body: HeldBody):
     deleted."""
     if body.held not in ("_Duplicates", "_Failed") or not body.name or "/" in body.name or body.name in (".", ".."):
         raise HTTPException(400, "Only albums set aside can be thrown away")
-    where = _place()
+    where = _place(body.key)
     try:
         return {"gone": where.trash(body.name, body.held)}
     except tunnel.Refused as e:
@@ -160,10 +231,14 @@ def remove(body: HeldBody):
         raise HTTPException(409, str(e))
 
 
+class NowBody(BaseModel):
+    key: str = ""           # which watch folder ("": the first)
+
+
 @router.post("/now")
-def transfer_now():
+def transfer_now(body: NowBody | None = None):
     """Transfer now: every album in the folder taken at once, but one still being copied in."""
     try:
-        return watch.check(now=True)
+        return watch.check(now=True, key=body.key if body else "")
     except (tunnel.Refused, tunnel.Gone, RuntimeError, OSError) as e:
         raise HTTPException(409, str(e) or e.__class__.__name__)

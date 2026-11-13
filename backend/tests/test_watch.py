@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from muzix import settings, watch
+from muzix import db, settings, watch
 
 
 class Ctx:
@@ -24,12 +24,12 @@ class Ctx:
 
 @pytest.fixture
 def folder(tmp_path, monkeypatch):
-    settings.set_many({"watch_folder": str(tmp_path), "watch_computer": ""})
+    settings.set_many({"watch_folder": str(tmp_path), "watch_computer": "", "watch_folders": []})
     monkeypatch.setattr(watch.env, "UPLOAD_DIR", tmp_path.parent / (tmp_path.name + "-uploads"))
     monkeypatch.setattr(watch.jobs, "submit", lambda *a, **k: submitted.append((a, k)) or 1)
     submitted = []
     yield tmp_path, submitted
-    settings.set_many({"watch_folder": "", "watch_computer": ""})
+    settings.set_many({"watch_folder": "", "watch_computer": "", "watch_folders": []})
 
 
 def album(root, name="Zyx Band - 2021 - Qwerty Songs", songs=("1. Opening Qwerty.mp3", "2. Closing Qwerty.mp3"), extra=("info.nfo",)):
@@ -82,7 +82,7 @@ def test_taken_once_it_stays_as_it_is(folder, monkeypatch):
     (root / "_Done").mkdir()                                  # its own: left alone
     now = [1000.0]
     monkeypatch.setattr(watch.time, "time", lambda: now[0])
-    monkeypatch.setattr(watch, "_busy", lambda: set())
+    monkeypatch.setattr(watch, "_busy", lambda key: set())
     watch._seen.clear()
     watch.check()
     assert watch.state()["waiting"] == ["Zyx Band - 2021 - Qwerty Songs"] and not submitted
@@ -98,8 +98,9 @@ def test_taken_once_it_stays_as_it_is(folder, monkeypatch):
 
 def filed(calls, gone=True, albums=None):
     """file_music as beets does it: the music moved out of the folder, and the albums as filed."""
-    def fake(ctx, source, batch, autotag=None, search_id="", duplicate=False):
-        calls.append({"source": source, "autotag": autotag, "search_id": search_id, **({"duplicate": True} if duplicate else {})})
+    def fake(ctx, source, batch, autotag=None, search_id="", duplicate=False, bandcamp_tags=None):
+        calls.append({"source": source, "autotag": autotag, "search_id": search_id, **({"duplicate": True} if duplicate else {}),
+                      **({"bandcamp_tags": bandcamp_tags} if bandcamp_tags else {})})
         if gone:
             for p in list(source.rglob("*.mp3")):
                 p.unlink()
@@ -113,7 +114,7 @@ def test_filed_with_musicbrainz_and_the_rest_to_done(folder, monkeypatch):
     album(root)
     calls = []
     monkeypatch.setattr(watch.duplicates, "check", lambda files, s: {"found": [], "skip": []})
-    monkeypatch.setattr(watch, "match", lambda songs, name, ctx=None: ("musicbrainz", "mb-1", {}))
+    monkeypatch.setattr(watch, "match", lambda songs, name, ctx=None, sources=watch.SOURCES: ("musicbrainz", "mb-1", {}))
     monkeypatch.setattr(watch.importer, "file_music", filed(calls))
     got = watch.import_watched(Ctx(), "Zyx Band - 2021 - Qwerty Songs", f"server:{root}")
     assert got["match"] == "musicbrainz" and got["albums"][0]["album"] == "Qwerty Songs"
@@ -127,7 +128,7 @@ def test_bandcamps_tags_and_nothing_left(folder, monkeypatch):
     album(root, extra=())
     calls, applied = [], []
     monkeypatch.setattr(watch.duplicates, "check", lambda files, s: {"found": [], "skip": []})
-    monkeypatch.setattr(watch, "match", lambda songs, name, ctx=None: ("bandcamp", "1/2", {"title": "Qwerty Songs", "artist": "Zyx Band"}))
+    monkeypatch.setattr(watch, "match", lambda songs, name, ctx=None, sources=watch.SOURCES: ("bandcamp", "1/2", {"title": "Qwerty Songs", "artist": "Zyx Band"}))
     monkeypatch.setattr(watch, "_apply", lambda songs, d, f: applied.append((len(songs), d["title"], f.name)))
     monkeypatch.setattr(watch.importer, "file_music", filed(calls))
     got = watch.import_watched(Ctx(), "Zyx Band - 2021 - Qwerty Songs", f"server:{root}")
@@ -135,6 +136,48 @@ def test_bandcamps_tags_and_nothing_left(folder, monkeypatch):
     assert got["match"] == "bandcamp" and got["albums"][0]["match"] == "bandcamp"
     assert calls[0]["autotag"] is False and calls[0]["search_id"] == ""      # filed as Bandcamp has it
     assert not (root / "Zyx Band - 2021 - Qwerty Songs").exists() and not (root / "_Done").exists()
+
+
+def test_bandcamps_tags_go_with_each_album_whoever_matched_it(folder, monkeypatch):
+    """Each album's Bandcamp tags (its genre first), for its main genre to go by too: from the match when
+    Bandcamp's, looked up on Bandcamp too when MusicBrainz's (The Operator Sound INC.'s album, MusicBrainz's
+    with no genres, went to Pop by Last.fm alone), none when neither has it; kept for the artist's tags."""
+    root, _ = folder
+    d = root / "zyx-band"
+    d.mkdir()
+    for name in ("on-musicbrainz", "on-bandcamp", "nowhere"):
+        album(d, name)
+    calls, looked, kept = [], [], []
+    monkeypatch.setattr(watch.duplicates, "check", lambda files, s: {"found": [], "skip": []})
+    monkeypatch.setattr(watch, "match", lambda songs, name, ctx=None, sources=watch.SOURCES: {
+        "on-musicbrainz": ("musicbrainz", "mb-1", {"title": "On MB", "artist": "Zyx Band"}),
+        "on-bandcamp": ("bandcamp", "1/2", {"title": "On BC", "artist": "Zyx Band", "tags": ["Rock", "post-rock"]}),
+    }.get(name, ("none", "", None)))
+    monkeypatch.setattr(watch, "bandcamp_tags", lambda songs, name, ctx=None: looked.append(name) or ["Electronic", "dungeon synth"])
+    monkeypatch.setattr(watch, "_apply", lambda songs, d, f: None)
+    monkeypatch.setattr(watch.enrich, "keep_bandcamp_tags", lambda albums: kept.append(albums))
+    monkeypatch.setattr(watch.importer, "file_music", filed(calls))
+    watch.import_watched(Ctx(), "zyx-band", f"server:{root}")
+    assert looked == ["on-musicbrainz"]
+    assert calls[0]["bandcamp_tags"] == {str(d / "on-musicbrainz"): ["Electronic", "dungeon synth"],
+                                         str(d / "on-bandcamp"): ["Rock", "post-rock"]}
+    assert calls[0]["autotag"] is None and len(kept) == 1
+
+
+def test_a_bandcamp_only_folder_asks_bandcamp_alone(folder, monkeypatch):
+    """A watch folder for Bandcamp only: its albums looked up on Bandcamp alone, and beets doesn't match them
+    with MusicBrainz either, Bandcamp's or not."""
+    root, _ = folder
+    album(root)
+    place = watch.ServerPlace(str(root))
+    place.only = "bandcamp"
+    monkeypatch.setattr(watch, "place", lambda key="": place)
+    asked, calls = [], []
+    monkeypatch.setattr(watch.duplicates, "check", lambda files, s: {"found": [], "skip": []})
+    monkeypatch.setattr(watch, "match", lambda songs, name, ctx=None, sources=watch.SOURCES: asked.append(sources) or ("none", "", None))
+    monkeypatch.setattr(watch.importer, "file_music", filed(calls))
+    watch.import_watched(Ctx(), QWERTY, place.key)
+    assert asked == [("bandcamp",)] and calls[0]["autotag"] is False
 
 
 def test_duplicates_and_failures_set_aside(folder, monkeypatch):
@@ -148,7 +191,7 @@ def test_duplicates_and_failures_set_aside(folder, monkeypatch):
     # filed anyway, from _Duplicates: no looking for duplicates again; beets fails, and it's in _Failed
     def broken(*a, **k):
         raise RuntimeError("beet import failed (1)")
-    monkeypatch.setattr(watch, "match", lambda songs, name, ctx=None: ("none", "", None))
+    monkeypatch.setattr(watch, "match", lambda songs, name, ctx=None, sources=watch.SOURCES: ("none", "", None))
     monkeypatch.setattr(watch.importer, "file_music", broken)
     with pytest.raises(RuntimeError):
         watch.import_watched(Ctx(), "Zyx Band - 2021 - Qwerty Songs", f"server:{root}", held="_Duplicates")
@@ -163,7 +206,7 @@ def test_filed_anyway_goes_to_the_librarys_duplicates_tried_again_as_any_album(f
         album(root / held, "Zyx Band - 2021 - Qwerty Songs")
     calls = []
     monkeypatch.setattr(watch.duplicates, "check", lambda files, s: pytest.fail("not looked for again"))
-    monkeypatch.setattr(watch, "match", lambda songs, name, ctx=None: ("musicbrainz", "mb-1", {}))
+    monkeypatch.setattr(watch, "match", lambda songs, name, ctx=None, sources=watch.SOURCES: ("musicbrainz", "mb-1", {}))
     monkeypatch.setattr(watch.importer, "file_music", filed(calls))
     watch.import_watched(Ctx(), "Zyx Band - 2021 - Qwerty Songs", f"server:{root}", held="_Duplicates")
     watch.import_watched(Ctx(), "Zyx Band - 2021 - Qwerty Songs", f"server:{root}", held="_Failed")
@@ -215,12 +258,61 @@ def test_a_duplicate_filed_with_beets_lands_beside_the_librarys_other_copies(tmp
     assert [a["folder"] for a in got["albums"]] == [str(there)]
 
 
+@pytest.mark.skipif(not shutil.which("ffmpeg") or not (Path(sys.executable).parent / "beet").exists(),
+                    reason="needs beets (pip install -e './backend[organize]') and ffmpeg")
+@pytest.mark.parametrize("tags, known, lastfm, where", [
+    # Last.fm's "pop" alone would file it in Pop (The Operator Sound INC.'s case): Bandcamp's tags make it Electronic
+    (["Electronic", "Experimental", "dungeon synth", "easy listening", "modular synth"], {},
+     [["space age pop", 100], ["modular synth", 67]], "Electronic"),
+    # Bandcamp's psytrance is psytrance: whatever Last.fm says of a namesake, and though the artist is in Rock already
+    (["Electronic", "Progressive Trance", "Psychedelic Trance", "Psytrance"], {"Zyx Band": "Rock"},
+     [["rock", 100], ["hard rock", 60]], "Psytrance"),
+])
+def test_filed_with_beets_bandcamps_tags_decide_the_main_genre_with_last_fms(tmp_path, monkeypatch, tags, known, lastfm, where):
+    """Through beets and musicorg: the album filed where Bandcamp's tags say, and saying them."""
+    from muzix import db, env
+    from muzix.models import Root
+    from muzix.organize import importer
+
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    src = tmp_path / "in" / "esoteric"
+    src.mkdir(parents=True)
+    for n in (1, 2):
+        subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", "anullsrc=r=44100", "-t", "1",
+                        *[x for k, v in {"artist": "Zyx Band", "album_artist": "Zyx Band", "album": "Esoteric Songs",
+                                         "date": "2026", "track": str(n), "title": f"Song {n}"}.items()
+                          for x in ("-metadata", f"{k}={v}")], str(src / f"{n}.mp3")], check=True)
+    beets = tmp_path / "beets"
+    beets.mkdir()
+    (beets / "lastfm-cache.json").write_text(json.dumps({"artist\x1fzyx band": lastfm, "album\x1fzyx band\x1fesoteric songs": []}))
+    monkeypatch.setattr(env, "BEETS_DIR", beets)
+    monkeypatch.setattr(importer, "write_artist_genres", lambda: (beets / "artist-genres.json").write_text(json.dumps(known)))
+    monkeypatch.setattr(importer, "BEET", str(Path(sys.executable).parent / "beet"))
+    was = {k: settings.get(k) for k in ("upload_genre_folders", "upload_fetch_art")}
+    settings.set_many({"upload_genre_folders": True, "upload_fetch_art": False})
+    with db.session() as s:
+        s.add(Root(path=str(lib), kind="music", upload_target=True))
+        s.commit()
+    try:
+        got = importer.file_music(Ctx(), src, "bc-test", autotag=False, bandcamp_tags={str(src): tags})
+    finally:
+        settings.set_many(was)
+        with db.session() as s:
+            s.query(Root).filter(Root.path == str(lib)).delete()
+            s.commit()
+    [filed_album] = got["albums"]
+    assert filed_album["folder"] == str(lib / where / "Zyx Band" / "Zyx Band - 2026 - Esoteric Songs")
+    assert filed_album["tags"] == tags and "came" not in filed_album
+    assert not (beets / "bandcamp-bc-test.json").exists()
+
+
 def test_a_song_by_itself_gets_a_folder(folder, monkeypatch):
     root, _ = folder
     (root / "Lonely Qwerty Song.mp3").write_bytes(b"\xff\xfb" + b"0" * 4000)
     calls = []
     monkeypatch.setattr(watch.duplicates, "check", lambda files, s: {"found": [], "skip": []})
-    monkeypatch.setattr(watch, "match", lambda songs, name, ctx=None: ("none", "", None))
+    monkeypatch.setattr(watch, "match", lambda songs, name, ctx=None, sources=watch.SOURCES: ("none", "", None))
     monkeypatch.setattr(watch.importer, "file_music", filed(calls))
     got = watch.import_watched(Ctx(), "Lonely Qwerty Song.mp3", f"server:{root}")
     assert got["match"] == "none" and calls[0]["source"].name == "Lonely Qwerty Song"
@@ -245,7 +337,7 @@ def test_an_artists_albums_each_by_itself(folder, monkeypatch):
     (disco / "second-album" / "CD2" / "01 c.mp3").write_bytes(b"\xff\xfb" + b"0" * 4000)
     looked, applied, calls = [], [], []
 
-    def lookup(songs, name, ctx=None):
+    def lookup(songs, name, ctx=None, sources=watch.SOURCES):
         looked.append((name, len(songs)))
         return ("bandcamp", "1/2", {"title": "Live Album", "artist": "Zyx Band"}) if name == "live-album" else ("none", "", None)
     monkeypatch.setattr(watch.duplicates, "check", lambda files, s: {"found": [], "skip": []})
@@ -297,7 +389,7 @@ def test_set_aside_only_when_at_least_half_its_songs_are_in_the_library(folder, 
     album(root, "Zyx Band - 2022 - Again", songs=("1. A.mp3", "2. B.mp3", "3. C.mp3", "4. D.mp3"))
     monkeypatch.setattr(watch.duplicates, "check", lambda files, s: {"found": [{"path": f[0], "why": "similar"} for f in files[:2]],
                                                                      "skip": []})
-    monkeypatch.setattr(watch, "match", lambda songs, name, ctx=None: ("none", "", None))
+    monkeypatch.setattr(watch, "match", lambda songs, name, ctx=None, sources=watch.SOURCES: ("none", "", None))
     calls, ctx = [], Ctx()
     monkeypatch.setattr(watch.importer, "file_music", filed(calls))
     with_one = {"found": [{"path": "x", "why": "similar"}], "skip": []}
@@ -335,7 +427,7 @@ def test_of_an_artists_albums_those_the_library_has_are_set_aside_and_the_rest_f
     root, _ = folder
     _discography(root)
     monkeypatch.setattr(watch.duplicates, "check", _found_in("known-one", "known-two", one_of="new-one"))
-    monkeypatch.setattr(watch, "match", lambda songs, name, ctx=None: ("none", "", None))
+    monkeypatch.setattr(watch, "match", lambda songs, name, ctx=None, sources=watch.SOURCES: ("none", "", None))
     calls, ctx = [], Ctx()
     monkeypatch.setattr(watch.importer, "file_music", filed(calls))
     got = watch.import_watched(ctx, "zyx-band", f"server:{root}")
@@ -379,7 +471,7 @@ def test_transfer_now_takes_what_isnt_still_coming_in(folder, monkeypatch):
     root, submitted = folder
     album(root)
     album(root, "Zyx Band - 2022 - Arriving")
-    monkeypatch.setattr(watch, "_busy", lambda: set())
+    monkeypatch.setattr(watch, "_busy", lambda key: set())
     monkeypatch.setattr(watch, "NOW_LOOK", 0)
     watch._seen.clear()
     entries, looks = watch.ServerPlace.entries, []
@@ -425,9 +517,9 @@ class Computer(watch.ComputerPlace):
 
 
 def _from_a_computer(monkeypatch, comp, albums=None):
-    monkeypatch.setattr(watch, "place", lambda: comp)
+    monkeypatch.setattr(watch, "place", lambda key="": comp)
     monkeypatch.setattr(watch.duplicates, "check", lambda files, s: {"found": [], "skip": []})
-    monkeypatch.setattr(watch, "match", lambda songs, name, ctx=None: ("musicbrainz", "mb-1", {}))
+    monkeypatch.setattr(watch, "match", lambda songs, name, ctx=None, sources=watch.SOURCES: ("musicbrainz", "mb-1", {}))
     calls = []
     monkeypatch.setattr(watch.importer, "file_music", filed(calls, albums=albums))
     return calls
@@ -502,7 +594,7 @@ def test_in_place_of_the_librarys_copy(folder, monkeypatch, tmp_path_factory):
              {"path": f"{QWERTY}/2. Closing Qwerty.mp3", "why": "similar", "match": {"path": str(old / "2. Closing Qwerty.mp3")}},
              {"path": f"{QWERTY}/1. Opening Qwerty.mp3", "why": "similar", "match": {"path": str(single / "1. Opening Qwerty.mp3")}}]
     monkeypatch.setattr(watch.duplicates, "check", lambda files, s: {"found": found, "skip": []})
-    monkeypatch.setattr(watch, "match", lambda songs, name, ctx=None: ("none", "", None))
+    monkeypatch.setattr(watch, "match", lambda songs, name, ctx=None, sources=watch.SOURCES: ("none", "", None))
     assert watch.replaced(found) == [str(old)]
     aside = lib / "Duplicates" / "Zyx Band" / f"{QWERTY} (2)"
     with db.session() as s:
@@ -553,18 +645,85 @@ def test_why_an_artists_albums_were_set_aside_and_what_was_filed_says_so():
         assert next(r for r in api._recent(s) if r["name"] == "zyx-band")["aside"] == 1
 
 
-def test_bandcamps_genre_goes_into_files_that_have_none(tmp_path, monkeypatch):
-    """Bandcamp's genre (its first tag) is the files' own word for musicorg to go by, as MusicBrainz's genres
-    are for an album it matched (Horned Relic Self and others were filed in Uncategorized without it); a file's
-    own genre is kept."""
-    written = {}
-    monkeypatch.setattr(watch.tagwrite, "writable", lambda p: True)
-    monkeypatch.setattr(watch.tagwrite, "write", lambda p, changes: written.__setitem__(Path(p).name, changes))
-    songs = [{**song(1, 100), "path": tmp_path / "1.mp3", "genre": ""},
-             {**song(2, 200), "path": tmp_path / "2.mp3", "genre": "Synthwave"}]
-    d = {"title": "Qwerty", "artist": "Zyx Band", "year": 2022, "genre": "Electronic", "cover": None,
-         "tracks": [{"no": 1, "title": "A"}, {"no": 2, "title": "B"}]}
-    watch._apply(songs, d, tmp_path)
-    assert written["1.mp3"]["genre"] == "Electronic" and "genre" not in written["2.mp3"]
-    watch._apply(songs, {**d, "genre": ""}, tmp_path)
-    assert "genre" not in written["1.mp3"]                  # none from Bandcamp: the file's left as it is
+
+def _client():
+    from types import SimpleNamespace
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from muzix.api import watch as api
+    from muzix.security import admin_user
+    app = FastAPI()
+    app.include_router(api.router)
+    app.dependency_overrides[admin_user] = lambda: SimpleNamespace(id=1, is_admin=True)
+    return TestClient(app)
+
+
+def test_a_second_watch_folder_for_bandcamp_alone(folder, tmp_path_factory, monkeypatch):
+    """Another watch folder beside the first, its albums matched with Bandcamp alone: each looked in and
+    filed with its own key and way; the first stays where older apps read it; one taken away, the next is first."""
+    root, submitted = folder
+    bc = tmp_path_factory.mktemp("bandcamp-only")
+    c = _client()
+    got = c.put("/api/admin/watch", json={"folder": str(bc), "only": "bandcamp", "at": 5}).json()     # one past the last
+    assert [(f["folder"], f["only"]) for f in got["folders"]] == [(str(root), ""), (str(bc), "bandcamp")]
+    assert got["folder"] == str(root) and got["folders"][1]["key"] == f"server:{bc}"
+    assert c.put("/api/admin/watch", json={"folder": str(bc), "at": 0}).status_code == 400          # watched already
+    assert c.put("/api/admin/watch", json={"folder": str(bc), "only": "elsewhere", "at": 1}).status_code == 400
+
+    album(root)
+    album(bc, "Zyx Band - 2022 - On Bandcamp")
+    monkeypatch.setattr(watch, "NOW_LOOK", 0)
+    assert c.post("/api/admin/watch/now", json={"key": f"server:{bc}"}).json()["taken"] == ["Zyx Band - 2022 - On Bandcamp"]
+    assert submitted[-1][1] == {"name": "Zyx Band - 2022 - On Bandcamp", "key": f"server:{bc}"}
+    assert c.post("/api/admin/watch/now").json()["taken"] == [QWERTY]                 # no key: the first, as before
+    assert submitted[-1][1]["key"] == f"server:{root}"
+    assert watch.place(f"server:{bc}").only == "bandcamp" and watch.place().only == ""
+
+    # its way changed, then the first taken away: the Bandcamp one is first
+    got = c.put("/api/admin/watch", json={"folder": str(bc), "only": "", "at": 1}).json()
+    assert got["folders"][1]["only"] == ""
+    got = c.put("/api/admin/watch", json={"folder": "", "at": 0}).json()
+    assert [f["folder"] for f in got["folders"]] == [str(bc)] and got["folder"] == str(bc)
+    assert settings.get("watch_folder") == str(bc)
+
+
+def test_a_computer_lets_this_server_watch_more_than_one_folder_from_0_4_24(folder, monkeypatch):
+    """Muzix Desktop says yes to each folder (watch_pick, and no longer the one it replaces); one before 0.4.24
+    knows one folder only: it gets that one, but not a second."""
+    from muzix.api import watch as api
+    from muzix.models import Peer
+    root, _ = folder
+    settings.set_many({"watch_folder": "", "watch_folders": []})
+    with db.session() as s:
+        s.add(Peer(server_id="zq-laptop", name="Laptop", kind="computer", address="", sent=True, received=True))
+        s.commit()
+    asked, old = [], {"on": False}
+
+    class Tunnel:
+        def ask(self, op, **args):
+            asked.append((op, args))
+            if op == "watch_pick" and old["on"]:
+                raise watch.tunnel.Refused(f"Unknown request {op}")
+            return {}
+    monkeypatch.setattr(api.tunnel, "get", lambda pid: Tunnel())
+    c = _client()
+    try:
+        c.put("/api/admin/watch", json={"folder": "/home/z/In", "computer": "zq-laptop"}).raise_for_status()
+        c.put("/api/admin/watch", json={"folder": "/home/z/Bandcamp", "computer": "zq-laptop", "only": "bandcamp", "at": 1}).raise_for_status()
+        c.put("/api/admin/watch", json={"folder": "/home/z/In2", "computer": "zq-laptop", "at": 0}).raise_for_status()
+        assert asked == [("watch_pick", {"path": "/home/z/In", "was": ""}), ("watch_pick", {"path": "/home/z/Bandcamp", "was": ""}),
+                         ("watch_pick", {"path": "/home/z/In2", "was": "/home/z/In"})]
+
+        old["on"], asked[:] = True, []
+        r = c.put("/api/admin/watch", json={"folder": "/home/z/In3", "computer": "zq-laptop", "at": 0})
+        assert r.status_code == 409 and "0.4.24" in r.json()["detail"]
+        c.put("/api/admin/watch", json={"folder": "", "at": 1}).raise_for_status()           # the Bandcamp one gone
+        c.put("/api/admin/watch", json={"folder": "/home/z/In3", "computer": "zq-laptop", "at": 0}).raise_for_status()
+        assert ("watch_set", {"path": "/home/z/In3"}) in asked
+        assert [f["folder"] for f in watch.folders()] == ["/home/z/In3"]
+    finally:
+        with db.session() as s:
+            s.query(Peer).filter(Peer.server_id == "zq-laptop").delete()
+            s.commit()

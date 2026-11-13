@@ -53,8 +53,9 @@ class Server:
     name: str
     key: str                    # what this computer shows when it connects
     state: str = "waiting"      # waiting (for its admin's yes) | linked | removed
-    watch: bool = False         # its admin may pick a folder here for its watch folder (sharing.py)
-    watch_folder: str = ""      # the one picked: the server reads and moves files only in it
+    watch: bool = False         # its admin may pick folders here for its watch folders (sharing.py)
+    # the ones picked: the server reads and moves files only in them
+    watch_folders: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -118,7 +119,9 @@ def load() -> Config:
             if k == "servers":
                 c.servers = [Server(**{f: s.get(f, "") for f in ("address", "server_id", "name", "key")},
                                     state=s.get("state") or "waiting", watch=s.get("watch") is True,
-                                    watch_folder=s.get("watch_folder") or "") for s in v]
+                                    # before 0.4.24: the one folder picked
+                                    watch_folders=[f for f in s.get("watch_folders") or [s.get("watch_folder")]
+                                                   if isinstance(f, str) and f]) for s in v]
             elif k == "folders":
                 c.folders = [Folder(path=f["path"], kind=f.get("kind") or "music", share=f.get("share", True) is not False)
                              for f in v]

@@ -205,7 +205,7 @@ def test_bandcamp_albums_artists_and_compilations(web):
 
     answers["https://bandcamp.com/api/mobile/24/tralbum_details"] = lambda req: {
         "title": "Transitus", "tralbum_artist": "Ayreon", "art_id": 3288844013, "release_date": 1600992000,
-        "tags": [{"name": "Melodic Metal"}, {"name": "rock opera"}],
+        "tags": [{"name": "Melodic Metal"}, {"name": "rock opera"}, {"name": "Netherlands", "isloc": True}],
         "tracks": [{"track_num": 1, "title": "Fatum Horrificum", "duration": 623.28},
                    {"track_num": 2, "title": "This Human Equation", "duration": 159.6}]} if req.url.params["tralbum_id"] == "2034387072" else {
         "title": "Vimukti", "tralbum_artist": "Samana Records", "art_id": 1, "release_date": None, "tags": [],
@@ -213,6 +213,7 @@ def test_bandcamp_albums_artists_and_compilations(web):
                    {"track_num": 2, "title": "Oblium - Letame - Live", "duration": 518}]}
     album = providers.details("bandcamp", "album", "400780041/2034387072")
     assert album == {"title": "Transitus", "artist": "Ayreon", "year": 2020, "genre": "Melodic Metal",
+                     "tags": ["Melodic Metal", "rock opera"],                           # not where it's from
                      "cover": "https://f4.bcbits.com/img/a3288844013_10.jpg", "tracks": [
                          {"disc": 1, "no": 1, "title": "Fatum Horrificum", "artist": "Ayreon", "length": 623},
                          {"disc": 1, "no": 2, "title": "This Human Equation", "artist": "Ayreon", "length": 160}]}

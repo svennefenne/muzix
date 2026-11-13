@@ -206,6 +206,10 @@ FALLBACKS = [(re.compile(p), g) for p, g in FALLBACKS]
 # Umbrella tags that sit on nearly every release of their family; they count
 # half so the specific tags decide.
 GENERIC = {"electronic", "electronica", "electronic music"}
+# Bandcamp's tags that say an album is psytrance (Bandcamp's genre for it is "Electronic"): it is, whatever
+# Last.fm says of a namesake ("forest" alone is a wood; Muzix's enrich.PSY_TAG says the same for artists' tags)
+PSY_TAG = re.compile(r"psytrance|psy-trance|psychedelic trance|psychedelic goa|\bgoa\b|goa ?trance|full[ -]?on|"
+                     r"dark ?psy|forest ?psy|psychill|psy ?chill|psybient|psydub|hi-?tech|\bpsy\b", re.IGNORECASE)
 
 
 def _parse_exact(table):
@@ -528,6 +532,9 @@ class MusicOrgPlugin(BeetsPlugin):
             "overrides": "~/.local/share/musicorg/genre-overrides.yaml",
             # {"artist name": "Genre folder"} for artists already in the library (written by Muzix)
             "artist_genres": "",
+            # {"album's folder as it came": [Bandcamp's tags, its genre first]} (written by Muzix's watch
+            # folder, which looks each album up on Bandcamp too)
+            "bandcamp_tags": "",
             # albums titled "... (Original Soundtrack)", "OST" or "Original Score": "nogenre" =
             # Soundtrack when nothing else matched, "always" = Soundtrack even if the artist's
             # other albums live in another genre folder
@@ -743,10 +750,10 @@ class MusicOrgPlugin(BeetsPlugin):
         ambiguous = []
         evidence = []
 
-        def add(tag, weight, source):
+        def add(tag, weight, source, picked=False):
             if weight <= 0:
                 return
-            if hk(mapper.normalize(tag)) in GENERIC:
+            if hk(mapper.normalize(tag)) in GENERIC and not picked:     # Last.fm's "electronic" on everything
                 weight *= 0.5
             shares, amb = mapper.map(tag)
             if amb:
@@ -786,6 +793,11 @@ class MusicOrgPlugin(BeetsPlugin):
                 scores[OST] += 80
                 evidence.append("mb:type=soundtrack")
 
+        # 2b. Bandcamp's tags: its genre (the artist's pick, first) weighs as MusicBrainz's first, the free
+        # tags after it a little each
+        for i, tag in enumerate(self._bandcamp_tags(items)):
+            add(tag, 60.0 if i == 0 else 15.0, "bc", picked=i == 0)
+
         # 3. Last.fm album + artist tags
         aa = album.albumartist
         is_va = album.comp or nkey(aa) in ("various artists", "va", "various")
@@ -819,6 +831,23 @@ class MusicOrgPlugin(BeetsPlugin):
                 scores[best] += w
         return scores, evidence
 
+    def main_genre(self, album, lastfm, min_score=30.0):
+        """(genre, decided, scores, evidence): the best scoring genre, Psytrance rather than Electronic once it
+        has a solid share, and Psytrance whatever the scores when Bandcamp tags the album psytrance (decided)."""
+        scores, evidence = self.score_album(album, lastfm)
+        ranked = scores.most_common()
+        best = ranked[0] if ranked else (None, 0)
+        genre = best[0] if best[1] >= min_score else ""
+        # Psytrance is a branch of Electronic: once it has a solid
+        # share, the umbrella genre should not outvote it
+        if genre == ELEC and scores[PSY] >= max(min_score, 0.5 * scores[ELEC]):
+            genre = PSY
+        decided = any(PSY_TAG.search(t) for t in self._bandcamp_tags(list(album.items())))
+        if decided:
+            genre = PSY
+            evidence.append("bc:psytrance decides")
+        return genre, decided, scores, evidence
+
     def cmd_mgenre(self, lib, opts, args):
         lastfm = LastFmTags(os.path.expanduser(self.config["lastfm_cache"].get(str)),
                             self._log)
@@ -831,18 +860,14 @@ class MusicOrgPlugin(BeetsPlugin):
                 if album.get("mo_genre") is not None and not opts.force:
                     continue
                 failed_before = lastfm.failed
-                scores, evidence = self.score_album(album, lastfm)
+                genre, decided, scores, evidence = self.main_genre(album, lastfm, min_score)
                 if lastfm.failed > failed_before:
                     skipped += 1  # leave unset; a later run retries it
                     continue
                 ranked = scores.most_common()
-                best = ranked[0] if ranked else (None, 0)
-                genre = best[0] if best[1] >= min_score else ""
-                # Psytrance is a branch of Electronic: once it has a solid
-                # share, the umbrella genre should not outvote it
-                if genre == ELEC and scores[PSY] >= max(min_score, 0.5 * scores[ELEC]):
-                    genre = PSY
                 album["mo_genre"] = genre
+                # decided by the album's own tags: the artist's other albums don't move it (cmd_mplan)
+                album["mo_genre_decided"] = "bandcamp" if decided else ""
                 album["mo_genre_scores"] = json.dumps(
                     {g: round(s) for g, s in ranked[:4]})
                 album["mo_genre_evidence"] = " | ".join(evidence[:25])
@@ -991,6 +1016,18 @@ class MusicOrgPlugin(BeetsPlugin):
             del a["mo_genre"]
         a.store()
 
+    def _bandcamp_tags(self, items):
+        """Bandcamp's tags for the album of these items, by the folder they came in (a disc's: its parent's)."""
+        path = os.path.expanduser(self.config["bandcamp_tags"].as_str())
+        if not path or not os.path.isfile(path):
+            return []
+        if getattr(self, "_bc_path", None) != path:
+            with open(path, encoding="utf-8") as f:
+                self._bc_path, self._bc = path, json.load(f)
+        orig = items[0].get("mo_orig_path", os.fsdecode(items[0].path)) if items else ""
+        folder = os.path.dirname(orig)
+        return self._bc.get(folder) or self._bc.get(os.path.dirname(folder)) or []
+
     def _artist_genres(self):
         path = self.config["artist_genres"].as_str()
         if not path or not os.path.isfile(os.path.expanduser(path)):
@@ -1133,7 +1170,7 @@ class MusicOrgPlugin(BeetsPlugin):
             info[a.id] = dict(album=a, items=items, origs=origs, orig_dir=orig_dir,
                               artist=artist, title=title, year=year, reason=reason,
                               lossless=bool(set(fmts) & LOSSLESS), fmts=fmts, bitrate=bitrate,
-                              genre=a.get("mo_genre") or "")
+                              genre=a.get("mo_genre") or "", decided=bool(a.get("mo_genre_decided")))
 
         # one genre folder per artist: the genre most of their albums got
         # (ties: summed scores); also covers their albums with no genre match
@@ -1165,8 +1202,8 @@ class MusicOrgPlugin(BeetsPlugin):
                     weight[k][g] += s
         for d in info.values():
             k = artist_key(d)
-            if d.get("soundtrack"):
-                continue   # soundtrack_titles: always
+            if d.get("soundtrack") or d.get("decided"):
+                continue   # soundtrack_titles: always; Bandcamp's psytrance: its own
             if k in votes and d["reason"] in ("", "no genre match"):
                 d["genre"] = max(votes[k], key=lambda g: (votes[k][g], weight[k][g]))
                 d["reason"] = ""
@@ -1175,7 +1212,7 @@ class MusicOrgPlugin(BeetsPlugin):
         known = self._artist_genres()
         for d in info.values():
             g = known.get(nkey(d["artist"]))
-            if g and d["reason"] in ("", "no genre match") and not d.get("soundtrack"):
+            if g and d["reason"] in ("", "no genre match") and not d.get("soundtrack") and not d.get("decided"):
                 d["genre"], d["reason"] = g, ""
 
         # hand-made corrections win: "artist" or "artist - album" -> genre

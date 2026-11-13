@@ -38,7 +38,7 @@ def test_picked_listed_fetched_and_moved(server, tmp_path):
     got = sharing._browse("srv", {"path": str(tmp_path)})
     assert got["folders"] == ["Incoming"] and got["path"] == str(tmp_path)
     incoming = str(tmp_path / "Incoming")
-    assert sharing._set("srv", {"path": incoming}) == {"path": incoming} and server.watch_folder == incoming
+    assert sharing._set("srv", {"path": incoming}) == {"path": incoming} and server.watch_folders == [incoming]
 
     listed = {e["name"]: e["files"] for e in sharing._list("srv", {"path": incoming})}
     assert set(listed) == {"Zyx - Qwerty", "loose.mp3"}                     # its own _Done left alone
@@ -71,11 +71,18 @@ def test_its_say_so_and_the_folder_kept_between_runs(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "_current", None)
     c = config.load()
     c.servers.append(config.Server(address="https://muzix.example", server_id="srv", name="Plopp", key="k", state="linked",
-                                   watch=True, watch_folder="/home/me/Incoming"))
+                                   watch=True, watch_folders=["/home/me/Incoming", "/home/me/Bandcamp"]))
     config.save()
     monkeypatch.setattr(config, "_current", None)            # Muzix Desktop started again
     s = config.load().server("srv")
-    assert s.watch is True and s.watch_folder == "/home/me/Incoming"
+    assert s.watch is True and s.watch_folders == ["/home/me/Incoming", "/home/me/Bandcamp"]
+
+    # as Muzix Desktop before 0.4.24 kept it: its one folder
+    (tmp_path / "settings.json").write_text(
+        '{"servers": [{"address": "https://muzix.example", "server_id": "srv", "name": "Plopp", "key": "k", '
+        '"state": "linked", "watch": true, "watch_folder": "/home/me/Incoming"}]}')
+    monkeypatch.setattr(config, "_current", None)
+    assert config.load().server("srv").watch_folders == ["/home/me/Incoming"]
 
 
 def test_an_album_filed_whole_is_deleted_one_thrown_away_goes_to_the_trash(server, tmp_path, monkeypatch):
@@ -86,7 +93,7 @@ def test_an_album_filed_whole_is_deleted_one_thrown_away_goes_to_the_trash(serve
     (incoming / "_Duplicates" / "Zyx - Again").mkdir(parents=True)
     (incoming / "_Duplicates" / "Zyx - Again" / "1. Song.flac").write_bytes(b"flac")
     (tmp_path / "secret.txt").write_text("not the server's")
-    server.watch_folder = str(incoming)
+    server.watch_folders = [str(incoming)]
     trashed = []
     monkeypatch.setattr(sharing.QFile, "moveToTrash", lambda path: trashed.append(path) or True)
 
@@ -118,7 +125,7 @@ def test_of_a_folder_of_albums_those_the_library_has_go_aside_under_its_name(ser
         (incoming / "zyx-band" / part / "1. Song.flac").write_bytes(b"flac")
     (incoming / "_Duplicates" / "zyx-band" / "known-one").mkdir(parents=True)        # set aside before: (2)
     (tmp_path / "secret").mkdir()
-    server.watch_folder = str(incoming)
+    server.watch_folders = [str(incoming)]
     at = {"path": str(incoming), "name": "zyx-band", "to": "_Duplicates"}
 
     (incoming / "zyx-band" / "out").symlink_to(tmp_path / "secret")
@@ -132,3 +139,31 @@ def test_of_a_folder_of_albums_those_the_library_has_go_aside_under_its_name(ser
         with pytest.raises(PermissionError):
             sharing._aside("srv", {**at, "parts": ["new-one"], **bad})
     assert (incoming / "zyx-band" / "new-one").is_dir() and (tmp_path / "secret").is_dir()
+
+
+
+def test_more_than_one_folder_each_picked_and_let_go(server, tmp_path):
+    """Muzix Desktop 0.4.24 on: the server's admin may have more than one watch folder here (another for
+    Bandcamp alone, say), each picked (watch_pick) and let go of when replaced or taken away; a server before
+    that has one (watch_set: that one alone)."""
+    server.watch = True
+    one, two, three = (str(tmp_path / n) for n in ("In", "Bandcamp", "In2"))
+    for d in (one, two, three):
+        os.makedirs(d)
+    sharing._pick("srv", {"path": one})
+    sharing._pick("srv", {"path": two})
+    assert server.watch_folders == [one, two]
+    assert sharing._list("srv", {"path": two}) == [] and sharing._list("srv", {"path": one}) == []
+    sharing._pick("srv", {"path": three, "was": one})                     # the first one replaced
+    assert server.watch_folders == [two, three]
+    with pytest.raises(PermissionError):
+        sharing._list("srv", {"path": one})
+    sharing._pick("srv", {"path": "", "was": two})                        # taken away
+    assert server.watch_folders == [three]
+    with pytest.raises(PermissionError):
+        sharing._pick("srv", {"path": str(tmp_path / "nowhere")})
+    sharing._set("srv", {"path": one})                                    # a server before 0.4.24: its one
+    assert server.watch_folders == [one]
+    server.watch = False
+    with pytest.raises(PermissionError):
+        sharing._pick("srv", {"path": two})

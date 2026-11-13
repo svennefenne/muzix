@@ -39,9 +39,9 @@ def walk(root: Root, playlists: list | None = None):
     """Audio files under a root, minus its excluded folders. Playlist files go into `playlists`,
     from excluded folders too: a playlist there can still list songs from the library."""
     excludes = [os.path.join(root.path, e.strip("/")) for e in (root.excludes or [])]
-    # the watch folder (watch.py), when it's in the library: its albums are the library's once they're filed
-    if (watched := settings.get("watch_folder")) and not settings.get("watch_computer"):
-        excludes.append(watched.rstrip("/"))
+    # the watch folders (watch.py) in the library: their albums are the library's once they're filed
+    from . import watch
+    excludes += [f["folder"].rstrip("/") for f in watch.folders() if not f["computer"]]
     stack = [(root.path, False)]
     while stack:
         d, excluded = stack.pop()

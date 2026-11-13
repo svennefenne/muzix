@@ -182,7 +182,11 @@ shared with the others on your server if you like.
   themselves, the same way. Each is looked up on MusicBrainz, where a release
   counts when its songs are as many and as long, and else on Bandcamp, whose
   track list and cover then go into the files; one neither has is filed as its
-  tags say and listed for a look. An album is taken two minutes after its last
+  tags say and listed for a look. Its main genre goes by Bandcamp's genre and
+  tags too (looked up there also when MusicBrainz matched it), and an artist
+  MusicBrainz has no genre tags for gets Bandcamp's. There can be more than one
+  watch folder, each matched with MusicBrainz then Bandcamp or with Bandcamp
+  alone (two on one computer: Muzix Desktop 0.4.24 or later). An album is taken two minutes after its last
   file arrived (the folder is looked at every minute), or at once with
   *Transfer now* (but one still being copied in). On the server, what isn't
   music goes to `_Done/<album>`. One that couldn't be filed goes to

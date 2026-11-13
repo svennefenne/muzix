@@ -129,3 +129,49 @@ def test_one_artists_tags_edited():
     assert got["removed_everywhere"] == ["zq blocked"] and "zq blocked" not in shown(aid)[0]
     c.post("/api/admin/tags/restore", json={"names": ["zq blocked"]}).raise_for_status()
     assert "zq blocked" in shown(aid)[0]
+
+
+def test_bandcamps_tags_are_an_artists_when_musicbrainz_has_none(monkeypatch):
+    """The Operator Sound INC.: MusicBrainz has no tags for them, Bandcamp's albums do: those (the most albums'
+    first, then in Bandcamp's own order, not where it's from) are their genre tags, after the admin's rules; an
+    artist Bandcamp tags psytrance has "psytrance" first; one MusicBrainz has tags for keeps MusicBrainz's."""
+    from muzix import enrich, settings
+    from muzix.models import Album, BandcampTags
+
+    with db.session() as s:
+        s.execute(delete(BandcampTags))
+        op = Artist(name="ZQ Operator Sound", tags=[])
+        known = Artist(name="ZQ Known Band", tags=[])
+        psy = Artist(name="ZQ Migdalor", tags=[])
+        s.add_all([op, known, psy])
+        s.flush()
+        ids = op.id, known.id, psy.id
+        s.add_all([Album(title="Esoteric", artist_id=op.id, artist_name=op.name, key="zq-esoteric", kind="music", folder="/zq/e"),
+                   Album(title="Known", artist_id=known.id, artist_name=known.name, key="zq-known", kind="music", folder="/zq/k"),
+                   Album(title="Planeta", artist_id=psy.id, artist_name=psy.name, key="zq-planeta", kind="music", folder="/zq/p")])
+    enrich.keep_bandcamp_tags([
+        {"artist": "ZQ Operator Sound", "album": "Esoteric", "tags": ["Electronic", "dungeon synth", "zq hey joe"]},
+        {"artist": "zq operator sound", "album": "Second", "tags": ["Electronic", "modular synth"]},
+        {"artist": "ZQ Known Band", "album": "Known", "tags": ["Rock"]},
+        {"artist": "ZQ Migdalor", "album": "Planeta", "tags": ["Electronic", "Progressive Trance", "Psychedelic Trance", "downtempo"]},
+        {"artist": "ZQ Untagged", "album": "Nothing", "tags": []}])
+    enrich.keep_bandcamp_tags([{"artist": "ZQ Operator Sound", "album": "Esoteric",       # again: once, as now
+                                "tags": ["Electronic", "dungeon synth", "zq hey joe"]}])
+    with db.session() as s:
+        s.add(TagRule(key="zq hey joe", removed=True))
+    monkeypatch.setattr(enrich, "mb_tags", lambda c, l, name, mbid: ([["zq post-rock", 5]], "mb") if "Known" in name else ([], ""))
+    monkeypatch.setattr(enrich.RateLimited, "wait", lambda self: None)
+    was = settings.get("artist_tags")
+    settings.set_many({"artist_tags": "musicbrainz"})
+    try:
+        enrich.artist_tags(SimpleNamespace(log=lambda *a: None, update=lambda *a: None, check=lambda: None))
+    finally:
+        settings.set_many({"artist_tags": was})
+        with db.session() as s:
+            s.execute(delete(BandcampTags))
+            s.execute(delete(TagRule).where(TagRule.key == "zq hey joe"))
+    assert shown(ids[0])[0] == ["electronic", "dungeon synth", "modular synth"]
+    assert shown(ids[1])[0] == ["zq post-rock"]
+    assert shown(ids[2])[0] == ["psytrance", "electronic", "progressive trance", "psychedelic trance", "downtempo"]
+    with db.session() as s:
+        assert dict(s.get(Artist, ids[0]).tags)["electronic"] == 2       # on both their albums

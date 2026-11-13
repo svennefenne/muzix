@@ -561,7 +561,9 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
 
 .list-row.upload-batch { display: block; }
 /* Admin → Upload → Watch folder: where it is and how it stands, its albums set aside, the latest filed */
-.watch-where { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
+.watch-where { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 12px; flex-wrap: wrap; }
+.watch-where .grow { min-width: min(100%, 18rem); }
+.watch-more { justify-content: flex-start; margin: -6px 0 18px; }
 .watch-where > svg { margin-top: 3px; color: var(--text-dim); flex-shrink: 0; }
 .watch-where .grow > div + div { font-size: 12.5px; margin-top: 3px; }
 .watch-path { word-break: break-all; font-size: 13px; }

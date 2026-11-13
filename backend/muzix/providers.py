@@ -308,9 +308,9 @@ def _bc_album(r: dict, whose: str = "") -> dict:
         names = {t["artist"] for t in tracks}
         artist = names.pop() if len(names) == 1 else "Various Artists"
     when = r.get("release_date")
-    tags = [t.get("name", "") for t in r.get("tags") or []]
+    tags = [t["name"] for t in r.get("tags") or [] if t.get("name") and not t.get("isloc")]   # not where it's from
     return {"title": r.get("title", ""), "artist": artist, "year": datetime.fromtimestamp(when, timezone.utc).year if when else 0,
-            "genre": tags[0] if tags else "", "tracks": tracks, "cover": _bc_img(r.get("art_id"), 10)}
+            "genre": tags[0] if tags else "", "tags": tags, "tracks": tracks, "cover": _bc_img(r.get("art_id"), 10)}
 
 
 def _fa_get(c: httpx.Client, path: str) -> dict:

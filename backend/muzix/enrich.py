@@ -4,14 +4,16 @@ Sources: MusicBrainz (no key needed; 1 request per second) or Last.fm (needs
 an API key). Artists are refreshed every 90 days.
 """
 
+import re
 import time
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 
 import httpx
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import delete, func, or_, select, text
 
 from . import __version__, db, jobs, settings, tagging
-from .models import Album, Artist
+from .models import Album, Artist, BandcampTags
 
 UA = f"Muzix/{__version__} ( https://github.com/svennefenne/muzix )"
 REFRESH = timedelta(days=90)
@@ -74,6 +76,44 @@ def lastfm_tags(client: httpx.Client, limiter: RateLimited, name: str, key: str)
     return [[t["name"].lower(), int(t.get("count", 0))] for t in tags if int(t.get("count", 0)) >= 10][:15]
 
 
+def keep_bandcamp_tags(albums: list[dict]):
+    """Bandcamp's tags of albums just filed (import_watched: each album's "tags"), for their artists' genre tags
+    when MusicBrainz has none: an artist looked up already without any is looked up again."""
+    albums = [a for a in albums if a.get("tags") and a.get("artist")]
+    if not albums:
+        return
+    with db.session() as s:
+        for a in albums:
+            s.execute(delete(BandcampTags).where(func.casefold(BandcampTags.artist) == a["artist"].casefold(),
+                                                 func.casefold(BandcampTags.album) == (a.get("album") or "").casefold()))
+            s.add(BandcampTags(artist=a["artist"], album=a.get("album") or "", tags=a["tags"]))
+            for artist in s.scalars(select(Artist).where(func.casefold(Artist.name) == a["artist"].casefold())):
+                if not (artist.source_tags or artist.tags):
+                    artist.tags_checked = None
+
+
+# Bandcamp's tags that say an album is psytrance (as musicorg.PSY_TAG has them for the main genre)
+PSY_TAG = re.compile(r"psytrance|psy-trance|psychedelic trance|psychedelic goa|\bgoa\b|goa ?trance|full[ -]?on|"
+                     r"dark ?psy|forest ?psy|psychill|psy ?chill|psybient|psydub|hi-?tech|\bpsy\b", re.IGNORECASE)
+
+
+def bandcamp_artist_tags(s, name: str) -> list:
+    """An artist's genre tags from Bandcamp's tags of their albums: [[tag, how many of their albums have it],
+    ...], the most albums' first, then in Bandcamp's own order (its genre and sub-genres before the free tags);
+    "psytrance" first when Bandcamp tags their albums psytrance (it's their genre, and picks the psytrance skin)."""
+    counts: Counter = Counter()
+    first: dict[str, int] = {}
+    psy = False
+    for tags in s.scalars(select(BandcampTags.tags).where(func.casefold(BandcampTags.artist) == name.casefold())):
+        for i, t in enumerate(dict.fromkeys(x.lower() for x in tags or [])):
+            counts[t] += 1
+            first[t] = min(first.get(t, i), i)
+        psy = psy or any(PSY_TAG.search(t) for t in tags or [])
+    if psy:
+        counts["psytrance"], first["psytrance"] = max(counts.values()) + 1, -1
+    return sorted(([k, v] for k, v in counts.items()), key=lambda kv: (-kv[1], first.get(kv[0], 99), kv[0]))[:15]
+
+
 @jobs.job("artist_tags")
 def artist_tags(ctx: jobs.JobContext, limit: int = 5000):
     source = settings.get("artist_tags")
@@ -117,6 +157,7 @@ def artist_tags(ctx: jobs.JobContext, limit: int = 5000):
             with db.session() as s:
                 a = s.get(Artist, aid)
                 if a is not None:
+                    tags = tags or bandcamp_artist_tags(s, name)        # none there: Bandcamp's, if it has the albums
                     a.source_tags, a.mbid = tags, mbid2 or a.mbid
                     a.tags_checked = datetime.now(timezone.utc)
                     tagging.apply(a, tagging.Rules(s))     # the admin's rules (Admin → Tags)

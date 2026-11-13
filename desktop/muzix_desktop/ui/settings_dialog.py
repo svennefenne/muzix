@@ -305,15 +305,15 @@ class SettingsDialog(QDialog):
             info.addWidget(label(text, role, wrap=True))
             # its admin's watch folder on this computer (sharing.py): albums put there go into its library
             watch = QCheckBox("May pick a folder here to watch for new music")
-            watch.setToolTip("Its admin sees this computer's folder names to pick one, and then reads and moves files "
-                             "only in that folder: albums put there are filed into the server's library, and the files "
-                             "here go to its _Done folder. While Muzix Desktop runs and shares.")
+            watch.setToolTip("Its admin sees this computer's folder names to pick one (or more), and then reads and "
+                             "moves files only in those: albums put there are filed into the server's library, and "
+                             "deleted here once it has every song. While Muzix Desktop runs and shares.")
             watch.setChecked(s.watch)
             watch.toggled.connect(lambda on, sid=s.server_id: self._set_watch(sid, on))
             info.addSpacing(4)
             info.addWidget(watch)
-            if s.watch and s.watch_folder:
-                info.addWidget(Elided(f"Watches {s.watch_folder}", "faint"))
+            for folder in s.watch_folders if s.watch else []:
+                info.addWidget(Elided(f"Watches {folder}", "faint"))
             rl.addLayout(info, 1)
             rm = _button("Remove", "ghost")
             rm.clicked.connect(lambda _=False, s=s: self._unlink(s))
@@ -328,7 +328,7 @@ class SettingsDialog(QDialog):
                 return
             server.watch = on
             if not on:
-                server.watch_folder = ""
+                server.watch_folders = []
             config.save()
         self.show_servers()
 
