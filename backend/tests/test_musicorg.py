@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+pytest.importorskip("beets", reason="needs beets (pip install -e './backend[organize]'); it's in the Docker image")
 sys.path.insert(0, str(Path(__file__).parents[1] / "muzix" / "organize"))
 from beets import config  # noqa: E402
 from beetsplug import musicorg  # noqa: E402
