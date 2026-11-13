@@ -137,7 +137,8 @@ export function AdminCog({ kind, id, title, className = "", peer }: {
                 // album, EP or single: a second menu, where the cog was clicked
                 ...(kind === "album" ? [{ label: "Change type", icon: <Disc3 size={16} />, onClick: () => showMenu(at, [
                   { heading: "Change type" },
-                  ...([["album", "Album"], ["ep", "EP"], ["single", "Single"]] as const)
+                  // "As tagged": the admin's choice taken back, the type the tags (or the guess) give
+                  ...([["album", "Album"], ["ep", "EP"], ["single", "Single"], ["", "As tagged"]] as const)
                     .map(([type, label]) => ({ label, icon: <Disc3 size={16} />, onClick: () => void setRelease(id, type) })),
                 ]) }] : []),
                 { label: "Hide from library", icon: <EyeOff size={16} />, onClick: () => hide(t) },
@@ -155,7 +156,7 @@ async function setRelease(id: number, type: "" | "album" | "ep" | "single") {
   try {
     await api.put(`/api/manage/album/${id}/release`, { type });
     queryClient.invalidateQueries();
-    notify(type ? `Marked as ${({ album: "an album", ep: "an EP", single: "a single" })[type]}` : "Its type as its tags say");
+    notify(type ? `Marked as ${({ album: "an album", ep: "an EP", single: "a single" })[type]}` : "Its type as tagged");
   } catch (e) {
     notify((e as Error).message, "error");
   }
