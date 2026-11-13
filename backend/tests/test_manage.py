@@ -176,8 +176,13 @@ def test_a_new_genre_files_the_album_in_that_genre_folder(library, monkeypatch):
     assert r["moved_to"] == new and sorted(os.listdir(new))[0] == "1. Old Artist - Old Album - First (1990).wav"
     assert os.path.isdir(os.path.join(top, "Metal", "Old Artist"))       # empty folders stay
     assert manage.edit_list()[0]["summary"] == "Genre; filed in Rock / Old Artist / Old Artist - 1990 - Old Album"
+    # the artist's genre follows at once (new imports file their albums by it), not at the next scan
+    with db.session() as s:
+        assert s.scalar(select(Artist.genre).where(Artist.name == "Old Artist")) == "Hard Rock"
     manage.undo_edit(r["edit_id"])
     assert os.path.isdir(album) and not os.path.exists(new)
+    with db.session() as s:
+        assert s.scalar(select(Artist.genre).where(Artist.name == "Old Artist")) == "Metal"
 
 
 def test_uncategorized_albums_are_filed_by_their_genre_and_filed_ones_stay(library):
@@ -223,8 +228,11 @@ def test_files_without_tags_keep_their_edits_in_muzix():
 
 
 def test_file_names_are_cleaned_like_beets_does():
+    """beets' own `replace` rules: what its imports name folders, so an edit names them the same."""
     assert manage.clean('AC/DC: "Live"?') == "AC_DC_ _Live__"
-    assert manage.clean(".hidden.") == "_hidden"
+    assert manage.clean(".hidden.") == "_hidden_"
+    assert manage.clean("The Operator Sound INC.") == "The Operator Sound INC_"     # as the library has P.O.D_
+    assert manage.clean("-ish") == "_ish" and manage.clean("  Spaced  ") == "Spaced"
 
 
 def raw_pictures(path):

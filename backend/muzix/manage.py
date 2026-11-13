@@ -473,11 +473,12 @@ ILLEGAL = re.compile(r'[<>:"?*|\\/\x00-\x1f]')
 
 
 def clean(name: str) -> str:
-    """A tag as a file or folder name, the way beets makes them."""
-    name = ILLEGAL.sub("_", name.strip())
-    name = re.sub(r"^\.", "_", name)
-    name = name.rstrip(". ")
-    return name[:200] or "_"
+    """A tag as a file or folder name, the way beets makes them (its default `replace`, in its order): a dot
+    at either end and a dash at the start become "_", as the library's "P.O.D_" has it."""
+    name = ILLEGAL.sub("_", name)
+    for pattern in (r"^\.", r"\.$", r"^-"):
+        name = re.sub(pattern, "_", name)
+    return name.strip()[:200] or "_"
 
 
 UNSORTED = "uncategorized"
@@ -709,12 +710,14 @@ def _rekey(s, alb: Album, first: Track, title: str):
 
 
 def _summarize(s, album_ids: set[int]):
-    """An album's own fields from its tracks, as finish_scan works them out."""
+    """An album's own fields from its tracks, and its artist's genre, as finish_scan works them out."""
+    artists = set()
     for aid in album_ids:
         tracks = list(s.scalars(select(Track).where(Track.album_id == aid)))
         alb = s.get(Album, aid)
         if alb is None:
             continue
+        artists.add(alb.artist_id)
         if not tracks:
             s.delete(alb)
             continue
@@ -729,6 +732,16 @@ def _summarize(s, album_ids: set[int]):
         alb.title = common("album") or alb.title
         alb.formats = ",".join(sorted({t.format for t in tracks}))
         alb.folder = os.path.dirname(tracks[0].path)
+        artists.add(alb.artist_id)
+    # the artist's genre: the one most of their albums have (new imports file their albums by it, musicorg's
+    # artist_genres); Various Artists has none
+    s.flush()
+    for artist in (s.get(Artist, a) for a in artists if a):
+        if artist is None:
+            continue
+        genres = Counter(s.scalars(select(Album.genre).where(Album.artist_id == artist.id, Album.genre != "")))
+        artist.genre = "" if artist.name.lower() in ("various artists", "[unknown]") else \
+            (genres.most_common(1)[0][0] if genres else "")
 
 
 def _unchanged(t: Track) -> bool:
