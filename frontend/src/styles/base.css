@@ -1276,7 +1276,8 @@ a.stat-link.warn .v { color: var(--warning); }
 .lib-chip:hover { color: var(--text); border-color: var(--text-dim); }
 .lib-chip.on { background: var(--text); border-color: var(--text); color: var(--bg); }
 /* an artist's releases by type (Discography.tsx): the chips, and with none picked each type below the other */
-.disco-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; }
+.disco-chips { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin: 0 0 18px; }
+.disco-chips.at-head { margin: 0; }     /* at the right of the section's heading */
 .disco-group + .disco-group { margin-top: 30px; }
 .disco-title { margin: 0 0 12px; }
 .disco-title .faint { font-weight: 600; }

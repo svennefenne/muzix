@@ -601,9 +601,9 @@ export function ArtistPage() {
       <Section kicker={a.top_tracks.length ? "Most played" : ""} title="Top songs">
         <TrackList tracks={a.top_tracks} showArt />
       </Section>
-      <Section title="Discography">
-        <Discography albums={a.albums}>{(xs) => <div className="grid">{xs.map((x) => <AlbumCard key={x.id} a={x} />)}</div>}</Discography>
-      </Section>
+      <Discography title="Discography" albums={a.albums}>
+        {(xs) => <div className="grid">{xs.map((x) => <AlbumCard key={x.id} a={x} />)}</div>}
+      </Discography>
     </div>
   );
 }

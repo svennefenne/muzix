@@ -123,6 +123,7 @@ export function AdminCog({ kind, id, title, className = "", peer }: {
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
+              const at = { clientX: e.clientX, clientY: e.clientY };
               showMenu(e, peer ? [
                 { heading: title },
                 { label: "Hide from library", icon: <EyeOff size={16} />, onClick: () => hide(t) },
@@ -133,12 +134,12 @@ export function AdminCog({ kind, id, title, className = "", peer }: {
                 { label: "Edit metadata", icon: <Pencil size={16} />, onClick: () => setEdit(t) },
                 ...(kind === "artist" ? [{ label: "Edit tags", icon: <Tags size={16} />, onClick: () => setTags(id) }] : []),
                 ...(kind === "album" ? [{ label: "Merge with another album", icon: <Combine size={16} />, onClick: () => setMerge(id) }] : []),
-                ...(kind === "album" ? [
-                  { sep: true as const }, { heading: "Album, EP or single" },
-                  ...([["album", "It's an album"], ["ep", "It's an EP"], ["single", "It's a single"], ["", "As its tags say (or a guess)"]] as const)
+                // album, EP or single: a second menu, where the cog was clicked
+                ...(kind === "album" ? [{ label: "Change type", icon: <Disc3 size={16} />, onClick: () => showMenu(at, [
+                  { heading: "Change type" },
+                  ...([["album", "Album"], ["ep", "EP"], ["single", "Single"]] as const)
                     .map(([type, label]) => ({ label, icon: <Disc3 size={16} />, onClick: () => void setRelease(id, type) })),
-                  { sep: true as const },
-                ] : []),
+                ]) }] : []),
                 { label: "Hide from library", icon: <EyeOff size={16} />, onClick: () => hide(t) },
                 { label: "Delete", icon: <Trash2 size={16} />, onClick: () => setConfirm(t) },
               ]);
