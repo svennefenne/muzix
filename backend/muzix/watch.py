@@ -228,7 +228,8 @@ class ComputerPlace(Place):
             try:
                 out[h] = [e["name"] for e in self._ask("watch_list", held=h)]
             except tunnel.Refused as e:
-                log.info("The watch folder's %s on the computer: %s", h, e)
+                if "No such file" not in str(e):        # not there yet: nothing set aside, nothing to say
+                    log.info("The watch folder's %s on the computer: %s", h, e)
                 out[h] = []
         return out
 
