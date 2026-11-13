@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
-from .. import db, serial, tagging
+from .. import db, serial, settings, tagging
 from ..models import Artist, TagCategory
 from ..security import admin_user
 
@@ -55,6 +55,18 @@ def _changed(n: int) -> dict:
 def tags():
     with db.session() as s:
         return tagging.overview(s)
+
+
+class Places(BaseModel):
+    on: bool
+
+
+@router.post("/tags/places")
+def places(body: Places):
+    """The general rule: place names taken off every artist's tags, or (off) back."""
+    settings.set_many({"tags_drop_places": body.on})
+    with db.session() as s:
+        return _changed(tagging.apply_all(s))
 
 
 @router.get("/tags/artists")

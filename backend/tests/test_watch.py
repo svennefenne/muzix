@@ -98,9 +98,10 @@ def test_taken_once_it_stays_as_it_is(folder, monkeypatch):
 
 def filed(calls, gone=True, albums=None):
     """file_music as beets does it: the music moved out of the folder, and the albums as filed."""
-    def fake(ctx, source, batch, autotag=None, search_id="", duplicate=False, bandcamp_tags=None):
+    def fake(ctx, source, batch, autotag=None, search_id="", duplicate=False, bandcamp_tags=None, bandcamp_only=False):
         calls.append({"source": source, "autotag": autotag, "search_id": search_id, **({"duplicate": True} if duplicate else {}),
-                      **({"bandcamp_tags": bandcamp_tags} if bandcamp_tags else {})})
+                      **({"bandcamp_tags": bandcamp_tags} if bandcamp_tags else {}),
+                      **({"bandcamp_only": True} if bandcamp_only else {})})
         if gone:
             for p in list(source.rglob("*.mp3")):
                 p.unlink()
@@ -177,7 +178,7 @@ def test_a_bandcamp_only_folder_asks_bandcamp_alone(folder, monkeypatch):
     monkeypatch.setattr(watch, "match", lambda songs, name, ctx=None, sources=watch.SOURCES: asked.append(sources) or ("none", "", None))
     monkeypatch.setattr(watch.importer, "file_music", filed(calls))
     watch.import_watched(Ctx(), QWERTY, place.key)
-    assert asked == [("bandcamp",)] and calls[0]["autotag"] is False
+    assert asked == [("bandcamp",)] and calls[0]["autotag"] is False and calls[0]["bandcamp_only"]
 
 
 def test_duplicates_and_failures_set_aside(folder, monkeypatch):
@@ -267,6 +268,8 @@ def test_a_duplicate_filed_with_beets_lands_beside_the_librarys_other_copies(tmp
     # Bandcamp's psytrance is psytrance: whatever Last.fm says of a namesake, and though the artist is in Rock already
     (["Electronic", "Progressive Trance", "Psychedelic Trance", "Psytrance"], {"Zyx Band": "Rock"},
      [["rock", 100], ["hard rock", 60]], "Psytrance"),
+    # from the Bandcamp-only folder: Bandcamp's tags alone, though Last.fm says rock and the artist is in Rock
+    (["Electronic", "darksynth", "dungeon synth"], {"Zyx Band": "Rock"}, [["rock", 100], ["hard rock", 60]], "Electronic only"),
 ])
 def test_filed_with_beets_bandcamps_tags_decide_the_main_genre_with_last_fms(tmp_path, monkeypatch, tags, known, lastfm, where):
     """Through beets and musicorg: the album filed where Bandcamp's tags say, and saying them."""
@@ -295,7 +298,9 @@ def test_filed_with_beets_bandcamps_tags_decide_the_main_genre_with_last_fms(tmp
         s.add(Root(path=str(lib), kind="music", upload_target=True))
         s.commit()
     try:
-        got = importer.file_music(Ctx(), src, "bc-test", autotag=False, bandcamp_tags={str(src): tags})
+        got = importer.file_music(Ctx(), src, "bc-test", autotag=False, bandcamp_tags={str(src): tags},
+                                  bandcamp_only=where.endswith(" only"))
+        where = where.removesuffix(" only")
     finally:
         settings.set_many(was)
         with db.session() as s:
@@ -660,33 +665,43 @@ def _client():
     return TestClient(app)
 
 
-def test_a_second_watch_folder_for_bandcamp_alone(folder, tmp_path_factory, monkeypatch):
-    """Another watch folder beside the first, its albums matched with Bandcamp alone: each looked in and
-    filed with its own key and way; the first stays where older apps read it; one taken away, the next is first."""
+def test_a_watch_folder_and_one_for_bandcamp_alone(folder, tmp_path_factory, monkeypatch):
+    """Two watch folders at most: the usual one, and one whose albums Bandcamp alone matches and tags. Setting one
+    replaces that kind's; each is looked in and filed with its own key and way; older apps see the usual one."""
     root, submitted = folder
     bc = tmp_path_factory.mktemp("bandcamp-only")
+    other = tmp_path_factory.mktemp("bandcamp-other")
     c = _client()
-    got = c.put("/api/admin/watch", json={"folder": str(bc), "only": "bandcamp", "at": 5}).json()     # one past the last
+    got = c.put("/api/admin/watch", json={"folder": str(bc), "only": "bandcamp"}).json()
     assert [(f["folder"], f["only"]) for f in got["folders"]] == [(str(root), ""), (str(bc), "bandcamp")]
     assert got["folder"] == str(root) and got["folders"][1]["key"] == f"server:{bc}"
-    assert c.put("/api/admin/watch", json={"folder": str(bc), "at": 0}).status_code == 400          # watched already
-    assert c.put("/api/admin/watch", json={"folder": str(bc), "only": "elsewhere", "at": 1}).status_code == 400
+    got = c.put("/api/admin/watch", json={"folder": str(other), "only": "bandcamp"}).json()         # in its place
+    assert [(f["folder"], f["only"]) for f in got["folders"]] == [(str(root), ""), (str(other), "bandcamp")]
+    assert c.put("/api/admin/watch", json={"folder": str(other)}).status_code == 400                # the other's folder
+    assert c.put("/api/admin/watch", json={"folder": str(bc), "only": "elsewhere"}).status_code == 400
 
     album(root)
-    album(bc, "Zyx Band - 2022 - On Bandcamp")
+    album(other, "Zyx Band - 2022 - On Bandcamp")
     monkeypatch.setattr(watch, "NOW_LOOK", 0)
-    assert c.post("/api/admin/watch/now", json={"key": f"server:{bc}"}).json()["taken"] == ["Zyx Band - 2022 - On Bandcamp"]
-    assert submitted[-1][1] == {"name": "Zyx Band - 2022 - On Bandcamp", "key": f"server:{bc}"}
-    assert c.post("/api/admin/watch/now").json()["taken"] == [QWERTY]                 # no key: the first, as before
+    assert c.post("/api/admin/watch/now", json={"key": f"server:{other}"}).json()["taken"] == ["Zyx Band - 2022 - On Bandcamp"]
+    assert submitted[-1][1] == {"name": "Zyx Band - 2022 - On Bandcamp", "key": f"server:{other}"}
+    assert c.post("/api/admin/watch/now").json()["taken"] == [QWERTY]                 # no key: the usual one, as before
     assert submitted[-1][1]["key"] == f"server:{root}"
-    assert watch.place(f"server:{bc}").only == "bandcamp" and watch.place().only == ""
+    assert watch.place(f"server:{other}").only == "bandcamp" and watch.place().only == ""
 
-    # its way changed, then the first taken away: the Bandcamp one is first
-    got = c.put("/api/admin/watch", json={"folder": str(bc), "only": "", "at": 1}).json()
-    assert got["folders"][1]["only"] == ""
-    got = c.put("/api/admin/watch", json={"folder": "", "at": 0}).json()
-    assert [f["folder"] for f in got["folders"]] == [str(bc)] and got["folder"] == str(bc)
-    assert settings.get("watch_folder") == str(bc)
+    # the usual one turned off: the Bandcamp one stays, and older apps see none
+    got = c.put("/api/admin/watch", json={"folder": ""}).json()
+    assert [(f["folder"], f["only"]) for f in got["folders"]] == [(str(other), "bandcamp")]
+    assert got["folder"] == "" and settings.get("watch_folder") == ""
+    got = c.put("/api/admin/watch", json={"folder": str(root)}).json()                # the usual one again: first
+    assert [f["only"] for f in got["folders"]] == ["", "bandcamp"] and got["folder"] == str(root)
+
+
+def test_one_watch_folder_of_each_kind(folder):
+    """A list of any (as the admin page could make on 2026-11-13): the first of each kind is watched."""
+    settings.set_many({"watch_folders": [{"folder": "/a", "only": ""}, {"folder": "/b", "only": ""},
+                                         {"folder": "/c", "only": "bandcamp"}, {"folder": "/d", "only": "elsewhere"}]})
+    assert [(f["folder"], f["only"]) for f in watch.folders()] == [("/a", ""), ("/c", "bandcamp")]
 
 
 def test_a_computer_lets_this_server_watch_more_than_one_folder_from_0_4_24(folder, monkeypatch):
@@ -711,16 +726,16 @@ def test_a_computer_lets_this_server_watch_more_than_one_folder_from_0_4_24(fold
     c = _client()
     try:
         c.put("/api/admin/watch", json={"folder": "/home/z/In", "computer": "zq-laptop"}).raise_for_status()
-        c.put("/api/admin/watch", json={"folder": "/home/z/Bandcamp", "computer": "zq-laptop", "only": "bandcamp", "at": 1}).raise_for_status()
-        c.put("/api/admin/watch", json={"folder": "/home/z/In2", "computer": "zq-laptop", "at": 0}).raise_for_status()
+        c.put("/api/admin/watch", json={"folder": "/home/z/Bandcamp", "computer": "zq-laptop", "only": "bandcamp"}).raise_for_status()
+        c.put("/api/admin/watch", json={"folder": "/home/z/In2", "computer": "zq-laptop"}).raise_for_status()
         assert asked == [("watch_pick", {"path": "/home/z/In", "was": ""}), ("watch_pick", {"path": "/home/z/Bandcamp", "was": ""}),
                          ("watch_pick", {"path": "/home/z/In2", "was": "/home/z/In"})]
 
         old["on"], asked[:] = True, []
-        r = c.put("/api/admin/watch", json={"folder": "/home/z/In3", "computer": "zq-laptop", "at": 0})
+        r = c.put("/api/admin/watch", json={"folder": "/home/z/In3", "computer": "zq-laptop"})
         assert r.status_code == 409 and "0.4.24" in r.json()["detail"]
-        c.put("/api/admin/watch", json={"folder": "", "at": 1}).raise_for_status()           # the Bandcamp one gone
-        c.put("/api/admin/watch", json={"folder": "/home/z/In3", "computer": "zq-laptop", "at": 0}).raise_for_status()
+        c.put("/api/admin/watch", json={"folder": "", "only": "bandcamp"}).raise_for_status()  # the Bandcamp one gone
+        c.put("/api/admin/watch", json={"folder": "/home/z/In3", "computer": "zq-laptop"}).raise_for_status()
         assert ("watch_set", {"path": "/home/z/In3"}) in asked
         assert [f["folder"] for f in watch.folders()] == ["/home/z/In3"]
     finally:

@@ -244,18 +244,26 @@ ONLY = ("", "bandcamp")      # a folder's albums matched with MusicBrainz then B
 
 
 def folders() -> list[dict]:
-    """The watch folders as the admin set them: [{"folder", "computer" (a computer's id; "" for this server),
-    "only" (ONLY)}]. The one set before there could be more (watch_folder, watch_computer) is the first."""
+    """The watch folders as the admin set them, the usual one and the one for Bandcamp alone: [{"folder",
+    "computer" (a computer's id; "" for this server), "only" (ONLY)}]. One set before there could be two
+    (watch_folder, watch_computer) is the usual one."""
     got = [f for f in settings.get("watch_folders") or [] if isinstance(f, dict) and f.get("folder")]
     if not got and settings.get("watch_folder"):
         got = [{"folder": settings.get("watch_folder"), "computer": settings.get("watch_computer") or ""}]
-    return [{"folder": f["folder"], "computer": f.get("computer") or "", "only": f.get("only") or ""} for f in got]
+    out: dict[str, dict] = {}
+    for f in got:           # one of each kind (a list of any, as on 2026-11-13 for a day: the first of each)
+        only = f.get("only") or ""
+        if only in ONLY and only not in out:
+            out[only] = {"folder": f["folder"], "computer": f.get("computer") or "", "only": only}
+    return [out[k] for k in ONLY if k in out]
 
 
 def set_folders(fs: list[dict]):
-    """The watch folders, the first in watch_folder and watch_computer too (what older apps' admin pages read)."""
-    first = fs[0] if fs else {"folder": "", "computer": ""}
-    settings.set_many({"watch_folders": fs, "watch_folder": first["folder"], "watch_computer": first["computer"]})
+    """The watch folders, the usual one first, and it in watch_folder and watch_computer too (what older apps'
+    admin pages read; the one for Bandcamp alone they don't know)."""
+    fs = sorted(fs, key=lambda f: ONLY.index(f["only"]))
+    usual = next((f for f in fs if not f["only"]), {"folder": "", "computer": ""})
+    settings.set_many({"watch_folders": fs, "watch_folder": usual["folder"], "watch_computer": usual["computer"]})
 
 
 def _peer_id(computer: str) -> int | None:
@@ -269,10 +277,10 @@ def key_of(f: dict) -> str:
 
 
 def place(key: str = "") -> Place | None:
-    """The watch folder with that key (the first, without one), or None: none set, or its computer isn't
+    """The watch folder with that key (the usual one, without one), or None: none set, or its computer isn't
     connected."""
     fs = folders()
-    f = next((f for f in fs if key_of(f) == key), None) if key else (fs[0] if fs else None)
+    f = next((f for f in fs if (key_of(f) == key if key else not f["only"])), None)
     if f is None:
         return None
     if f["computer"]:
@@ -493,7 +501,8 @@ def import_watched(ctx: jobs.JobContext, name: str, key: str, held: str = "", ho
             out["vgm_folder"] = _file_chips(ctx, chips, folder, name)
         if music_paths:
             albums = _albums_in(folder, music_paths)
-            only = where.only == "bandcamp"         # a Bandcamp-only folder: no MusicBrainz, beets' either
+            only = where.only == "bandcamp"         # a Bandcamp-only folder: no MusicBrainz, beets' either; its genre
+                                                    # Bandcamp's tags' alone
             bandcamp, tags = set(), {}              # Bandcamp's albums; each album's Bandcamp tags, by its folder
 
             def look_up(songs: list[dict], at: Path) -> tuple[str, str, dict | None]:
@@ -511,7 +520,7 @@ def import_watched(ctx: jobs.JobContext, name: str, key: str, held: str = "", ho
                 source, ref, _d = look_up(_album(albums[0][1]), albums[0][0])
                 out.update(importer.file_music(ctx, folder, batch, autotag=False if source == "bandcamp" or only else None,
                                                search_id=ref if source == "musicbrainz" else "", duplicate=duplicate,
-                                               bandcamp_tags=tags))
+                                               bandcamp_tags=tags, bandcamp_only=only))
             else:
                 # several albums (an artist's, say): each looked up by itself; beets then matches each one with
                 # MusicBrainz in one go, and keeps Bandcamp's names for those only Bandcamp has
@@ -519,7 +528,7 @@ def import_watched(ctx: jobs.JobContext, name: str, key: str, held: str = "", ho
                 for where_, paths in albums:
                     look_up(_album(paths), where_)
                 out.update(importer.file_music(ctx, folder, batch, autotag=False if only else None, duplicate=duplicate,
-                                               bandcamp_tags=tags))
+                                               bandcamp_tags=tags, bandcamp_only=only))
             enrich.keep_bandcamp_tags(out.get("albums") or [])
             # each album as it was filed: matched with MusicBrainz (beets says which release), Bandcamp, or neither
             for a in out.get("albums") or []:
@@ -654,7 +663,7 @@ def _look(files) -> tuple:
 
 def check(now: bool = False, key: str = "") -> dict:
     """One look in each watch folder (with `key`, in that one): albums that stayed as they were for SETTLE are
-    taken. `now` (Transfer now, in one folder: the first without `key`): at once, each album that stays as it is
+    taken. `now` (Transfer now, in one folder: the usual one without `key`): at once, each album that stays as it is
     between two looks NOW_LOOK apart (one still being copied in waits). Says which were taken and which wait."""
     with _checking:
         fs = folders()
@@ -664,7 +673,8 @@ def check(now: bool = False, key: str = "") -> dict:
                 _seen.pop(k, None)
                 _states.pop(k, None)
         if now:
-            keys = [k for k in keys if k == (key or keys[0])] if keys else []
+            usual = next((key_of(f) for f in fs if not f["only"]), "")
+            keys = [k for k in keys if k == (key or usual)]
             if not keys:
                 raise RuntimeError("no watch folder is set")
         elif key:
@@ -718,10 +728,9 @@ def _check_one(key: str, now: bool) -> dict:
 
 
 def state(key: str = "") -> dict:
-    """How a watch folder stands (the first, without `key`): {checked, error, waiting}."""
+    """How a watch folder stands (the usual one, without `key`): {checked, error, waiting}."""
     if not key:
-        fs = folders()
-        key = key_of(fs[0]) if fs else ""
+        key = next((key_of(f) for f in folders() if not f["only"]), "")
     return dict(_states.get(key) or {"checked": 0.0, "error": "", "waiting": []})
 
 

@@ -169,7 +169,11 @@ shared with the others on your server if you like.
   "hip hop"), and sort tags that aren't genres into categories (a country, a
   mood…), shown on a row of their own on the artist's page or not at all.
   The tags as they came are kept, so later lookups follow the rules and each
-  one can be taken back.
+  one can be taken back. A general rule (on unless you turn it off) takes place
+  names off every artist: countries, cities, regions and nationalities
+  ("finland", "DE", "U.S.A", "british"), whole tags only ("finnish metal"
+  stays); one you add to an artist yourself stays. The list is
+  `backend/muzix/places_data.py`, written by `scripts/places.py`.
 - **Upload area**: drop files or whole folders in the browser. Music is matched
   with MusicBrainz (beets), gets cover art and a main genre, and is filed as
   `Genre/Artist/Artist - Year - Album/1. Artist - Album - Title (Year).ext`.
@@ -183,10 +187,11 @@ shared with the others on your server if you like.
   counts when its songs are as many and as long, and else on Bandcamp, whose
   track list and cover then go into the files; one neither has is filed as its
   tags say and listed for a look. Its main genre goes by Bandcamp's genre and
-  tags too (looked up there also when MusicBrainz matched it), and an artist
-  MusicBrainz has no genre tags for gets Bandcamp's. There can be more than one
-  watch folder, each matched with MusicBrainz then Bandcamp or with Bandcamp
-  alone (two on one computer: Muzix Desktop 0.4.24 or later). An album is taken two minutes after its last
+  tags too (looked up there also when MusicBrainz matched it; what Bandcamp
+  tags psytrance is Psytrance), and an artist MusicBrainz has no genre tags for
+  gets Bandcamp's. A second watch folder is for Bandcamp alone: its albums are
+  matched there only, and their names, cover and main genre are Bandcamp's
+  (both on one computer: Muzix Desktop 0.4.24 or later). An album is taken two minutes after its last
   file arrived (the folder is looked at every minute), or at once with
   *Transfer now* (but one still being copied in). On the server, what isn't
   music goes to `_Done/<album>`. One that couldn't be filed goes to

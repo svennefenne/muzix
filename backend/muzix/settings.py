@@ -40,6 +40,12 @@ SCHEMA: list[Spec] = [
          "Where detailed genres (\"death metal\", \"goa trance\") come from. They pick the genre skin.",
          choices=["musicbrainz", "lastfm", "off"]),
     Spec("lastfm_api_key", "secret", "", "Library", "Last.fm API key"),
+    # Admin → Tags' general rules (tagging.py): set on its page, not in the settings form
+    Spec("tags_drop_places", "bool", True, "Tags", "Place names off",
+         "Countries, cities, regions and nationalities (\"finland\", \"DE\", \"U.S.A\", \"british\") taken off "
+         "every artist's genre tags, but one an admin added to an artist."),
+    Spec("tag_rules_applied", "str", "", "Tags", "General tag rules applied",
+         "Which general rules every artist's tags were last worked out with (tagging.RULES_VERSION)."),
     Spec("lyrics_online", "bool", True, "Library", "Look up lyrics online",
          "Songs without lyrics of their own (an .lrc file beside them, or lyrics in their tags) get "
          "them from LRCLIB (lrclib.net), a free, open lyrics database. It's sent the artist, title, "

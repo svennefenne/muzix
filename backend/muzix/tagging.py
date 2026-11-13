@@ -1,16 +1,18 @@
 """The admin's say over the artists' genre tags (Admin → Tags). What Last.fm, MusicBrainz or a
 linked server gave an artist stays as it came (Artist.source_tags); what everyone sees is that after
-the admin's rules (TagRule: tags removed, renamed or merged into another, put in a category) and the
-artist's own edits (tags added to it or taken off it alone): Artist.tags for its genres, everywhere
-they were before, and Artist.other_tags for categories shown on a row of their own. Rules change
-nothing that came, so each one can be taken back."""
+the admin's rules (TagRule: tags removed, renamed or merged into another, put in a category; the
+general one taking place names off, places.py) and the artist's own edits (tags added to it or taken
+off it alone): Artist.tags for its genres, everywhere they were before, and Artist.other_tags for
+categories shown on a row of their own. Rules change nothing that came, so each one can be taken back."""
 
 from collections import Counter, defaultdict
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
+from . import settings
 from .models import Artist, TagCategory, TagRule
+from .places import is_place
 
 SHOWS = ("genre", "apart", "hidden")     # a category's tags: among the genres, on a row of their own, nowhere
 
@@ -21,6 +23,16 @@ class Rules:
     def __init__(self, s: Session):
         self.rules = {r.key: (r.removed, r.to, r.category_id) for r in s.scalars(select(TagRule))}
         self.shows = dict(s.execute(select(TagCategory.id, TagCategory.show)).all())
+        self.places = bool(settings.get("tags_drop_places"))     # the general rule: place names off
+
+    def place(self, name: str, mine: bool = False) -> bool:
+        """Whether the general rule takes the tag off: a place name the admin didn't add to the artist."""
+        return self.places and not mine and is_place(name)
+
+    def dropped(self, name: str, mine: bool = False) -> bool:
+        """Whether a tag (after its renames) is off: removed everywhere, or a place name."""
+        n = self.resolve(name)
+        return n is None or self.place(n, mine)
 
     def resolve(self, name: str, removed: bool = True) -> str | None:
         """What a tag is called after the renames, or None when it's removed (unless `removed` is
@@ -65,7 +77,7 @@ def names(source: list, edits: dict | None, rules: Rules, removed: bool = True) 
     out: dict[str, list] = {}
     for name, weight, mine in [(n, top, True) for n in edits.get("add", [])] + [(t, w or 0, False) for t, w in source]:
         n = rules.resolve(str(name), removed)
-        if not n or (not mine and n.casefold() in off):
+        if not n or (not mine and n.casefold() in off) or (removed and rules.place(n, mine)):
             continue
         k = n.casefold()
         if k in out:
@@ -107,6 +119,20 @@ def apply_all(s: Session) -> int:
     return len(changes)
 
 
+RULES_VERSION = "places-1"      # raised when a general rule comes: every artist's tags again, once
+
+
+def catch_up():
+    """At start: every artist's tags worked out again once after the general rules changed (place names off,
+    2026-11-13), so the tags looked up before follow them too."""
+    if settings.get("tag_rules_applied") == RULES_VERSION:
+        return
+    from . import db
+    with db.session() as s:
+        apply_all(s)
+    settings.set_many({"tag_rules_applied": RULES_VERSION})
+
+
 def genres(s: Session, tags: list) -> list[str]:
     """Tags looked up for an artist outside the library, as its genres would show."""
     rules = Rules(s)
@@ -133,17 +159,21 @@ def overview(s: Session) -> dict:
     """Every tag the artists carry, how many carry it and what the rules say of it; the removed
     ones, and the categories."""
     rules = Rules(s)
-    count, added, removed, spelled = Counter(), Counter(), Counter(), {}
+    count, added, removed, places, spelled = Counter(), Counter(), Counter(), Counter(), {}
     tagged = 0
     for source, edits, tags in s.execute(select(Artist.source_tags, Artist.tag_edits, Artist.tags)):
         src = source if source is not None else (tags or [])
         have = names(src, edits, rules, removed=False)
-        tagged += any(rules.resolve(n) for n, _, _ in have)
+        tagged += any(not rules.dropped(n, mine) for n, _, mine in have)
         for n, _, mine in have:
             k = n.casefold()
             spelled.setdefault(k, n)
             if rules.resolve(n) is None:
                 removed[k] += 1
+            elif rules.place(n, mine) or (not rules.places and not mine and is_place(n)):
+                places[k] += 1
+                if not rules.places:            # the rule off: shown as any tag, and listed with what it would take
+                    count[k] += 1
             else:
                 count[k] += 1
                 added[k] += mine
@@ -162,6 +192,9 @@ def overview(s: Session) -> dict:
                            for k, (gone, _, _) in rules.rules.items() if gone),
                           key=lambda r: (-r["artists"], r["name"].casefold())),
         "categories": [{"id": c.id, "name": c.name, "show": c.show, "tags": in_cat[c.id]} for c in cats],
+        # the general rule: place names off (on), and those it takes (or would take) off how many artists
+        "places": {"on": rules.places, "tags": [{"name": spelled[k], "artists": n}
+                                                for k, n in sorted(places.items(), key=lambda kv: (-kv[1], kv[0]))]},
     }
 
 

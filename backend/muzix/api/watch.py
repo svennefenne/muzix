@@ -53,13 +53,14 @@ def _folder(db: Session, f: dict) -> dict:
 
 @router.get("")
 def get_watch(db: Session = Depends(get_db)):
-    """Every watch folder ("folders"), the first one's fields at the top too (as older apps' admin pages read
-    them), and the latest filed from them."""
+    """The watch folders ("folders": the usual one and the one for Bandcamp alone), the usual one's fields at the
+    top too (as older apps' admin pages read them), and the latest filed from them."""
     computers = [{"id": p.server_id, "name": p.name, "online": tunnel.connected(p.id)}
                  for p in db.scalars(select(Peer).where(Peer.kind == "computer", Peer.sent.is_(True), Peer.received.is_(True)))]
     folders = [_folder(db, f) for f in watch.folders()]
-    first = folders[0] if folders else {"folder": "", "computer": "", "reachable": False, "state": watch.state(),
-                                        "held": {"_Duplicates": [], "_Failed": []}, "why": {}, "trash": "trash"}
+    first = next((f for f in folders if not f["only"]), None) or {
+        "folder": "", "computer": "", "reachable": False, "state": watch.state(),
+        "held": {"_Duplicates": [], "_Failed": []}, "why": {}, "trash": "trash"}
     return {**{k: first[k] for k in ("folder", "computer", "reachable", "state", "held", "why", "trash")},
             "computers": computers, "folders": folders, "recent": _recent(db)}
 
@@ -106,8 +107,8 @@ def _recent(db: Session) -> list[dict]:
 class WatchBody(BaseModel):
     folder: str = ""        # "": that watch folder no longer watched
     computer: str = ""      # a computer's id, or "" for a folder on this server
-    only: str = ""          # watch.ONLY: "bandcamp" for albums matched with Bandcamp alone
-    at: int = 0             # which watch folder (one past the last: another one)
+    only: str = ""          # which one (watch.ONLY): "" the usual one, "bandcamp" the one Bandcamp alone matches and tags
+    at: int = 0             # (Muzix Desktop 0.4.24's admin page: which one in a list; `only` says it now)
 
 
 def _let(db: Session, computer: str, path: str, was: str = "", alone: bool = True):
@@ -131,34 +132,30 @@ def _let(db: Session, computer: str, path: str, was: str = "", alone: bool = Tru
 
 @router.put("")
 def set_watch(body: WatchBody, db: Session = Depends(get_db)):
-    """A watch folder set (`at`: which; one past the last adds one), its way of matching changed, or (no
+    """The usual watch folder, or (`only`) the one for Bandcamp alone, set in place of the one there was, or (no
     folder) no longer watched."""
-    fs = watch.folders()
-    at = max(0, min(body.at, len(fs)))
-    old = fs[at] if at < len(fs) else None
-    folder = body.folder.strip()
     if body.only not in watch.ONLY:
         raise HTTPException(400, "Not a way to match a folder's albums")
+    fs = watch.folders()
+    old = next((f for f in fs if f["only"] == body.only), None)
+    others = [f for f in fs if f is not old]
+    folder = body.folder.strip()
     if not folder:
-        if old is None:
-            return get_watch(db)
-        fs.pop(at)
-        if old["computer"]:
-            try:
-                _let(db, old["computer"], "", was=old["folder"])
-            except HTTPException:
-                pass            # the computer's off: it keeps letting this server watch it until told otherwise
-        watch.set_folders(fs)
+        if old is not None:
+            if old["computer"]:
+                try:
+                    _let(db, old["computer"], "", was=old["folder"])
+                except HTTPException:
+                    pass        # the computer's off: it keeps letting this server watch it until told otherwise
+            watch.set_folders(others)
         return get_watch(db)
+    if any(f["folder"] == folder and f["computer"] == body.computer for f in others):
+        raise HTTPException(400, "The other watch folder is that folder")
     new = {"folder": folder, "computer": body.computer, "only": body.only}
-    if any(i != at and f["folder"] == folder and f["computer"] == body.computer for i, f in enumerate(fs)):
-        raise HTTPException(400, "That folder is watched already")
-    same = old is not None and old["folder"] == folder and old["computer"] == body.computer
-    if not same:
+    if old is None or (old["folder"], old["computer"]) != (folder, body.computer):
         if body.computer:
-            others = [f for i, f in enumerate(fs) if i != at and f["computer"] == body.computer]
             _let(db, body.computer, folder, was=old["folder"] if old and old["computer"] == body.computer else "",
-                 alone=not others)
+                 alone=not any(f["computer"] == body.computer for f in others))
         elif not (os.path.isdir(folder) and os.access(folder, os.W_OK)):
             raise HTTPException(400, "Muzix can't write to that folder (its albums are moved out of it)")
         if old and old["computer"] and old["computer"] != body.computer:
@@ -166,11 +163,7 @@ def set_watch(body: WatchBody, db: Session = Depends(get_db)):
                 _let(db, old["computer"], "", was=old["folder"])
             except HTTPException:
                 pass
-    if old is None:
-        fs.append(new)
-    else:
-        fs[at] = new
-    watch.set_folders(fs)
+    watch.set_folders(others + [new])
     return get_watch(db)
 
 

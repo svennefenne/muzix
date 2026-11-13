@@ -17,6 +17,7 @@ export interface TagOverview {
   tags: { name: string; artists: number; added: number; category: number | null; aliases: string[] }[];
   removed: { name: string; artists: number }[];
   categories: { id: number; name: string; show: "genre" | "apart" | "hidden"; tags: number }[];
+  places?: { on: boolean; tags: { name: string; artists: number }[] };   // the general rule: place names off
 }
 
 export function useTagOverview() {

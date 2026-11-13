@@ -9,7 +9,7 @@ import { Link } from "react-router-dom";
 import { api, fmtNumber } from "../../api";
 import { refreshAll, useAdminDialogs } from "../../components/AdminMode";
 import { useTagOverview, type TagOverview } from "../../components/TagEditor";
-import { Empty, Loading, Modal } from "../../components/ui";
+import { Empty, Loading, Modal, Switch } from "../../components/ui";
 import { useUi } from "../../store/ui";
 import type { Artist } from "../../types";
 
@@ -131,6 +131,7 @@ export function Tags() {
       </section>
 
       <Categories d={d} onShow={(id) => { setOnly(id); setShown(PAGE); }} />
+      <Places d={d} />
       <Removed d={d} />
 
       {merging && <MergeDialog names={merging} d={d} onClose={() => setMerging(null)} onDone={done} />}
@@ -280,6 +281,37 @@ function Categories({ d, onShow }: { d: TagOverview; onShow: (id: number) => voi
         <input className="input" style={{ maxWidth: 280 }} value={name} onChange={(e) => setName(e.target.value)} placeholder="A new category…" maxLength={64} aria-label="New category" />
         <button className="btn" disabled={!name.trim()}><Plus size={15} /> Add category</button>
       </form>
+    </section>
+  );
+}
+
+/** The general rule: countries, cities, regions and nationalities ("finland", "DE", "U.S.A", "british") off every
+ * artist's tags (whole tags only: "finnish metal" stays), but one an admin added to an artist. */
+function Places({ d }: { d: TagOverview }) {
+  const [open, setOpen] = useState(false);
+  const p = d.places;
+  if (!p) return null;
+  const n = p.tags.reduce((sum, t) => sum + t.artists, 0);
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div className="h3">Place names</div>
+        <Switch checked={p.on} label="Take place names off"
+                onChange={(on) => act("/api/admin/tags/places", { on }, on ? "Place names are taken off" : "Place names are back")} />
+      </div>
+      <p className="dim" style={{ marginTop: 0 }}>
+        Countries, cities, regions and nationalities, such as finland, DE, U.S.A or british, {p.on ? "are taken off" : "can be taken off"} every
+        artist's tags, and kept off when the artists are looked up again. Only whole tags: finnish metal stays. One you add to an artist
+        yourself stays too.
+      </p>
+      {p.tags.length > 0 && (
+        <>
+          <button className="dim watch-why" onClick={() => setOpen(!open)} aria-expanded={open}>
+            {p.on ? "Taken off" : "Would take off"} {plural(p.tags.length, "tag")}, {plural(n, "time")} <ChevronDown size={14} className={open ? "flip" : ""} />
+          </button>
+          {open && <p className="faint" style={{ marginBottom: 0 }}>{p.tags.map((t) => `${t.name} (${fmtNumber(t.artists)})`).join(", ")}</p>}
+        </>
+      )}
     </section>
   );
 }

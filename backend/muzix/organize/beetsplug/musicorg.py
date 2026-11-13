@@ -535,6 +535,8 @@ class MusicOrgPlugin(BeetsPlugin):
             # {"album's folder as it came": [Bandcamp's tags, its genre first]} (written by Muzix's watch
             # folder, which looks each album up on Bandcamp too)
             "bandcamp_tags": "",
+            # the albums are from the watch folder for Bandcamp alone: Bandcamp's tags are their genre's only say
+            "bandcamp_only": False,
             # albums titled "... (Original Soundtrack)", "OST" or "Original Score": "nogenre" =
             # Soundtrack when nothing else matched, "always" = Soundtrack even if the artist's
             # other albums live in another genre folder
@@ -764,66 +766,70 @@ class MusicOrgPlugin(BeetsPlugin):
             if shares:
                 evidence.append(f"{source}:{tag}={weight:.0f}")
 
-        # 1. original file genre tags
-        file_genres = Counter()
-        for it in items:
-            for g in set(nkey(x) for x in split_genre_string(it.get("mo_orig_genre", ""))):
-                file_genres[g] += 1
-        for g, n in file_genres.items():
-            w = 35.0 * n / len(items)
-            if g == "blues":  # ID3v1 genre 0: often a bogus default
-                w *= 0.3
-            add(g, w, "file")
+        # the Bandcamp-only watch folder (bandcamp_only): Bandcamp's tags alone say the genre
+        only = self.config["bandcamp_only"].get(bool)
+        if not only:
+            # 1. original file genre tags
+            file_genres = Counter()
+            for it in items:
+                for g in set(nkey(x) for x in split_genre_string(it.get("mo_orig_genre", ""))):
+                    file_genres[g] += 1
+            for g, n in file_genres.items():
+                w = 35.0 * n / len(items)
+                if g == "blues":  # ID3v1 genre 0: often a bogus default
+                    w *= 0.3
+                add(g, w, "file")
 
-        # 2. MusicBrainz genres (only present on matched albums)
-        if album.mb_albumid:
-            # kept aside: mplan later replaces the genres tag with the main genre
-            mbg = json.loads(album.get("mo_mb_genres") or "null")
-            if mbg is None:
-                mbg = []
-                for it in items:
-                    cur = "; ".join(it.genres or [])
-                    if cur and cur != it.get("mo_orig_genre", ""):
-                        mbg = list(it.genres)
-                        break
-                album["mo_mb_genres"] = json.dumps(mbg)
-            for w, g in zip((60, 45, 35, 25, 20), mbg):
-                add(g, w, "mb")
-            if "soundtrack" in (album.albumtypes or []):
-                scores[OST] += 80
-                evidence.append("mb:type=soundtrack")
+            # 2. MusicBrainz genres (only present on matched albums)
+            if album.mb_albumid:
+                # kept aside: mplan later replaces the genres tag with the main genre
+                mbg = json.loads(album.get("mo_mb_genres") or "null")
+                if mbg is None:
+                    mbg = []
+                    for it in items:
+                        cur = "; ".join(it.genres or [])
+                        if cur and cur != it.get("mo_orig_genre", ""):
+                            mbg = list(it.genres)
+                            break
+                    album["mo_mb_genres"] = json.dumps(mbg)
+                for w, g in zip((60, 45, 35, 25, 20), mbg):
+                    add(g, w, "mb")
+                if "soundtrack" in (album.albumtypes or []):
+                    scores[OST] += 80
+                    evidence.append("mb:type=soundtrack")
 
         # 2b. Bandcamp's tags: its genre (the artist's pick, first) weighs as MusicBrainz's first, the free
         # tags after it a little each
         for i, tag in enumerate(self._bandcamp_tags(items)):
             add(tag, 60.0 if i == 0 else 15.0, "bc", picked=i == 0)
 
-        # 3. Last.fm album + artist tags
-        aa = album.albumartist
-        is_va = album.comp or nkey(aa) in ("various artists", "va", "various")
-        for name, w in lastfm.album(aa if not is_va else "Various Artists",
-                                    album.album)[:15]:
-            if w >= 10:
-                add(name, w * 1.0, "lfm-album")
-        if not is_va:
-            for name, w in lastfm.artist(aa)[:15]:
+        if not only:
+            # 3. Last.fm album + artist tags
+            aa = album.albumartist
+            is_va = album.comp or nkey(aa) in ("various artists", "va", "various")
+            for name, w in lastfm.album(aa if not is_va else "Various Artists",
+                                        album.album)[:15]:
                 if w >= 10:
-                    add(name, w * 0.6, "lfm-artist")
-        else:
-            artists = Counter(it.artist for it in items if present(it.artist))
-            chosen = [a for a, _ in artists.most_common(12)]
-            for a in chosen:
-                for name, w in lastfm.artist(a)[:10]:
+                    add(name, w * 1.0, "lfm-album")
+            if not is_va:
+                for name, w in lastfm.artist(aa)[:15]:
                     if w >= 10:
-                        add(name, w * 0.6 / len(chosen), "lfm-va")
+                        add(name, w * 0.6, "lfm-artist")
+            else:
+                artists = Counter(it.artist for it in items if present(it.artist))
+                chosen = [a for a, _ in artists.most_common(12)]
+                for a in chosen:
+                    for name, w in lastfm.artist(a)[:10]:
+                        if w >= 10:
+                            add(name, w * 0.6 / len(chosen), "lfm-va")
 
-        # 4. folder names (parent folders weigh more: often hand-made categories)
-        root = os.fsdecode(config["directory"].as_filename()).rstrip("/")
-        orig = items[0].get("mo_orig_path", os.fsdecode(items[0].path))
-        rel = os.path.relpath(os.path.dirname(orig), root)
-        parts = [] if rel == "." else rel.split(os.sep)
-        for i, part in enumerate(parts):
-            add(part, 10.0 if i == len(parts) - 1 else 25.0, "dir")
+            # 4. folder names (parent folders weigh more: often hand-made categories)
+            root = os.fsdecode(config["directory"].as_filename()).rstrip("/")
+            orig = items[0].get("mo_orig_path", os.fsdecode(items[0].path))
+            rel = os.path.relpath(os.path.dirname(orig), root)
+            parts = [] if rel == "." else rel.split(os.sep)
+            for i, part in enumerate(parts):
+                add(part, 10.0 if i == len(parts) - 1 else 25.0, "dir")
 
         for cands, w in ambiguous:
             best = max(cands, key=lambda g: scores[g])
@@ -833,7 +839,8 @@ class MusicOrgPlugin(BeetsPlugin):
 
     def main_genre(self, album, lastfm, min_score=30.0):
         """(genre, decided, scores, evidence): the best scoring genre, Psytrance rather than Electronic once it
-        has a solid share, and Psytrance whatever the scores when Bandcamp tags the album psytrance (decided)."""
+        has a solid share, and Psytrance whatever the scores when Bandcamp tags the album psytrance; decided (the
+        artist's other albums don't move it) then, and for the Bandcamp-only folder's albums Bandcamp has."""
         scores, evidence = self.score_album(album, lastfm)
         ranked = scores.most_common()
         best = ranked[0] if ranked else (None, 0)
@@ -842,11 +849,13 @@ class MusicOrgPlugin(BeetsPlugin):
         # share, the umbrella genre should not outvote it
         if genre == ELEC and scores[PSY] >= max(min_score, 0.5 * scores[ELEC]):
             genre = PSY
-        decided = any(PSY_TAG.search(t) for t in self._bandcamp_tags(list(album.items())))
-        if decided:
+        tags = self._bandcamp_tags(list(album.items()))
+        if any(PSY_TAG.search(t) for t in tags):
             genre = PSY
             evidence.append("bc:psytrance decides")
-        return genre, decided, scores, evidence
+            return genre, True, scores, evidence
+        # from the Bandcamp-only folder: what its tags say stays, wherever the artist's other albums are
+        return genre, bool(tags and genre and self.config["bandcamp_only"].get(bool)), scores, evidence
 
     def cmd_mgenre(self, lib, opts, args):
         lastfm = LastFmTags(os.path.expanduser(self.config["lastfm_cache"].get(str)),

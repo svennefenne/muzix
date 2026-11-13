@@ -91,3 +91,22 @@ def test_what_bandcamp_tags_psytrance_is_psytrance(plugin, tmp_path, tags, lastf
     got, decided, _scores, evidence = plugin.main_genre(album, lastfm)
     assert got == genre and decided == (genre == "Psytrance")
     assert ("bc:psytrance decides" in evidence) == decided
+
+
+def test_from_the_bandcamp_only_folder_bandcamps_tags_alone_say_the_genre(plugin, tmp_path):
+    """Its albums' genre from Bandcamp's tags alone: not Last.fm's, MusicBrainz's or the files' own, and it stays
+    so whatever folder the artist's other albums are in (decided)."""
+    (tmp_path / "bc.json").write_text(json.dumps({"/up/b/bc/album": ["Electronic", "darksynth", "dungeon synth"]}))
+    config["musicorg"]["bandcamp_tags"] = str(tmp_path / "bc.json")
+    config["musicorg"]["bandcamp_only"] = True
+    try:
+        album = Album([Item("/up/b/bc/album/1. Song.mp3")])
+        album["mo_mb_genres"] = json.dumps(["hard rock"])
+        album._items[0]["mo_orig_genre"] = "Rock"
+        got, decided, scores, evidence = plugin.main_genre(album, Rock())
+        assert got == "Electronic" and decided and set(scores) == {"Electronic"}
+        assert all(e.startswith("bc:") for e in evidence)
+        nothing = Album([Item("/up/b/bc/elsewhere/1. Song.mp3")])         # Bandcamp hadn't it: no genre of its own
+        assert plugin.main_genre(nothing, Rock())[:2] == ("", False)
+    finally:
+        config["musicorg"]["bandcamp_only"] = False

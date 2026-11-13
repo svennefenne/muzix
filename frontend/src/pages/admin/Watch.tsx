@@ -2,7 +2,7 @@
  * Muzix Desktop lets this server pick one there, are filed into the library by themselves. */
 
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, Folder, FolderOpen, Laptop, MoreHorizontal, Plus, Send, Server } from "lucide-react";
+import { ChevronDown, Folder, FolderOpen, Laptop, MoreHorizontal, Send, Server } from "lucide-react";
 import { useState } from "react";
 import { ago, api } from "../../api";
 import { Segmented } from "../../components/Browse";
@@ -31,9 +31,8 @@ interface Watched {
   }[];
 }
 
-type Only = "" | "bandcamp";
-
-const MATCHING: { value: Only; label: string }[] = [{ value: "", label: "MusicBrainz, then Bandcamp" }, { value: "bandcamp", label: "Bandcamp only" }];
+type Only = "" | "bandcamp";      // the usual watch folder, or the one Bandcamp alone matches and tags
+const KINDS: Only[] = ["", "bandcamp"];
 
 interface Why {
   songs: number;                          // of how many (0: set aside before this was kept)
@@ -58,35 +57,29 @@ function matched(albums: Watched["recent"][number]["albums"], match: string) {
 export function WatchFolder() {
   const notify = useUi((s) => s.notify);
   const q = useQuery({ queryKey: ["watch"], queryFn: () => api.get<Watched>("/api/admin/watch"), refetchInterval: 10_000 });
-  const [picking, setPicking] = useState<{ at: number; only: Only; computer: string } | null>(null);
+  const [picking, setPicking] = useState<{ only: Only; computer: string } | null>(null);
   const w = q.data;
   if (!w) return null;
-  const set = async (at: number, folder: string, computer: string, only: Only) => {
+  const set = async (only: Only, folder: string, computer: string) => {
     try {
-      await api.put("/api/admin/watch", { folder, computer, only, at });
+      await api.put("/api/admin/watch", { folder, computer, only });
       setPicking(null);
       q.refetch();
     } catch (e) {
       notify((e as Error).message, "error");
     }
   };
-  const folders = w.folders.length ? w.folders : [null];
-  const bandcampOnly = w.folders.some((f) => f.only === "bandcamp");
 
   return (
     <>
-      {folders.map((f, at) => (
-        <WatchCard key={f?.key ?? "none"} f={f} at={at} computers={w.computers} refetch={() => q.refetch()}
-                   onPick={() => setPicking({ at, only: f?.only ?? "", computer: f?.computer ?? "" })}
-                   onSet={(folder, computer, only) => set(at, folder, computer, only)} />
-      ))}
-      {w.folders.length > 0 && (
-        <div className="row-actions watch-more">
-          <button className="btn ghost" onClick={() => setPicking({ at: w.folders.length, only: bandcampOnly ? "" : "bandcamp", computer: w.folders[0].computer })}>
-            <Plus size={15} /> Another watch folder
-          </button>
-        </div>
-      )}
+      {KINDS.map((only) => {
+        const f = w.folders.find((x) => x.only === only) ?? null;
+        return (
+          <WatchCard key={only || "usual"} f={f} only={only} computers={w.computers} refetch={() => q.refetch()}
+                     onPick={() => setPicking({ only, computer: f?.computer ?? w.folders[0]?.computer ?? "" })}
+                     onOff={() => set(only, "", "")} />
+        );
+      })}
       {w.recent.length > 0 && (
         <section className="panel watch">
           <details className="watch-recent" open>
@@ -113,17 +106,16 @@ export function WatchFolder() {
           </details>
         </section>
       )}
-      {picking && <WatchPicker computers={w.computers} start={picking.computer} only={picking.only} adding={picking.at >= w.folders.length && w.folders.length > 0}
-                               onPick={(folder, computer, only) => set(picking.at, folder, computer, only)} onClose={() => setPicking(null)} />}
+      {picking && <WatchPicker computers={w.computers} start={picking.computer} only={picking.only}
+                               onPick={(folder, computer) => set(picking.only, folder, computer)} onClose={() => setPicking(null)} />}
     </>
   );
 }
 
-/** One watch folder (none yet: how to set one): where it is, how its albums are matched, how it stands, and its
- * albums set aside, with what can be done with them. */
-function WatchCard({ f, at, computers, refetch, onPick, onSet }: {
-  f: Folder | null; at: number; computers: Watched["computers"]; refetch: () => void;
-  onPick: () => void; onSet: (folder: string, computer: string, only: Only) => void;
+/** The usual watch folder, or the one Bandcamp alone matches and tags (none yet: how to set it): where it is,
+ * how it stands, and its albums set aside, with what can be done with them. */
+function WatchCard({ f, only, computers, refetch, onPick, onOff }: {
+  f: Folder | null; only: Only; computers: Watched["computers"]; refetch: () => void; onPick: () => void; onOff: () => void;
 }) {
   const notify = useUi((s) => s.notify);
   const [sending, setSending] = useState(false);
@@ -168,14 +160,15 @@ function WatchCard({ f, at, computers, refetch, onPick, onSet }: {
                 : "The folder can't be reached")
     : f.state.error ? `Couldn't look in it: ${f.state.error}`
     : f.state.checked ? `Looked in ${ago(new Date(f.state.checked * 1000).toISOString())}` : "Looked in every minute";
-  const bandcamp = f?.only === "bandcamp";
+  const bandcamp = only === "bandcamp";
 
   return (
     <section className="panel watch">
       <div className="panel-head">
         <div>
           <div className="kicker">Watch folder{bandcamp ? " · Bandcamp only" : ""}</div>
-          <div className="h3">{f ? "Albums put here are filed by themselves" : "Fill the library from a folder"}</div>
+          <div className="h3">{bandcamp ? "Albums put here are matched and tagged by Bandcamp alone"
+            : f ? "Albums put here are filed by themselves" : "Fill the library from a folder"}</div>
         </div>
         <div className="row-actions">
           {f?.reachable && (
@@ -185,7 +178,7 @@ function WatchCard({ f, at, computers, refetch, onPick, onSet }: {
             </button>
           )}
           <button className="btn" onClick={onPick}><FolderOpen size={15} /> {f ? "Another folder" : "Choose a folder"}</button>
-          {f && <button className="btn ghost" onClick={() => onSet("", "", "")}>Turn off</button>}
+          {f && <button className="btn ghost" onClick={onOff}>Turn off</button>}
         </div>
       </div>
       {f && (
@@ -196,21 +189,27 @@ function WatchCard({ f, at, computers, refetch, onPick, onSet }: {
             <div className={!f.reachable || f.state.error ? "error-text" : "dim"}>{looked}</div>
             {f.state.waiting.length > 0 && <div className="dim">Coming in: {f.state.waiting.join(", ")}</div>}
           </div>
-          <Segmented label="Matched with" value={f.only} options={MATCHING} onChange={(v) => v !== f.only && onSet(f.folder, f.computer, v as Only)} />
         </div>
       )}
-      {at === 0 && (
+      {bandcamp ? (
+        <p className="dim watch-about">
+          Each album is looked up on Bandcamp alone, where a release counts when its songs are as many and as long. Its names, cover
+          and main genre are Bandcamp's: its genre and tags say the genre, not MusicBrainz, Last.fm or the files' own, and it stays so
+          wherever the artist's other albums are. One Bandcamp doesn't have is filed as its tags say. Otherwise as the usual watch
+          folder: taken two minutes after its last file arrived or with Transfer now, duplicates to _Duplicates.
+        </p>
+      ) : (
         <p className="dim watch-about">
           Each album is looked up on MusicBrainz, where a release counts when its songs are as many and as long; when none does, on
-          Bandcamp (in a folder set to Bandcamp only, on Bandcamp alone). Its main genre goes by Bandcamp's genre and tags too, and
-          the artist's genre tags are Bandcamp's when MusicBrainz has none. It gets cover art, and is filed as Genre/Artist/Artist -
+          Bandcamp. Its main genre goes by Bandcamp's genre and tags too (what Bandcamp tags psytrance is Psytrance), and the artist's
+          genre tags are Bandcamp's when MusicBrainz has none. It gets cover art, and is filed as Genre/Artist/Artist -
           Year - Album, as uploads are. An album is taken two minutes after its last file arrived, or at once with Transfer now. An
           album at least half of whose songs the library seems to have already goes to _Duplicates (of a folder of albums, an
           artist's say, each album by itself: those the library has go to _Duplicates under the folder's name, the rest are filed),
           and one that couldn't be filed to _Failed.{computer
             ? ` On ${computer.name}, an album is deleted once the library has every song of it; one that isn't all filed goes to _Done.`
             : " What's left of an album (covers, .cue, .log) goes to _Done."} A folder on a computer: in Muzix Desktop there,
-          Settings → Servers → "May pick a folder here to watch" (0.4.24 and later for more than one).
+          Settings → Servers → "May pick a folder here to watch" (0.4.24 and later for both on one computer).
         </p>
       )}
       {f && (f.held._Duplicates.length > 0 || f.held._Failed.length > 0) && (
@@ -286,12 +285,11 @@ function Duplicate({ name, why, trash, computer, onFile, onThrowAway }: {
 }
 
 /** The folder to watch: on this server, or on a computer that's on and lets this server pick one. */
-function WatchPicker({ computers, start, only: startOnly, adding, onPick, onClose }: {
-  computers: Watched["computers"]; start: string; only: Only; adding: boolean;
-  onPick: (folder: string, computer: string, only: Only) => void; onClose: () => void;
+function WatchPicker({ computers, start, only, onPick, onClose }: {
+  computers: Watched["computers"]; start: string; only: Only;
+  onPick: (folder: string, computer: string) => void; onClose: () => void;
 }) {
   const [on, setOn] = useState(start);
-  const [only, setOnly] = useState<Only>(startOnly);
   const [path, setPath] = useState("");
   const q = useQuery({
     queryKey: ["watch-browse", on, path], retry: false,
@@ -302,9 +300,8 @@ function WatchPicker({ computers, start, only: startOnly, adding, onPick, onClos
   const here = q.data?.path ?? path;
   return (
     <Modal onClose={onClose}>
-      <div className="kicker">{adding ? "Another watch folder" : "Watch folder"}</div>
+      <div className="kicker">{only === "bandcamp" ? "Watch folder · Bandcamp only" : "Watch folder"}</div>
       {places.length > 1 && <Segmented label="Where" value={on} options={places} onChange={(v) => { setOn(v); setPath(""); }} />}
-      <Segmented label="Matched with" value={only} options={MATCHING} onChange={(v) => setOnly(v as Only)} />
       <div className="h2" style={{ margin: "12px 0 10px", wordBreak: "break-all" }}>{here || "…"}</div>
       {q.isError ? (
         <p className="error-text" style={{ marginBottom: 14 }}>
@@ -324,7 +321,7 @@ function WatchPicker({ computers, start, only: startOnly, adding, onPick, onClos
       )}
       <div className="row-actions" style={{ justifyContent: "flex-end" }}>
         <button className="btn ghost" onClick={onClose}>Cancel</button>
-        <button className="btn accent" disabled={!q.data} onClick={() => onPick(here, on, only)}>Watch this folder</button>
+        <button className="btn accent" disabled={!q.data} onClick={() => onPick(here, on)}>Watch this folder</button>
       </div>
     </Modal>
   );

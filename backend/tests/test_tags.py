@@ -175,3 +175,45 @@ def test_bandcamps_tags_are_an_artists_when_musicbrainz_has_none(monkeypatch):
     assert shown(ids[2])[0] == ["psytrance", "electronic", "progressive trance", "psychedelic trance", "downtempo"]
     with db.session() as s:
         assert dict(s.get(Artist, ids[0]).tags)["electronic"] == 2       # on both their albums
+
+
+def test_place_names_are_taken_off_everyone_unless_the_admin_put_one_there():
+    """The general rule: "finland", "DE", "U.S.A", "british"... off every artist's tags (whole tags only: "finnish
+    metal" stays), but one the admin added to an artist; turned off, they're back. Admin → Tags lists them."""
+    from muzix import settings
+    with db.session() as s:
+        a = Artist(name="ZQ Place Band", source_tags=[["british", 100], ["progressive rock", 80], ["UK", 60], ["U.S.A", 50],
+                                                       ["finnish metal", 40], ["Estados Unidos", 30]],
+                   tag_edits={"add": ["london"]})
+        s.add(a)
+        s.flush()
+        aid = a.id
+        tagging.apply(a, tagging.Rules(s))
+    assert settings.get("tags_drop_places") is True                     # on from the start
+    assert shown(aid)[0] == ["london", "progressive rock", "finnish metal"]
+    c = client()
+    places = {t["name"]: t["artists"] for t in c.get("/api/admin/tags").json()["places"]["tags"]}
+    assert places["british"] >= 1 and "london" not in places and "progressive rock" not in places
+    assert c.post("/api/admin/tags/places", json={"on": False}).json()["artists"] >= 1
+    try:
+        assert shown(aid)[0] == ["london", "british", "progressive rock", "UK", "U.S.A", "finnish metal", "Estados Unidos"]
+        assert c.get("/api/admin/tags").json()["places"]["on"] is False
+    finally:
+        c.post("/api/admin/tags/places", json={"on": True}).raise_for_status()
+    assert shown(aid)[0] == ["london", "progressive rock", "finnish metal"]
+
+
+def test_the_rules_are_applied_once_to_everyone_when_muzix_starts_after_they_change():
+    from muzix import settings
+    with db.session() as s:
+        a = Artist(name="ZQ Old Tags", source_tags=[["swedish", 100], ["death metal", 90]], tags=[["swedish", 100], ["death metal", 90]])
+        s.add(a)
+        s.flush()
+        aid = a.id
+    settings.set_many({"tag_rules_applied": ""})
+    tagging.catch_up()
+    assert shown(aid)[0] == ["death metal"] and settings.get("tag_rules_applied") == tagging.RULES_VERSION
+    with db.session() as s:
+        s.get(Artist, aid).tags = [["swedish", 100], ["death metal", 90]]
+    tagging.catch_up()                                                     # once: not again
+    assert shown(aid)[0] == ["swedish", "death metal"]

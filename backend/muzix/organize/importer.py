@@ -23,9 +23,11 @@ PLUGIN_DIR = Path(__file__).parent / "beetsplug"
 BEET = shutil.which("beet") or "beet"
 
 
-def beets_config(music_root: str, batch: str, autotag: bool | None = None, bandcamp_tags: str = "") -> str:
+def beets_config(music_root: str, batch: str, autotag: bool | None = None, bandcamp_tags: str = "",
+                 bandcamp_only: bool = False) -> str:
     """beets' settings for one import; `autotag` False: the files' tags as they are (matched already);
-    `bandcamp_tags`: a file of Bandcamp's tags for the albums, by their folders (musicorg's genres go by them)."""
+    `bandcamp_tags`: a file of Bandcamp's tags for the albums, by their folders (musicorg's genres go by them);
+    `bandcamp_only`: those tags alone (the watch folder for Bandcamp alone)."""
     cfg = {
         "directory": music_root,
         "library": str(env.BEETS_DIR / "library.db"),
@@ -52,7 +54,7 @@ def beets_config(music_root: str, batch: str, autotag: bool | None = None, bandc
         "musicorg": {"lastfm_cache": str(env.BEETS_DIR / "lastfm-cache.json"),
                      "overrides": str(env.DATA_DIR / "genre-overrides.yaml"),
                      "artist_genres": str(env.BEETS_DIR / "artist-genres.json"),
-                     "bandcamp_tags": bandcamp_tags,
+                     "bandcamp_tags": bandcamp_tags, "bandcamp_only": bandcamp_only,
                      # the owner's rule: soundtracks go to Soundtrack, whatever else the artist plays
                      "soundtrack_titles": "always"},
         "ui": {"color": False},
@@ -167,12 +169,13 @@ def import_upload(ctx: jobs.JobContext, batch: str):
 
 
 def file_music(ctx: jobs.JobContext, source, batch: str, autotag: bool | None = None, search_id: str = "",
-               duplicate: bool = False, bandcamp_tags: dict[str, list[str]] | None = None) -> dict:
+               duplicate: bool = False, bandcamp_tags: dict[str, list[str]] | None = None,
+               bandcamp_only: bool = False) -> dict:
     """The music in `source` matched with MusicBrainz (with `search_id`, as that release; with `autotag` False,
     as its tags have it), given a main genre and cover art, and moved into the music upload folder. `duplicate`:
     the library has it already, filed anyway: to Duplicates/<artist>/<album> (2), (3), ... as the library's own.
     `bandcamp_tags`: Bandcamp's tags of its albums, by the folders they're in (its genre first): the main genre
-    goes by them too, and each album filed says its own ("tags")."""
+    goes by them too (with `bandcamp_only`, by them alone), and each album filed says its own ("tags")."""
     out: dict = {}
     music_root = upload_root("music")
     if not music_root or not os.access(music_root, os.W_OK):
@@ -182,7 +185,7 @@ def file_music(ctx: jobs.JobContext, source, batch: str, autotag: bool | None = 
     if bandcamp_tags:
         bc_file = str(env.BEETS_DIR / f"bandcamp-{batch}.json")
         Path(bc_file).write_text(json.dumps(bandcamp_tags, ensure_ascii=False))
-    beet = Beet(ctx, beets_config(music_root, batch, autotag, bc_file))
+    beet = Beet(ctx, beets_config(music_root, batch, autotag, bc_file, bandcamp_only))
     tag = f"mo_batch:{batch}"
     plan = ("mplan", "--duplicates", tag) if duplicate else ("mplan", tag)
     ctx.update(0.05, "matching with MusicBrainz")

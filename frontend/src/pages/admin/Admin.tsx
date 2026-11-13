@@ -761,8 +761,8 @@ function AdminSettings() {
   const groups = useMemo(() => {
     const g: Record<string, SettingSpec[]> = {};
     // a module's settings, and the modules themselves, are under Modules
-    // the modules and the watch folder have places of their own (Modules, Upload → Watch folder)
-    for (const s of q.data || []) if (!s.module && s.group !== "Modules" && s.group !== "Watch folder") (g[s.group] ||= []).push(s);
+    // the modules, the watch folders and the tags' general rules have places of their own (Modules, Upload, Tags)
+    for (const s of q.data || []) if (!s.module && !["Modules", "Watch folder", "Tags"].includes(s.group)) (g[s.group] ||= []).push(s);
     return g;
   }, [q.data]);
   useEffect(() => {
