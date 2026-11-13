@@ -15,6 +15,7 @@ import { CastButton, CastNote, usePlaysElsewhere } from "../components/CastButto
 import { Art, NewDot, SwitchLook } from "../components/ui";
 import { appPlayer, useShell } from "../player/app";
 import { engine } from "../player/engine";
+import { useSearchHere } from "../search/here";
 import { usePlayer } from "../store/player";
 import { useShown } from "../modules";
 import { useUi } from "../store/ui";
@@ -85,7 +86,10 @@ export function MiniPlayer() {
 export function TabBar() {
   const [more, setMore] = useState(false);
   const update = useAppUpdate();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
+  // Search searches the section it's opened from (search/scope.ts); on its own page, as it is
+  const here = useSearchHere();
+  const searchTo = pathname === "/search" ? `/search${search}` : `/search?in=${here}`;
   const inMore = ["/vgm", "/audiobooks", "/podcasts", "/radio", "/settings", "/admin"].some((p) => pathname.startsWith(p));
   useEffect(() => {
     setMore(false);
@@ -95,7 +99,7 @@ export function TabBar() {
     <>
       <nav className="tabbar" aria-label="Main">
         <NavLink to="/" end className={tab}><House size={22} /><span>Home</span></NavLink>
-        <NavLink to="/search" className={tab}><Search size={22} /><span>Search</span></NavLink>
+        <NavLink to={searchTo} className={tab}><Search size={22} /><span>Search</span></NavLink>
         <NavLink to="/library" className={tab}><Library size={22} /><span>Library</span></NavLink>
         <button className={`tb-item ${inMore || more ? "on" : ""}`} aria-expanded={more} onClick={() => setMore(!more)}>
           <MoreHorizontal size={22} /><span>More</span>

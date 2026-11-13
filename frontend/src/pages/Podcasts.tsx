@@ -1,7 +1,7 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { Check, CircleCheck, HardDriveDownload, ListChecks, MoreHorizontal, Pause, Play, Plus, RefreshCw, Rss, Trash2, Upload, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ago, api, fmtLong, fmtTime } from "../api";
 import { podcastsChanged, queryClient } from "../actions";
 import { AdminCog } from "../components/AdminMode";
@@ -37,7 +37,7 @@ function useEpisodeAt(e: Episode) {
   return { here, playing, position, pct };
 }
 
-function EpisodeRow({ e, feed }: { e: Episode; feed?: Feed }) {
+export function EpisodeRow({ e, feed }: { e: Episode; feed?: Feed }) {
   const notify = useUi((s) => s.notify);
   const showMenu = useMenu((s) => s.show);
   const { here, playing, position, pct } = useEpisodeAt(e);
@@ -289,11 +289,20 @@ export default function Podcasts() {
       setBusy("");
     }
   };
-  const search = async () => {
-    if (!term.trim()) return;
+  const search = async (what = term) => {
+    if (!what.trim()) return;
     setHits(null);
-    setHits(await api.get<PodcastHit[]>("/api/podcasts/search", { q: term, scope }));
+    setHits(await api.get<PodcastHit[]>("/api/podcasts/search", { q: what, scope }));
   };
+  // "Find new podcasts" from the search field (layout/QuickSearch.tsx): the directory's search, at once
+  const [params, setParams] = useSearchParams();
+  const find = params.get("find");
+  useEffect(() => {
+    if (!find) return;
+    setTerm(find);
+    void search(find);
+    setParams({}, { replace: true });
+  }, [find]);   // eslint-disable-line react-hooks/exhaustive-deps
   const importOpml = async (file: File) => {
     const fd = new FormData();
     fd.append("file", file);
@@ -326,7 +335,7 @@ export default function Podcasts() {
       <div className="toolbar">
         <input className="input" style={{ maxWidth: 380 }} placeholder="Find a podcast" value={term}
                onChange={(e) => setTerm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && search()} />
-        <button className="btn" onClick={search}>Search</button>
+        <button className="btn" onClick={() => search()}>Search</button>
         <div className="grow" />
         <button className="btn" onClick={() => setAdding(true)}><Rss size={15} /> Add by URL</button>
         <button className="btn" onClick={async () => { await api.post("/api/podcasts/refresh"); notify("Checking feeds for new episodes"); }}><RefreshCw size={15} /> Refresh</button>

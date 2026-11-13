@@ -15,8 +15,8 @@ from sqlalchemy.orm import Session
 
 from .. import env, serial
 from ..db import get_db_with_copies
-from ..models import (Album, Artist, AuthSession, Book, BookProgress, Feed, Like, Playlist, PlaylistItem, Station,
-                      Subscription, Track, User)
+from ..models import (Album, Artist, AuthSession, Book, BookProgress, Episode, Feed, Like, Playlist, PlaylistItem,
+                      Station, Subscription, Track, User)
 from ..security import (SESSION_DAYS, check_password, current_user, device_name, hash_password, login_id, login_token,
                         optional_user)
 from .library import file_playlists, tracks_json
@@ -371,6 +371,38 @@ def _recent_albums(db: Session, user: User, kind: str, limit: int) -> list[Album
     return [rows[i] for i in ids if i in rows]
 
 
+def _recent_artists(db: Session, user: User, limit: int) -> list[Artist]:
+    """The artists of the music the user played last, the latest first."""
+    ids = [r[0] for r in db.execute(text(
+        "SELECT t.artist_id, max(p.played_at) m FROM plays p JOIN tracks t ON t.id = p.track_id "
+        "WHERE p.user_id = :u AND t.kind = 'music' AND t.artist_id IS NOT NULL "
+        "GROUP BY t.artist_id ORDER BY m DESC LIMIT :l"), {"u": user.id, "l": limit})]
+    rows = {a.id: a for a in db.scalars(select(Artist).where(Artist.id.in_(ids)))}
+    return [rows[i] for i in ids if i in rows]
+
+
+LATEST = 40     # the panel's Latest: this many, newest first
+
+
+def _latest(db: Session, user: User, liked: set[int]) -> list[dict]:
+    """The panel's Latest: what came into the library last (albums, games, audiobooks) and the user's podcasts'
+    new episodes (out since subscribing, not started: podcasts.py's blue dot), newest first."""
+    from .podcasts import _new, _utc, episode_json
+    out = [{"type": "album", "at": a.added_at, "item": _album_item(a, liked)}
+           for a in db.scalars(select(Album).where(Album.shadowed.is_(False)).order_by(Album.added_at.desc()).limit(LATEST))]
+    out += [{"type": "book", "at": b.added_at,
+             "item": {"id": b.id, "title": b.title, "author": b.author, "peer": serial.peer(b.peer_id),
+                      "art": serial.art_url("book", b.id) if b.art else None}}
+            for b in db.scalars(select(Book).order_by(Book.added_at.desc()).limit(10))]
+    when = func.coalesce(Episode.published, Episode.added_at)
+    rows = db.execute(_new(select(Episode, Feed, Subscription).join(Feed, Feed.id == Episode.feed_id), user.id)
+                      .order_by(when.desc()).limit(20)).all()
+    out += [{"type": "episode", "at": e.published or e.added_at, "item": episode_json(e, None, f, sub)} for e, f, sub in rows]
+    out = [x for x in out if x["at"] is not None]
+    out.sort(key=lambda x: _utc(x["at"]), reverse=True)
+    return [{**x, "at": serial.iso(x["at"])} for x in out[:LATEST]]
+
+
 def _album_item(a: Album, liked: set[int]) -> dict:
     return {"id": a.id, "title": a.title, "artist": a.artist_name, "year": a.year, "kind": a.kind,
             "art": serial.art_url("album", a.id) if a.art else None, "liked": a.id in liked,
@@ -380,7 +412,7 @@ def _album_item(a: Album, liked: set[int]) -> dict:
 @router.get("/sidebar")
 def sidebar(db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
     """Everything the library panel lists, in one request: what you saved, follow,
-    listen to or played lately."""
+    listen to or played lately, and its Latest."""
     liked_albums = set(db.scalars(select(Like.item_id).where(Like.user_id == user.id, Like.item_type == "album")))
     liked_ids = liked_albums
     albums = list(db.scalars(select(Album).where(Album.id.in_(liked_albums), Album.kind == "music")
@@ -394,7 +426,9 @@ def sidebar(db: Session = Depends(get_db_with_copies), user: User = Depends(curr
                                         .order_by(Album.added_at.desc()).limit(12))
                   if a.id not in have][: 8 - len(games)]
     liked_artists = set(db.scalars(select(Like.item_id).where(Like.user_id == user.id, Like.item_type == "artist")))
-    artists = db.scalars(select(Artist).where(Artist.id.in_(liked_artists)).order_by(func.lower(Artist.name)))
+    artists = list(db.scalars(select(Artist).where(Artist.id.in_(liked_artists)).order_by(func.lower(Artist.name))))
+    # then the ones listened to lately, as albums are (the panel was empty for anyone who follows none)
+    artists += [a for a in _recent_artists(db, user, 30) if a.id not in liked_artists]
     books = db.execute(select(Book, BookProgress).join(BookProgress, BookProgress.book_id == Book.id)
                        .where(BookProgress.user_id == user.id, BookProgress.position > 0,
                               BookProgress.finished.is_(False))
@@ -420,4 +454,5 @@ def sidebar(db: Session = Depends(get_db_with_copies), user: User = Depends(curr
         "podcasts": [{"id": f.id, "title": f.title or f.url, "author": f.author, "art": f.image or None,
                       "new": f.id in fresh} for f in feeds],
         "stations": [saved_json(st) for st in stations],
+        "latest": _latest(db, user, liked_ids),
     }

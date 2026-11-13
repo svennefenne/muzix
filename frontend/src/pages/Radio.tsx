@@ -11,7 +11,7 @@ import { fromStation, usePlayer } from "../store/player";
 import { useUi } from "../store/ui";
 import type { Station } from "../types";
 
-function StationGrid({ list, saved }: { list: Station[]; saved: Station[] }) {
+export function StationGrid({ list, saved }: { list: Station[]; saved: Station[] }) {
   const notify = useUi((s) => s.notify);
   const showHistory = useStationHistory((s) => s.show);
   const cur = usePlayer((s) => (s.index >= 0 ? s.queue[s.index]?.key : null));

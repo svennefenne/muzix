@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { api } from "../api";
+import { choose, noGraphicsCard, ownChoice } from "../theme/potato";
 import type { AvatarLook, BrowsePref, LibraryView, Modules, Prefs, User } from "../types";
 
 type Mode = "system" | "light" | "dark";
@@ -14,7 +15,6 @@ interface UiState {
   genreSkins: boolean;
   skinLock: string;              // "" follows the music
   skinRules: Record<string, string>;     // the device's own tag → skin rules
-  visualizer: boolean;
   quality: NonNullable<Prefs["quality"]>;
   libraryView: LibraryView;
   browse: Record<string, BrowsePref>;
@@ -30,6 +30,8 @@ interface UiState {
   lyricsPanel: boolean;          // the now playing panel shows the lyrics
   lyricsSheet: boolean;          // the lyrics full screen
   adminMode: boolean;            // admins: a cog on every item, to edit, hide or delete it (per device)
+  potato: boolean;               // Potato mode: lighter drawing (per device, theme/potato.ts)
+  potatoByItself: boolean;       // ...on as this device draws without a graphics card, no choice made here
   toast: { text: string; kind: "info" | "error"; id: number; action?: ToastAction } | null;
   setUser: (u: User | null) => void;
   setPref: <K extends keyof Prefs>(key: K, value: Prefs[K]) => void;
@@ -39,6 +41,7 @@ interface UiState {
   setLyricsPanel: (v: boolean) => void;
   setLyricsSheet: (v: boolean) => void;
   setAdminMode: (v: boolean) => void;
+  setPotato: (v: boolean) => void;
   notify: (text: string, kind?: "info" | "error", action?: ToastAction) => void;
 }
 
@@ -85,7 +88,6 @@ export const useUi = create<UiState>((set, get) => ({
   genreSkins: initial.genre_skins ?? true,
   skinLock: initial.skin_lock || "",
   skinRules: initial.skin_map || {},
-  visualizer: initial.visualizer ?? true,
   quality: initial.quality || "original",
   libraryView: initial.library_view || "albums",
   browse: initial.browse || {},
@@ -114,6 +116,8 @@ export const useUi = create<UiState>((set, get) => ({
       return false;
     }
   })(),
+  potato: ownChoice() ?? noGraphicsCard(),
+  potatoByItself: ownChoice() === null && noGraphicsCard(),
   toast: null,
   setUser: (u) => {
     const look = get().accountLook;
@@ -125,7 +129,6 @@ export const useUi = create<UiState>((set, get) => ({
       genreSkins: p.genre_skins ?? get().genreSkins,
       skinLock: p.skin_lock ?? get().skinLock,
       skinRules: p.skin_map ?? get().skinRules,
-      visualizer: p.visualizer ?? get().visualizer,
       quality: p.quality ?? get().quality,
       libraryView: p.library_view ?? get().libraryView,
       browse: p.browse ?? get().browse,
@@ -141,7 +144,7 @@ export const useUi = create<UiState>((set, get) => ({
   setPref: (key, value) => {
     const map: Partial<Record<keyof Prefs, keyof UiState>> = {
       scheme: "scheme", mode: "mode", genre_skins: "genreSkins", skin_lock: "skinLock", skin_map: "skinRules",
-      visualizer: "visualizer", quality: "quality", library_view: "libraryView",
+      quality: "quality", library_view: "libraryView",
       sidebar_collapsed: "sidebarCollapsed", np_panel: "npPanel", search_engine: "searchEngine",
       radio_buffer: "radioBuffer", autoplay: "autoplay", download_format: "downloadFormat", download_wifi: "downloadWifi",
     };
@@ -165,6 +168,10 @@ export const useUi = create<UiState>((set, get) => ({
     } catch {
       /* private mode */
     }
+  },
+  setPotato: (v) => {
+    choose(v);
+    set({ potato: v, potatoByItself: false });
   },
   notify: (text, kind = "info", action) => {
     const id = Date.now();

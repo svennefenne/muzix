@@ -141,7 +141,7 @@ class AppPlayer {
     else window.open(url, "_blank", "noopener");
   }
 
-  // ------------------------------------------------------------ the visualizer (Muzix Desktop's player)
+  // ------------------------------------------------------------ the backdrops' spectrum (the app's player)
 
   private freq = new Uint8Array(256);
   private heard = 0;

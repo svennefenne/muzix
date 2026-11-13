@@ -22,7 +22,7 @@ import { isTyping, TopBar } from "./layout/TopBar";
 import Home from "./pages/Home";
 import {
   AlbumPage, ArtistPage, FilePlaylistPage, GenrePage, TagPage, LibraryAlbums, LibraryArtistAlbums, LibraryArtists, LibraryGenreArtists, LibraryGenres,
-  LibraryHome, Liked, PlaylistPage, Playlists, SearchPage,
+  LibraryHome, Liked, PlaylistPage, Playlists,
 } from "./pages/Library";
 import { appPlayer, useShell } from "./player/app";
 import { engine } from "./player/engine";
@@ -39,6 +39,7 @@ const Podcasts = lazy(() => import("./pages/Podcasts"));
 const PodcastPage = lazy(() => import("./pages/Podcasts").then((m) => ({ default: m.PodcastPage })));
 const EpisodePage = lazy(() => import("./pages/Podcasts").then((m) => ({ default: m.EpisodePage })));
 const Radio = lazy(() => import("./pages/Radio"));
+const SearchPage = lazy(() => import("./pages/Search"));
 const Settings = lazy(() => import("./pages/Settings"));
 const SchemeEditor = lazy(() => import("./pages/SchemeEditor"));
 const Admin = lazy(() => import("./pages/admin/Admin"));

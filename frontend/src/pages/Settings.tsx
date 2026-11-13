@@ -400,6 +400,18 @@ export default function Settings() {
       </section>
 
       <section className="panel">
+        <div className="panel-head"><div><div className="kicker">Performance</div><div className="h2">Potato mode</div></div></div>
+        <div className="field">
+          <label>On this device</label>
+          <div className="row-actions">
+            <Switch checked={ui.potato} onChange={ui.setPotato} label="Potato mode" />
+            <span className="dim">Easier on the processor: a still background, no moving headlines or frames, no blur.</span>
+          </div>
+          {ui.potatoByItself && <div className="help">On by itself: this device draws without a graphics card (a virtual machine, say).</div>}
+        </div>
+      </section>
+
+      <section className="panel">
         <div className="panel-head"><div><div className="kicker">Playback</div><div className="h2">Sound</div></div></div>
         <div className="field">
           <label>Stream quality</label>
@@ -414,11 +426,6 @@ export default function Settings() {
           <label>Autoplay</label>
           <div className="row-actions"><Switch checked={ui.autoplay} onChange={(v) => ui.setPref("autoplay", v)} label="Autoplay" />
             <span className="dim">When your music runs out, keep playing similar songs, picked by their genre tags (for game music: the same chips).</span></div>
-        </div>
-        <div className="field">
-          <label>Visualizer & reactive backgrounds</label>
-          <div className="row-actions"><Switch checked={ui.visualizer} onChange={(v) => ui.setPref("visualizer", v)} label="Visualizer" />
-            <span className="dim">Skin backgrounds and the now-playing view move with the music.</span></div>
         </div>
         <div className="field">
           <label>Radio buffer</label>

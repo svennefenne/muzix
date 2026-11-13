@@ -443,14 +443,15 @@ const scenes: Record<string, () => Scene> = {
 // static textures are cheaper as CSS (see skins.css); these canvases just stay empty
 const STATIC: BackdropKind[] = ["none", "xerox", "halftone", "marble", "paper"];
 
-export function Backdrop({ kind }: { kind: BackdropKind | "space" }) {
+/** `still`: one picture, not moving (Potato mode, theme/potato.ts). */
+export function Backdrop({ kind, still = false }: { kind: BackdropKind | "space"; still?: boolean }) {
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
     const g = canvas.getContext("2d")!;
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reduce = still || window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (STATIC.includes(kind as BackdropKind) || !scenes[kind]) {
       g.clearRect(0, 0, canvas.width, canvas.height);
       return;
@@ -481,7 +482,7 @@ export function Backdrop({ kind }: { kind: BackdropKind | "space" }) {
       window.clearInterval(colorTimer);
       window.removeEventListener("resize", resize);
     };
-  }, [kind]);
+  }, [kind, still]);
 
   return <canvas ref={ref} className="backdrop" aria-hidden="true" />;
 }

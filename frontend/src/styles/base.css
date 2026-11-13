@@ -53,6 +53,16 @@ img { display: block; }
 .scheme-picture.fit-contain::before { background-size: contain; }
 .scheme-picture.fit-tile::before { background-size: auto; background-repeat: repeat; }
 .scheme-picture::after { content: ""; position: absolute; inset: 0; background: var(--bg); opacity: var(--pic-dim); }
+/* Potato mode (Settings, theme/potato.ts): for a device that draws without a graphics card, where blur and what
+   moves on its own have the processor redraw the window on every frame. Nothing is blurred (what was see-through
+   behind a blur is solid), the backdrop is one picture (Backdrop.tsx), skins' headlines and frames stand still,
+   and a new skin's colours come at once */
+.potato *, .potato *::before, .potato *::after { backdrop-filter: none !important; }
+.potato .scheme-picture::before { filter: none; inset: 0; }
+.potato .browse-sticky.stuck, .potato .nowplaying, .potato .tabbar { background: var(--bg); }
+.potato .drawer, .potato .bare-bar, .potato .scheme-save, .potato .chatdock { background: var(--surface); }
+.potato .display .l2, .potato .display span::before, .potato .display span::after, .potato .frame { animation: none !important; }
+.potato.theme-fade, .potato.theme-fade * { transition: none !important; }
 @media (max-width: 720px) { .scheme-picture::before { background-image: var(--pic-phone); } }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
@@ -378,6 +388,9 @@ input[type="range"].range::-moz-range-thumb { width: 13px; height: 13px; border:
   box-shadow: 0 8px 20px #0007; opacity: 0; transform: translateY(8px); transition: .2s; cursor: pointer;
 }
 .card:hover .play-fab, .card:focus-within .play-fab { opacity: 1; transform: none; }
+/* the album playing now (or paused): its button stays, as pause, and its title is the accent (Cards.tsx) */
+.card.current .play-fab { opacity: 1; transform: none; }
+.card.current .card-title { color: var(--primary); }
 .genre-card { position: relative; height: 110px; border-radius: var(--radius); overflow: hidden; padding: 14px; display: flex; align-items: end; isolation: isolate; border: 1px solid var(--border); }
 .genre-card .mosaic { position: absolute; inset: 0; z-index: -2; display: grid; grid-template-columns: 1fr 1fr; }
 .genre-card .mosaic img { width: 100%; height: 100%; object-fit: cover; filter: saturate(.7); }
@@ -421,19 +434,23 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
 .t-album { font-size: 13px; color: var(--text-dim); }
 .t-dur { font: 500 12.5px/1 var(--font-mono); color: var(--text-dim); text-align: right; }
 .trow.playing .t-num .t-n, .t-eq { display: none; }
-.t-actions { display: flex; justify-content: flex-end; gap: 2px; opacity: 0; transition: opacity .15s; }
+/* the row's buttons show on hover; a liked song's heart always (each button its own opacity: under a parent's 0,
+   none could show) */
+.t-actions { display: flex; justify-content: flex-end; gap: 2px; }
+.t-actions > * { opacity: 0; transition: opacity .15s; }
 /* no numbers or lengths (the album in the Android app): titles from the page's left edge, in line with the
    buttons above; the playing bars and the menu at the right */
 .tracks.plain .trow:not(.head) { grid-template-columns: minmax(0, 1fr) auto auto; grid-auto-flow: row; column-gap: 0; padding: 0; height: 56px; }
 .tracks.plain .trow .t-main { margin-left: 0; }
 .tracks.plain .trow .t-eq { display: flex; align-items: center; width: 13px; margin-left: 10px; }
-.tracks.plain .t-actions { opacity: 1; width: 32px; margin-left: 6px; }
+.tracks.plain .t-actions { width: 32px; margin-left: 6px; }
+.tracks.plain .t-actions > * { opacity: 1; }
 .tracks.plain .t-actions .t-like { display: none; }
 .tracks.plain .t-more { width: 32px; height: 40px; margin-right: -8px; }
 .tracks.plain .kicker { margin-left: 0 !important; }
-.trow:hover .t-actions, .t-actions .liked { opacity: 1; }
+.trow:hover .t-actions > *, .t-actions > .liked { opacity: 1; }
 @media (hover: none) {   /* touch screens can't hover: the menu stays visible and a tap plays the row */
-  .t-actions { opacity: 1; }
+  .t-actions > * { opacity: 1; }
   .trow:not(.head) { cursor: pointer; }
   .trow:not(.head):hover { background: none; }
   .trow:not(.head):active { background: color-mix(in srgb, var(--text) 8%, transparent); }
@@ -501,9 +518,17 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
 .qs-title { font-weight: 700; font-size: 13.5px; }
 .qs-sub { font-size: 12px; color: var(--text-dim); }
 .qs-empty { padding: 18px 12px 12px; color: var(--text-dim); font-size: 13px; }
+/* which section is searched (search/scope.ts), above the results */
+.qs-scope { padding: 10px 10px 2px; font-size: 12px; color: var(--text-faint); }
+.qs-scope b { color: var(--text-dim); font-weight: 700; }
+.qs-scope .keychip { margin: 0 2px; }
+/* the * that searches everything: a key to type, not a shortcut, so phones show it too */
+.keychip.star { display: inline-grid; margin: 0 2px; vertical-align: 1px; }
+/* the lines at the foot (all results, the podcast directory's), kept in sight as the results scroll */
+.qs-actions { position: sticky; bottom: 0; margin: 6px -6px 0; background: var(--surface); }
 .qs-all {
-  position: sticky; bottom: 0; display: flex; align-items: center; justify-content: space-between; width: calc(100% + 12px);
-  margin: 6px -6px 0; padding: 12px 16px; border: 0; border-top: 1px solid var(--border); background: var(--surface);
+  display: flex; align-items: center; justify-content: space-between; width: 100%;
+  padding: 12px 16px; border: 0; border-top: 1px solid var(--border); background: var(--surface);
   color: var(--primary); font: 700 11.5px/1 var(--font-ui); letter-spacing: .06em; text-transform: uppercase; cursor: pointer;
 }
 .qs-all.on { background: color-mix(in srgb, var(--primary) 14%, var(--surface)); }
@@ -807,7 +832,6 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
 .np-back-row.plain { grid-template-columns: minmax(0, 1fr) auto; }
 .np-back-song { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .np-back-artist { font: 500 12px/1.3 var(--font-ui); color: var(--text-dim); }
-.nowplaying canvas.viz { width: 100%; height: 160px; display: block; }
 .np-seek { margin-top: 24px; max-width: 640px; }
 .np-phone { display: none; }
 .searchbox { height: 54px; font-size: 20px; margin: 12px 0 8px; }
@@ -1644,7 +1668,6 @@ button.lyr:hover { color: var(--lyr-now); text-decoration: underline; text-decor
   .nowplaying-body > .np-flip { width: min(100%, 44vh); justify-self: center; }
   .np-big-title { font-size: 26px; margin: 6px 0; }
   .nowplaying .lede { font-size: 16px !important; margin-bottom: 8px; }
-  .nowplaying canvas.viz { height: 56px; }
   .np-seek { margin-top: 10px; }
   .np-desktop-actions { display: none !important; }
   .np-phone { display: block; }
@@ -1739,7 +1762,7 @@ button.lyr:hover { color: var(--lyr-now); text-decoration: underline; text-decor
 .lrow { position: relative; }
 .lrow > .admin-cog { top: 50%; right: 6px; transform: translateY(-50%); width: 28px; height: 28px; }
 .trow .admin-cog { width: 28px; height: 28px; border-radius: 7px; }
-.t-actions:has(.admin-cog) { opacity: 1; }
+.t-actions:has(.admin-cog) > * { opacity: 1; }
 @media (max-width: 860px) { .trow .t-actions:has(.admin-cog) { width: 66px; } }
 .btn.danger.solid { background: var(--error-solid); border-color: var(--error-solid); color: var(--on-error); }
 .modal.edit-modal { width: min(1080px, 100%); max-height: 92vh; padding: 0; display: flex; flex-direction: column; overflow: hidden; }

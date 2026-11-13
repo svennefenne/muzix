@@ -75,9 +75,13 @@ function SchemePicture({ p }: { p: SchemeData["picture"] }) {
 export function ThemeApplier() {
   const theme = useActiveTheme();
   const id = customId(useUi((s) => s.scheme));
+  const potato = useUi((s) => s.potato);
   useEffect(() => {
     if (id) fetchScheme(id);      // as it is now (its owner may have changed it)
   }, [id]);
+  useEffect(() => {
+    document.documentElement.classList.toggle("potato", potato);    // base.css: no blur, nothing moving
+  }, [potato]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -105,7 +109,7 @@ export function ThemeApplier() {
   const x = theme.custom;
   return (
     <>
-      <Backdrop kind={theme.skin?.backdrop || (x && pictured(x) ? "none" : x?.backdrop) || "space"} />
+      <Backdrop kind={theme.skin?.backdrop || (x && pictured(x) ? "none" : x?.backdrop) || "space"} still={potato} />
       {x && pictured(x) && <SchemePicture p={x.picture} />}
     </>
   );

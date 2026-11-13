@@ -21,7 +21,6 @@ export interface Prefs {
   skin_map?: Record<string, string>;     // tag → skin rules of the device's own, before the built-in ones
   volume?: number;
   quality?: "original" | "lossless" | "high" | "low";
-  visualizer?: boolean;
   speed?: number;              // audiobooks / podcasts
   library_view?: LibraryView;
   sidebar_collapsed?: boolean;           // the library panel as an icon strip
@@ -167,10 +166,21 @@ export interface SidebarData {
   books: { id: number; title: string; author: string; art: string | null; progress: number; peer?: string | null }[];
   podcasts: { id: number; title: string; author: string; art: string | null; new: boolean }[];
   stations: Station[];
+  latest?: LatestItem[];      // what came in last, and new podcast episodes, newest first (none from an older server)
 }
+/** The library panel's Latest (backend/muzix/api/me.py): an album or game, an audiobook, or a new episode. */
+export type LatestItem = { at: string } & (
+  | { type: "album"; item: SidebarAlbum }
+  | { type: "book"; item: { id: number; title: string; author: string; art: string | null; peer?: string | null } }
+  | { type: "episode"; item: Episode });
 
 export interface BookHit { id: number; title: string; author: string; series: string; art: string | null; peer?: string | null }
-export interface SearchResults { artists: Artist[]; albums: Album[]; tracks: Track[]; books: BookHit[] }
+export interface SearchResults {
+  artists: Artist[]; albums: Album[]; tracks: Track[]; books: BookHit[];
+  // a scope's (search/scope.ts): the user's own podcasts, their episodes, saved stations (none from an older server)
+  podcasts?: FeedHit[]; episodes?: Episode[]; stations?: Station[];
+}
+export interface FeedHit { id: number; title: string; author: string; image: string }
 export type RecentKind = "artist" | "album" | "track" | "book";
 /** Something picked from search results, as search gives it now. */
 export type RecentSearch = { kind: "artist"; item: Artist } | { kind: "album"; item: Album } | { kind: "track"; item: Track } | { kind: "book"; item: BookHit };

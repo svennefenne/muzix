@@ -1,6 +1,6 @@
 /** Plays the queue: two <audio> elements (one plays, the other holds the next song, so one
- * song follows another without a gap), a Web Audio analyser for the visualizer and skin
- * backdrops, and the bookkeeping around it (play counts, resume positions, media keys,
+ * song follows another without a gap), a Web Audio analyser for the skins' backdrops, which
+ * move with the music, and the bookkeeping around it (play counts, resume positions, media keys,
  * riding out a dropped connection, carrying on after a reload). */
 
 import { api, sized } from "../api";
@@ -1070,7 +1070,7 @@ class Engine {
 
   // ------------------------------------------------------------ audio graph & levels
 
-  /** The analyser behind the visualizer. Where the browser can copy the element's sound
+  /** The analyser behind the skins' backdrops. Where the browser can copy the element's sound
    * (captureStream), the analyser listens to the copy and the element plays to the speakers
    * itself: a phone that pauses Web Audio with the screen off then doesn't stop the music.
    * Elsewhere (Safari, so every iPhone and iPad) the element plays through the audio graph,

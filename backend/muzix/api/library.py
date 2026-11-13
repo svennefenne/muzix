@@ -11,9 +11,11 @@ from sqlalchemy.orm import Session
 
 from .. import art, lyrics, mirror, serial, tagging
 from ..db import get_db, get_db_with_copies
-from ..models import Album, Artist, Book, FilePlaylist, FilePlaylistItem, Like, PlayEvent, RecentSearch, Track, User
+from ..models import (Album, Artist, Book, Episode, EpisodeProgress, Feed, FilePlaylist, FilePlaylistItem, Like, PlayEvent,
+                      RecentSearch, Station, Subscription, Track, User)
 from ..security import current_user, optional_user
-from .podcasts import whats_new
+from .podcasts import episode_json, whats_new
+from .radio import saved_json
 
 router = APIRouter(prefix="/api", tags=["library"])
 ALBUM_SORTS = {
@@ -469,30 +471,73 @@ def fts_query(q: str) -> str:
     return " ".join(f'"{w}"*' for w in words[:8])
 
 
+# what each section's search field finds (frontend/src/search/scope.ts); "": the library as before (older apps)
+SCOPES = {
+    "": {"artist", "album", "track", "book"},
+    "all": {"artist", "album", "track", "book", "podcast", "episode", "station"},
+    "music": {"artist", "album", "track"},
+    "vgm": {"album", "track"},
+    "audiobooks": {"book"},
+    "podcasts": {"podcast", "episode"},
+    "radio": {"station"},
+}
+
+
 @router.get("/search")
 def search(q: str, request: Request, db: Session = Depends(get_db), user: User = Depends(current_user),
-           limit: int = Query(20, le=100)):
+           limit: int = Query(20, le=100), scope: str = ""):
+    """What the search field finds in a section (scope): music, vgm, audiobooks, podcasts (the user's own and
+    their episodes), radio (the user's saved stations), or all of them. Without a scope, music, games and
+    audiobooks together, as the apps before sections asked."""
+    if scope not in SCOPES:
+        raise HTTPException(400, "No such section to search")
+    wanted = SCOPES[scope]
+    found = {"artists": [], "albums": [], "tracks": [], "books": [], "podcasts": [], "episodes": [], "stations": []}
     fq = fts_query(q)
     if not fq:
-        return {"artists": [], "albums": [], "tracks": [], "books": []}
+        return found
+    # a section's own: VGM's games and tunes, or music's; everything when there's no section
+    kind = scope if scope in ("music", "vgm") else None
     out = {}
     # what's hidden from this account isn't found: ask the index for more, to have enough of the rest
     ask = limit * 5 if getattr(request.state, "limits", None) else limit
-    for kind, model in (("artist", Artist), ("album", Album), ("track", Track)):
+    for what, model in (("artist", Artist), ("album", Album), ("track", Track)):
+        if what not in wanted:
+            out[what] = []
+            continue
+        own = f" AND ref IN (SELECT id FROM {model.__tablename__} WHERE kind = :kind)" if kind and what != "artist" else ""
         ids = [int(r[0]) for r in db.execute(text(
-            "SELECT ref FROM search_fts WHERE search_fts MATCH :q AND kind = :k ORDER BY rank LIMIT :l"),
-            {"q": fq, "k": kind, "l": ask})]
+            f"SELECT ref FROM search_fts WHERE search_fts MATCH :q AND kind = :k{own} ORDER BY rank LIMIT :l"),
+            {"q": fq, "k": what, "l": ask, "kind": kind})]
         rows = {x.id: x for x in db.scalars(select(model).where(model.id.in_(ids)))}
-        out[kind] = [rows[i] for i in ids if i in rows][:limit]
+        out[what] = [rows[i] for i in ids if i in rows][:limit]
+    found["artists"] = [serial.artist(a, liked(db, user, "artist")) for a in out["artist"]]
+    found["albums"] = [serial.album(a, liked(db, user, "album")) for a in out["album"]]
+    found["tracks"] = tracks_json(db, user, out["track"])
     like = f"%{q.strip()}%"
-    books = db.scalars(select(Book).where(Book.title.ilike(like) | Book.author.ilike(like) | Book.series.ilike(like))
-                       .order_by(func.lower(Book.title)).limit(min(limit, 10)))
-    return {
-        "artists": [serial.artist(a, liked(db, user, "artist")) for a in out["artist"]],
-        "albums": [serial.album(a, liked(db, user, "album")) for a in out["album"]],
-        "tracks": tracks_json(db, user, out["track"]),
-        "books": [_book_hit(b) for b in books],
-    }
+    few = min(limit, 10)
+    if "book" in wanted:
+        found["books"] = [_book_hit(b) for b in db.scalars(
+            select(Book).where(Book.title.ilike(like) | Book.author.ilike(like) | Book.series.ilike(like))
+            .order_by(func.lower(Book.title)).limit(few))]
+    if "podcast" in wanted:
+        mine = (Subscription.feed_id == Feed.id) & (Subscription.user_id == user.id)
+        found["podcasts"] = [{"id": f.id, "title": f.title or f.url, "author": f.author, "image": f.image}
+                             for f in db.scalars(select(Feed).join(Subscription, mine)
+                                                 .where(Feed.title.ilike(like) | Feed.author.ilike(like))
+                                                 .order_by(func.lower(Feed.title)).limit(few))]
+        rows = db.execute(select(Episode, Feed, Subscription, EpisodeProgress)
+                          .join(Feed, Feed.id == Episode.feed_id).join(Subscription, mine)
+                          .outerjoin(EpisodeProgress, (EpisodeProgress.episode_id == Episode.id)
+                                     & (EpisodeProgress.user_id == user.id))
+                          .where(Episode.title.ilike(like))
+                          .order_by(func.coalesce(Episode.published, Episode.added_at).desc()).limit(few)).all()
+        found["episodes"] = [episode_json(e, prog, f, sub) for e, f, sub, prog in rows]
+    if "station" in wanted:
+        found["stations"] = [saved_json(st) for st in db.scalars(
+            select(Station).where(Station.user_id == user.id, Station.name.ilike(like) | Station.tags.ilike(like))
+            .order_by(func.lower(Station.name)).limit(few))]
+    return found
 
 
 def _book_hit(b: Book) -> dict:

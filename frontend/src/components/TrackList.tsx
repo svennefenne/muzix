@@ -1,4 +1,4 @@
-import { Clock, Disc3, Heart, ListEnd, ListPlus, ListStart, MessageCircle, MoreHorizontal, MoreVertical, Play, Trash2, User } from "lucide-react";
+import { Clock, Disc3, Heart, ListEnd, ListPlus, ListStart, MessageCircle, MoreHorizontal, MoreVertical, Pause, Play, Trash2, User } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { fmtTime } from "../api";
@@ -101,8 +101,13 @@ export function TrackList({ tracks, showArt, showAlbum = true, numbered = "index
               {!plain && <div className="t-num">
                 {isCur && <span className="eq n"><i /><i /><i /></span>}
                 <span className="n t-n">{numbered === "track" && t.track_no ? t.track_no : i + 1}</span>
-                <button className="p" aria-label={`Play ${t.title}`} data-tip={isCur ? (playing ? "Playing now" : "Paused") : `Play ${t.title}`} onClick={() => { onPlay?.(t); playTracks(tracks, i); }}>
-                  <Play size={15} fill="currentColor" />
+                {/* the playing song's pauses and goes on where it was, another starts; a double-click here isn't
+                    the row's, which starts the song over */}
+                <button className="p" aria-label={isCur && playing ? `Pause ${t.title}` : `Play ${t.title}`}
+                        data-tip={isCur ? (playing ? "Pause" : "Play on") : `Play ${t.title}`}
+                        onClick={() => { if (isCur) engine.toggle(); else { onPlay?.(t); playTracks(tracks, i); } }}
+                        onDoubleClick={(e) => e.stopPropagation()}>
+                  {isCur && playing ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" />}
                 </button>
               </div>}
               <div className="t-main">

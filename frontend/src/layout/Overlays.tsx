@@ -114,38 +114,6 @@ export function QueueDrawer() {
   );
 }
 
-function Visualizer() {
-  const ref = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    const c = ref.current!;
-    const g = c.getContext("2d")!;
-    let raf = 0;
-    const draw = () => {
-      raf = requestAnimationFrame(draw);
-      const w = (c.width = c.clientWidth * devicePixelRatio);
-      const h = (c.height = c.clientHeight * devicePixelRatio);
-      const f = engine.spectrum();
-      g.clearRect(0, 0, w, h);
-      if (!f) return;
-      const bars = 64;
-      const cs = getComputedStyle(document.documentElement);
-      const grad = g.createLinearGradient(0, h, 0, 0);
-      grad.addColorStop(0, cs.getPropertyValue("--secondary").trim());
-      grad.addColorStop(1, cs.getPropertyValue("--primary").trim());
-      g.fillStyle = grad;
-      const bw = w / bars;
-      for (let i = 0; i < bars; i++) {
-        const v = f[Math.floor((i / bars) ** 1.6 * f.length * 0.85)] / 255;
-        const bh = Math.max(2, v * h);
-        g.fillRect(i * bw + 1, h - bh, bw - 3, bh);
-      }
-    };
-    draw();
-    return () => cancelAnimationFrame(raf);
-  }, []);
-  return <canvas ref={ref} className="viz" />;
-}
-
 /** Spotify-style controls for the full-screen player on phones. */
 function PhoneTransport() {
   const showHistory = useStationHistory((s) => s.show);
@@ -355,7 +323,6 @@ export function NowPlaying() {
                   ? <Link className="np-artist-link" to={`/artist/${cur.artistId}`} replace onClick={() => setNowPlayingOpen(false)}>{cur.artist}</Link>
                   : cur.artist}
               </div>
-              <Visualizer />
               <div className="np-seek"><SeekBar /></div>
               <PhoneTransport />
               <div className="np-lyrics-card"><LyricsCard item={cur} phone onExpand={() => setLyricsSheet(true)} /></div>

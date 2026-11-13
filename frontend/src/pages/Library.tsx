@@ -16,12 +16,12 @@ import { inAndroidApp } from "../player/app";
 import { engine } from "../player/engine";
 import { fromTrack, usePlayer } from "../store/player";
 import { AlbumCard, ArtistCard, MosaicCard, PlaylistCard } from "../components/Cards";
-import { RecentSearches, rememberSearch } from "../components/RecentSearches";
 import { TrackList } from "../components/TrackList";
 import { Art, Display, Empty, FromPeer, Kicker, Loading, Modal, Section, useInView, useMenu, type MenuItem } from "../components/ui";
+import { useSectionOfPage } from "../search/here";
 import { useUi } from "../store/ui";
 import type {
-  Album, AlbumDetail, Artist, ArtistDetail, FilePlaylist, FilePlaylistDetail, Genre, LibraryView, Paged, Playlist, RecentKind, SearchResults,
+  Album, AlbumDetail, Artist, ArtistDetail, FilePlaylist, FilePlaylistDetail, Genre, LibraryView, Paged, Playlist,
   TagDetail, Track,
 } from "../types";
 
@@ -472,6 +472,8 @@ export function AlbumPage() {
              pages: { [`/api/albums/${a.id}`]: full }, items: full.tracks.map(fromTrack) };
   };
   const download = useDownloadItem(`album:${id}`, q.data?.title ?? "", makeDownload);
+  // the search field searches the album's own section: VGM's for a game, else music's
+  useSectionOfPage(q.data ? (q.data.kind === "vgm" ? "vgm" : "music") : null);
   useEffect(() => { setLiked(null); setExtra([]); }, [id]);
   if (!q.data) return <div className="page"><Loading /></div>;
   const a = q.data;
@@ -729,69 +731,6 @@ export function PlaylistPage() {
             }}>Save</button>
           </div>
         </Modal>
-      )}
-    </div>
-  );
-}
-
-/** A search result that goes into recent searches when it's opened or played (not its admin menu). */
-function Remember({ kind, id, children }: { kind: RecentKind; id: number; children: ReactNode }) {
-  return (
-    <div className="contents" onClickCapture={(e) => { if (!(e.target as Element).closest(".admin-cog, .menu")) rememberSearch(kind, id); }}>
-      {children}
-    </div>
-  );
-}
-
-export function SearchPage() {
-  const [params, setParams] = useSearchParams();
-  const [text, setText] = useState(params.get("q") || "");
-  const qs = params.get("q") || "";
-  useEffect(() => {
-    const t = window.setTimeout(() => setParams(text ? { q: text } : {}, { replace: true }), 250);
-    return () => window.clearTimeout(t);
-  }, [text, setParams]);
-  const q = useQuery({
-    queryKey: ["search", qs], enabled: qs.length > 1,
-    queryFn: () => api.get<SearchResults>("/api/search", { q: qs, limit: 24 }),
-  });
-  const r = q.data;
-  // Spotify-style "Browse all" while nothing is typed
-  const genres = useQuery({ queryKey: ["genres", "albums"], queryFn: () => api.get<Genre[]>("/api/genres", { sort: "albums", limit: 500 }), enabled: !qs });
-  const [desktop] = useState(() => window.matchMedia("(min-width: 861px)").matches);
-  return (
-    <div className="page wide">
-      <Kicker parts={["Search the library"]} />
-      <input className="input searchbox" autoFocus={desktop} placeholder="Artists, songs, albums, audiobooks…" value={text}
-             onChange={(e) => setText(e.target.value)} />
-      {!qs && <RecentSearches />}
-      {!qs && genres.data && genres.data.length > 0 && (
-        <Section title="Browse all"><GenreItems items={genres.data} display="gallery" linkTo={(g) => `/library/genres/${enc(g.name)}`} /></Section>
-      )}
-      {r && !r.artists.length && !r.albums.length && !r.tracks.length && !r.books.length && <Empty title={`Nothing found for "${qs}"`} />}
-      {r && r.artists.length > 0 && (
-        <Section title="Artists">
-          <div className="scroller">{r.artists.map((a) => <Remember key={a.id} kind="artist" id={a.id}><ArtistCard a={a} /></Remember>)}</div>
-        </Section>
-      )}
-      {r && r.tracks.length > 0 && (
-        <Section title="Songs"><TrackList tracks={r.tracks.slice(0, 10)} showArt onPlay={(t) => rememberSearch("track", t.id)} /></Section>
-      )}
-      {r && r.albums.length > 0 && (
-        <Section title="Albums">
-          <div className="grid">{r.albums.map((a) => <Remember key={a.id} kind="album" id={a.id}><AlbumCard a={a} /></Remember>)}</div>
-        </Section>
-      )}
-      {r && r.books.length > 0 && (
-        <Section title="Audiobooks">
-          <div className="grid">{r.books.map((b) => (
-            <Link key={b.id} to={`/audiobooks/${b.id}`} className="card" onClick={() => rememberSearch("book", b.id)}>
-              <Art src={b.art} name={b.title} peer={b.peer} />
-              <div className="card-title ellipsis">{b.title}</div>
-              <div className="card-sub ellipsis">{b.author || "Unknown author"}</div>
-            </Link>
-          ))}</div>
-        </Section>
       )}
     </div>
   );

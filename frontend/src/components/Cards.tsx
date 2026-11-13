@@ -1,19 +1,33 @@
-import { Play } from "lucide-react";
+import { Pause, Play } from "lucide-react";
 import { Link } from "react-router-dom";
 import { playAlbum, playRandom } from "../actions";
 import { linkData } from "../chat/store";
 import { sized } from "../api";
+import { engine } from "../player/engine";
+import { usePlayer } from "../store/player";
 import type { Album, Artist, Genre, Playlist } from "../types";
 import { AdminCog, type ItemKind } from "./AdminMode";
 import { Art } from "./ui";
 
+/** Whether the playing song is from the album: "playing", "paused", or "" (another's, or none). */
+function useAlbumNow(a: Album): "" | "playing" | "paused" {
+  return usePlayer((s) => {
+    const c = s.index >= 0 ? s.queue[s.index] : null;
+    if (!c || c.albumId !== a.id || (c.peer || null) !== (a.peer || null)) return "";
+    return s.playing || s.buffering ? "playing" : "paused";
+  });
+}
+
+/** The album playing now keeps its button showing: pause while it plays, play on where it was once paused. */
 export function AlbumCard({ a }: { a: Album }) {
+  const now = useAlbumNow(a);
   return (
-    <Link to={`/album/${a.id}`} className="card" data-link={linkData("album", a.id, a.title, a.artist, a.art)}>
+    <Link to={`/album/${a.id}`} className={`card ${now ? "current" : ""}`} data-link={linkData("album", a.id, a.title, a.artist, a.art)}>
       <Art src={a.art} name={a.title} peer={a.peer} />
-      <button className="play-fab" aria-label={`Play ${a.title}`} data-tip={`Play ${a.title}`}
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); playAlbum(a.id); }}>
-        <Play size={20} fill="currentColor" />
+      <button className="play-fab" aria-label={now === "playing" ? `Pause ${a.title}` : `Play ${a.title}`}
+              data-tip={now === "playing" ? "Pause" : now ? "Play on" : `Play ${a.title}`}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (now) engine.toggle(); else playAlbum(a.id); }}>
+        {now === "playing" ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}
       </button>
       <AdminCog kind="album" id={a.id} title={a.title} peer={a.peer} />
       <div className="card-title ellipsis">{a.title}</div>

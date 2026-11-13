@@ -1,27 +1,29 @@
 /** "Your library": the left panel of the desktop layout, after Spotify's. Section chips
  * filter a list of what you saved, follow, listen to or played lately; a chip also
- * leads to its full section page. Collapses to a strip of covers. */
+ * leads to its full section page. Latest lists what came into the library last and new
+ * podcast episodes, by itself only. Collapses to a strip of covers. */
 
 import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, Heart, Library, PanelLeftClose, Play, Plus } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
-import { api } from "../api";
+import { ago, api } from "../api";
 import { playAlbum, playTracks } from "../actions";
 import { linkData } from "../chat/store";
 import { Art, NewDot } from "../components/ui";
 import { useModules } from "../modules";
 import { engine } from "../player/engine";
-import { fromStation } from "../store/player";
+import { fromEpisode, fromStation } from "../store/player";
 import { useUi } from "../store/ui";
 import type { FilePlaylistDetail, ModuleKey, Playlist, SidebarData } from "../types";
 
-type Chip = "playlists" | "albums" | "artists" | "vgm" | "books" | "podcasts" | "radio";
+type Chip = "latest" | "playlists" | "albums" | "artists" | "vgm" | "books" | "podcasts" | "radio";
 
 // a chip's module (modules.ts), when it has one
 const CHIP_MODULE: Partial<Record<Chip, ModuleKey>> = { vgm: "vgm", books: "audiobooks", podcasts: "podcasts", radio: "radio" };
 
-const CHIPS: { id: Chip; label: string; browse: [string, string] }[] = [
+const CHIPS: { id: Chip; label: string; browse: [string, string] | null }[] = [
+  { id: "latest", label: "Latest", browse: null },
   { id: "playlists", label: "Playlists", browse: ["/library/playlists", "All playlists"] },
   { id: "albums", label: "Albums", browse: ["/library/albums", "Browse all albums"] },
   { id: "artists", label: "Artists", browse: ["/library/artists", "Browse all artists"] },
@@ -112,11 +114,33 @@ export function Sidebar() {
     for (const a of d.artists)
       rows.push({ key: `r${a.id}`, chip: "artists", title: a.name, sub: "Artist", art: <Art src={a.art} name={a.name} size={96} round />,
                   to: `/library/artists/${a.id}` });
+    for (const x of d.latest || []) {
+      const when = ago(x.at);
+      if (x.type === "album") {
+        const a = x.item, game = a.kind === "vgm";
+        if (game && !modules.vgm) continue;
+        rows.push({ key: `la${a.id}`, chip: "latest", title: a.title, sub: [game ? "Game" : "Album", a.artist, when].filter(Boolean).join(" · "),
+                    art: <Art src={a.art} name={a.title} size={96} peer={a.peer} />, link: linkData("album", a.id, a.title, a.artist, a.art),
+                    to: `/album/${a.id}`, onPlay: () => playAlbum(a.id) });
+      } else if (x.type === "book") {
+        const b = x.item;
+        if (!modules.audiobooks) continue;
+        rows.push({ key: `lb${b.id}`, chip: "latest", title: b.title, sub: ["Audiobook", b.author, when].filter(Boolean).join(" · "),
+                    art: <Art src={b.art} name={b.title} size={96} peer={b.peer} />, to: `/audiobooks/${b.id}` });
+      } else {
+        const e = x.item;
+        if (!modules.podcasts) continue;
+        rows.push({ key: `le${e.id}`, chip: "latest", title: e.title, sub: ["Episode", e.feed_title, when].filter(Boolean).join(" · "),
+                    art: <Art src={e.image || null} name={e.title} size={96} />, to: `/podcasts/episode/${e.id}`,
+                    onPlay: () => engine.play([fromEpisode(e)]), dot: "New episode" });
+      }
+    }
   }
 
-  // the strip of covers has no chips, so it always shows everything
-  const filter = collapsed ? "" : chip;
-  const shown = filter ? rows.filter((r) => r.chip === filter) : rows;
+  // the strip of covers has no chips of its own: it shows the one picked last (everything, with none)
+  const filter = chip;
+  // Latest by itself only: everything else would list its albums twice
+  const shown = filter ? rows.filter((r) => r.chip === filter) : rows.filter((r) => r.chip !== "latest");
   const browse = filter ? CHIPS.find((c) => c.id === filter)!.browse : null;
 
   return (
