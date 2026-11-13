@@ -1,6 +1,7 @@
 """The Muzix window's own server (relay.py): only the window gets through, and what's for the server goes
 on to it, at home or outside."""
 import socket
+import sys
 import threading
 import time
 
@@ -170,3 +171,29 @@ def test_the_windows_sockets_trust_what_the_app_brings_not_the_systems_certifica
     assert len(trusted.get_ca_certs()) == pem.count("BEGIN CERTIFICATE") > 100
     assert kw2.get("ssl") is None                                       # no TLS at home
     relay.stop()
+
+
+def test_it_starts_without_a_console_as_on_windows(monkeypatch):
+    """The built app for Windows has no console: sys.stdout and sys.stderr are None, and uvicorn's own logging
+    setup asked None.isatty() ("Unable to configure formatter 'default'", 2026-11-13)."""
+    monkeypatch.setattr(sys, "stdout", None)
+    monkeypatch.setattr(sys, "stderr", None)
+    relay = Relay()
+    try:
+        _up(relay.origin + "/")
+    finally:
+        relay.stop()
+
+
+def test_a_windowed_app_gets_somewhere_to_write(monkeypatch):
+    """launch.py's first step: no console (Windows), stdout and stderr go nowhere instead of being None, for
+    whatever writes to them (the library's own server, started with --library, sets uvicorn's logging up too)."""
+    import muzix_desktop
+    monkeypatch.setattr(sys, "stdout", None)
+    monkeypatch.setattr(sys, "stderr", None)
+    muzix_desktop.ensure_streams()
+    assert not sys.stdout.isatty() and not sys.stderr.isatty()
+    sys.stdout.write("anything")            # goes nowhere, and doesn't fail
+    out = sys.stdout
+    muzix_desktop.ensure_streams()          # one there: left as it is
+    assert sys.stdout is out

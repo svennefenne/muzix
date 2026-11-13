@@ -142,7 +142,10 @@ class Relay:
             Route("/manifest.webmanifest", self._api),
             Route("/{path:path}", self._file),
         ])
-        self.server = uvicorn.Server(uvicorn.Config(app, log_level="warning", lifespan="off", ws="websockets-sansio"))
+        # log_config None: the app's own logging, not uvicorn's (whose asks sys.stdout.isatty(), None without a
+        # console: the built app for Windows)
+        self.server = uvicorn.Server(uvicorn.Config(app, log_level="warning", log_config=None, lifespan="off",
+                                                    ws="websockets-sansio"))
         threading.Thread(target=self._run, name="relay", daemon=True).start()
 
     @staticmethod
@@ -183,7 +186,7 @@ class Relay:
         s.bind((ip, 0))
         s.listen(16)
         app = Starlette(routes=[Route("/api/{path:path}", self._speaker, methods=["GET", "HEAD"])])
-        self._lan_server = uvicorn.Server(uvicorn.Config(app, log_level="warning", lifespan="off"))
+        self._lan_server = uvicorn.Server(uvicorn.Config(app, log_level="warning", log_config=None, lifespan="off"))
         asyncio.run_coroutine_threadsafe(self._lan_server.serve(sockets=[s]), self.loop)
         self.lan = f"http://{ip}:{s.getsockname()[1]}"
         log.info("Cast speakers get this computer's music from %s", self.lan)
