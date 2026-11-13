@@ -9,18 +9,21 @@ import type { Album, Artist, Genre, Playlist } from "../types";
 import { AdminCog, type ItemKind } from "./AdminMode";
 import { Art } from "./ui";
 
-/** Whether the playing song is from the album: "playing", "paused", or "" (another's, or none). */
-function useAlbumNow(a: Album): "" | "playing" | "paused" {
+export type Now = "" | "playing" | "paused";
+
+/** Whether the playing song is the album's or the artist's: "playing", "paused", or "" (another's, or none). Its
+ * card or row keeps its button showing, as pause while it plays (Cards.tsx, Browse.tsx). */
+export function useNow(kind: "album" | "artist", id: number, peer?: string | null): Now {
   return usePlayer((s) => {
     const c = s.index >= 0 ? s.queue[s.index] : null;
-    if (!c || c.albumId !== a.id || (c.peer || null) !== (a.peer || null)) return "";
+    if (!c || (c.peer || null) !== (peer || null) || (kind === "album" ? c.albumId : c.artistId) !== id) return "";
     return s.playing || s.buffering ? "playing" : "paused";
   });
 }
 
 /** The album playing now keeps its button showing: pause while it plays, play on where it was once paused. */
 export function AlbumCard({ a }: { a: Album }) {
-  const now = useAlbumNow(a);
+  const now = useNow("album", a.id, a.peer);
   return (
     <Link to={`/album/${a.id}`} className={`card ${now ? "current" : ""}`} data-link={linkData("album", a.id, a.title, a.artist, a.art)}>
       <Art src={a.art} name={a.title} peer={a.peer} />
@@ -36,13 +39,16 @@ export function AlbumCard({ a }: { a: Album }) {
   );
 }
 
+/** The artist playing now keeps its button showing, as the album playing does (AlbumCard). */
 export function ArtistCard({ a, to }: { a: Artist; to?: string }) {
+  const now = useNow("artist", a.id);
   return (
-    <Link to={to || `/artist/${a.id}`} className="card">
+    <Link to={to || `/artist/${a.id}`} className={`card ${now ? "current" : ""}`}>
       <Art src={a.art} name={a.name} round />
-      <button className="play-fab" aria-label={`Play ${a.name}`} data-tip={`Shuffle songs by ${a.name}`}
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); playRandom({ artist_id: a.id, kind: "all" }); }}>
-        <Play size={20} fill="currentColor" />
+      <button className="play-fab" aria-label={now === "playing" ? `Pause ${a.name}` : `Play ${a.name}`}
+              data-tip={now === "playing" ? "Pause" : now ? "Play on" : `Shuffle songs by ${a.name}`}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (now) engine.toggle(); else playRandom({ artist_id: a.id, kind: "all" }); }}>
+        {now === "playing" ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}
       </button>
       <AdminCog kind="artist" id={a.id} title={a.name} />
       <div className="card-title ellipsis" style={{ textAlign: "center" }}>{a.name}</div>

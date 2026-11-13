@@ -446,6 +446,9 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
 .tracks.plain .t-actions { width: 32px; margin-left: 6px; }
 .tracks.plain .t-actions > * { opacity: 1; }
 .tracks.plain .t-actions .t-like { display: none; }
+/* a liked song's heart before its artist, where the row has no heart button (phones, the Android app's album) */
+.t-liked-mark { display: none; color: var(--primary); margin-right: 5px; vertical-align: -1px; }
+.tracks.plain .t-liked-mark { display: inline-block; }
 .tracks.plain .t-more { width: 32px; height: 40px; margin-right: -8px; }
 .tracks.plain .kicker { margin-left: 0 !important; }
 .trow:hover .t-actions > *, .t-actions > .liked { opacity: 1; }
@@ -673,6 +676,9 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
 }
 .l-play.round { border-radius: 10px; }
 .lrow:hover .l-play, .l-play:focus-visible { opacity: 1; }
+/* the album or artist playing now (Browse.tsx): its button stays, as pause, and its name is the accent */
+.l-play.now { opacity: 1; background: color-mix(in srgb, var(--primary) 85%, #000); color: var(--on-primary); }
+.lrow:has(.l-play.now) .l-title { color: var(--primary); }
 .l-main { min-width: 0; }
 .l-title { font-weight: 700; font-size: 14px; }
 .l-sub { margin-top: 2px; font-size: 12.5px; color: var(--text-dim); }
@@ -1546,6 +1552,7 @@ button.lyr:hover { color: var(--lyr-now); text-decoration: underline; text-decor
   .trow.playing .t-num .t-n { display: inline; color: var(--primary); }
   .tags .tag { padding: 7px 13px; font-size: 12.5px; }
   .t-actions .t-like { display: none; }
+  .t-liked-mark { display: inline-block; }
   .t-actions .t-more { width: 32px; height: 40px; }
   .split { grid-template-columns: 1fr; }
   .sidenav { position: static; grid-auto-flow: column; overflow-x: auto; overflow-y: hidden; }

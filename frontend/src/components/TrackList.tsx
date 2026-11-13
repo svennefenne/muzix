@@ -115,6 +115,7 @@ export function TrackList({ tracks, showArt, showAlbum = true, numbered = "index
                 <div style={{ minWidth: 0 }}>
                   <div className="t-title ellipsis">{t.title}</div>
                   <div className="t-artist ellipsis">
+                    {on && <Heart className="t-liked-mark" size={12} fill="currentColor" aria-label="Liked" />}
                     {t.artist_id ? <Link to={`/artist/${t.artist_id}`}>{t.artist}</Link> : t.artist}
                     {t.system && <span className="faint"> · {t.system}</span>}
                     {t.format && !["mp3", "flac", "m4a", "ogg", "opus"].includes(t.format) &&

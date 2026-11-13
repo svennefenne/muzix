@@ -1,15 +1,16 @@
 /** Shared pieces for browsing pages: the view/display switchers, the sort menu
  * and albums, artists and genres shown as a list, a grid or a gallery. */
 
-import { Grid3x3, LayoutGrid, List, Play } from "lucide-react";
+import { Grid3x3, LayoutGrid, List, Pause, Play } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { fmtLong, fmtNumber, sized } from "../api";
 import { playAlbum, playRandom } from "../actions";
+import { engine } from "../player/engine";
 import { useUi } from "../store/ui";
 import type { Album, Artist, DisplayMode, Genre } from "../types";
 import { AdminCog } from "./AdminMode";
-import { AlbumCard, ArtistCard, GenreCard } from "./Cards";
+import { AlbumCard, ArtistCard, GenreCard, useNow } from "./Cards";
 import { Art } from "./ui";
 
 export interface Choice<T extends string> { value: T; label: string; icon?: ReactNode; title?: string }
@@ -86,16 +87,20 @@ export function Rows({ head, cols, colsSm, children }: { head: ReactNode[]; cols
   );
 }
 
-function PlayThumb({ art, name, round, onPlay, peer }: {
+/** A row's cover with its play button; the album or artist playing now (`what`) keeps it showing, as pause while it
+ * plays (Cards.tsx's useNow). */
+function PlayThumb({ art, name, round, onPlay, peer, what }: {
   art: string | null; name: string; round?: boolean; onPlay?: () => void; peer?: string | null;
+  what?: { kind: "album" | "artist"; id: number };
 }) {
+  const now = useNow(what?.kind ?? "album", what?.id ?? -1, peer);
   return (
     <div className="l-thumb">
       <Art src={art} name={name} size={96} round={round} peer={peer} />
       {onPlay && (
-        <button className={`l-play ${round ? "round" : ""}`} aria-label={`Play ${name}`}
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onPlay(); }}>
-          <Play size={15} fill="currentColor" />
+        <button className={`l-play ${round ? "round" : ""} ${now ? "now" : ""}`} aria-label={now === "playing" ? `Pause ${name}` : `Play ${name}`}
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (now) engine.toggle(); else onPlay(); }}>
+          {now === "playing" ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" />}
         </button>
       )}
     </div>
@@ -113,7 +118,7 @@ export function AlbumItems({ items, display, vgm }: { items: Album[]; display: D
             .map((h, i) => <span key={i} className={i >= 2 && i !== 5 ? "l-opt" : i === 5 ? "l-num" : ""}>{h}</span>)}>
       {items.map((a) => (
         <Link key={a.id} to={`/album/${a.id}`} className="lrow">
-          <PlayThumb art={a.art} name={a.title} onPlay={() => playAlbum(a.id)} peer={a.peer} />
+          <PlayThumb art={a.art} name={a.title} onPlay={() => playAlbum(a.id)} peer={a.peer} what={{ kind: "album", id: a.id }} />
           <div className="l-main">
             <div className="l-title ellipsis">{a.title}</div>
             <div className="l-sub ellipsis l-sm">{[a.artist, a.year || null].filter(Boolean).join(" · ")}</div>
@@ -142,7 +147,7 @@ export function ArtistItems({ items, display, linkTo }: { items: Artist[]; displ
           head={["", "Artist", "Genre", "Albums"].map((h, i) => <span key={i} className={i === 2 ? "l-opt" : i === 3 ? "l-num" : ""}>{h}</span>)}>
       {items.map((a) => (
         <Link key={a.id} to={linkTo?.(a) || `/artist/${a.id}`} className="lrow">
-          <PlayThumb art={a.art} name={a.name} round onPlay={() => playRandom({ artist_id: a.id, kind: "all" })} />
+          <PlayThumb art={a.art} name={a.name} round onPlay={() => playRandom({ artist_id: a.id, kind: "all" })} what={{ kind: "artist", id: a.id }} />
           <div className="l-main">
             <div className="l-title ellipsis">{a.name}</div>
             <div className="l-sub ellipsis l-sm">{a.tags.slice(0, 3).join(", ") || a.genre}</div>
