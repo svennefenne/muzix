@@ -256,3 +256,15 @@ def test_a_song_that_stands_still_however_its_started_stops_and_says_so(tmp_path
     assert p.revived == player.REVIVALS
     assert [m["title"] for m in got if m["t"] == "error"] == ["A"]
     assert not last["playing"] and last["position"] > 1.0
+
+
+def test_the_builds_check_plays_a_song_over_http_with_the_relays_headers():
+    """app.py --check, on each build's own computer: a song from a server on 127.0.0.1, as the relay serves
+    the window's songs (0.4.25 for Windows passed its check, and played nothing: curlhttpsrc never started)."""
+    assert player.stream_check() == ""
+
+
+def test_the_builds_check_says_why_when_nothing_plays(monkeypatch):
+    monkeypatch.setattr(player, "_dress", lambda source, headers: None)     # the relay's secret doesn't go along
+    why = player.stream_check(timeout=8)
+    assert why and "asked" in why

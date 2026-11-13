@@ -102,6 +102,120 @@ def available() -> bool:
     return Gst is not None and Gst.ElementFactory.find(_playbin()) is not None
 
 
+def _makes(name: str) -> bool:
+    try:
+        return Gst.ElementFactory.make(name) is not None
+    except Exception:           # newer PyGObject raises for an element that's missing
+        return False
+
+
+def http_source() -> str:
+    """The element that fetches the player's streams (the relay's, over http): souphttpsrc where its libsoup
+    loads (Linux: the AppImage brings its own). Where it doesn't (Windows' GStreamer packages have no libsoup),
+    reqwesthttpsrc, ranked up past curlhttpsrc: that one never starts a song on Windows. Until it has a
+    connection it asks select() about no sockets at all, which Windows answers with an error, so curl is never
+    run (0.4.25: Play showed the song, and it stood still)."""
+    if _makes("souphttpsrc"):
+        return "souphttpsrc"
+    reqwest = Gst.ElementFactory.find("reqwesthttpsrc")
+    if reqwest is not None:
+        if reqwest.get_rank() < Gst.Rank.PRIMARY:
+            reqwest.set_rank(Gst.Rank.PRIMARY)
+        return "reqwesthttpsrc"
+    return "curlhttpsrc" if Gst.ElementFactory.find("curlhttpsrc") is not None else ""
+
+
+def _dress(source, headers):
+    """The window's own server (relay.py) takes the window's secret as a header: GStreamer before 1.22 runs
+    several cookies into one line, which loses them."""
+    url = source.get_property("location") if source.find_property("location") is not None else ""
+    wanted = headers(url or "")
+    if wanted and source.find_property("extra-headers") is not None:
+        extra = Gst.Structure.new_empty("extra-headers")
+        for k, v in wanted.items():
+            extra.set_value(k, v)
+        source.set_property("extra-headers", extra)
+    if source.find_property("user-agent") is not None:
+        source.set_property("user-agent", f"MuzixDesktop/{__version__}")
+
+
+def stream_check(timeout: float = 20.0) -> str:
+    """The builds' check (app.py --check): a short song from a server on 127.0.0.1 that wants the relay's
+    header, as the relay serves the window's songs, through the http source the player gets. "" when it
+    plays, else why not. The http sources are where the platforms' GStreamer differ."""
+    import http.server
+    import io
+    import threading
+    import wave
+    from .relay import SECRET_HEADER
+    out = io.BytesIO()
+    with wave.open(out, "wb") as w:
+        w.setnchannels(2)
+        w.setsampwidth(2)
+        w.setframerate(44100)
+        w.writeframes(b"\0" * 4 * 44100 * 3)
+    song, key, asked = out.getvalue(), "check", []
+
+    class Song(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            asked.append(self.path)
+            if self.headers.get(SECRET_HEADER) != key:
+                self.send_error(403)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/wav")
+            self.send_header("Content-Length", str(len(song)))
+            self.end_headers()
+            try:
+                self.wfile.write(song)
+            except OSError:         # it stopped listening: the check is done
+                pass
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Song)
+    threading.Thread(target=server.serve_forever, name="stream-check", daemon=True).start()
+    picked, used = http_source(), []
+    bin_ = Gst.ElementFactory.make(_playbin(), None)
+    bin_.set_property("flags", AUDIO)
+    sink = Gst.ElementFactory.make("fakesink")
+    sink.set_property("sync", True)
+    bin_.set_property("audio-sink", sink)
+
+    def setup(_bin, source):
+        used.append(source.get_factory().get_name())
+        _dress(source, lambda url: {SECRET_HEADER: key})
+    bin_.connect("source-setup", setup)
+    bin_.set_property("uri", f"http://127.0.0.1:{server.server_address[1]}/api/stream/1")
+    bus = bin_.get_bus()
+    why = f"it stood still for {timeout:.0f} s"
+    end = time.monotonic() + timeout
+    bin_.set_state(Gst.State.PLAYING)
+    try:
+        while time.monotonic() < end:
+            msg = bus.timed_pop_filtered(100 * Gst.MSECOND, Gst.MessageType.ERROR | Gst.MessageType.EOS)
+            if msg is not None and msg.type == Gst.MessageType.EOS:
+                why = ""
+                break
+            if msg is not None:
+                err, debug = msg.parse_error()
+                why = f"{err.message} ({debug})"
+                break
+            ok, pos = bin_.query_position(Gst.Format.TIME)
+            if ok and pos >= Gst.SECOND:
+                why = ""
+                break
+    finally:
+        bin_.set_state(Gst.State.NULL)
+        server.shutdown()
+        server.server_close()
+    if why:
+        return (f"a song over http doesn't play: {why}; through {', '.join(used) or 'no http source'} "
+                f"(the player's pick: {picked or 'none'}), the server asked {len(asked)} time(s)")
+    return ""
+
+
 class Player(QObject):
     sent = Signal(str)          # a message for the page
     changed = Signal()          # what plays, or how (the system's player: mpris.py)
@@ -124,9 +238,9 @@ class Player(QObject):
         self.kept = (0.0, -1, False)        # when it was last kept, and what played then
         self.device_id = device_id          # the window's id as one of the account's devices (frontend/src/player/connect.ts)
         self.bin = Gst.ElementFactory.make(_playbin(), "muzix")
-        if Gst.ElementFactory.find("souphttpsrc") is None:
-            log.warning("GStreamer has no souphttpsrc here (libsoup didn't load): streams go through curlhttpsrc, "
-                        "which can't seek in a podcast and stops in long streams")
+        if (source := http_source()) != "souphttpsrc":
+            log.warning("GStreamer has no souphttpsrc here (libsoup didn't load): streams go through %s",
+                        source or "nothing")
         self.bin.set_property("flags", AUDIO | SOFT_VOLUME)
         if sink := os.environ.get("MUZIX_AUDIO_SINK"):      # another output (the tests: "fakesink sync=true")
             self.bin.set_property("audio-sink", Gst.parse_bin_from_description(sink, True))
@@ -575,17 +689,7 @@ class Player(QObject):
         self.still = (at, _now())
 
     def _source_setup(self, _bin, source):
-        """The window's own server (relay.py) takes the window's secret as a header: GStreamer before 1.22 runs
-        several cookies into one line, which loses them."""
-        url = source.get_property("location") if source.find_property("location") is not None else ""
-        wanted = self.headers(url or "")
-        if wanted and source.find_property("extra-headers") is not None:
-            extra = Gst.Structure.new_empty("extra-headers")
-            for k, v in wanted.items():
-                extra.set_value(k, v)
-            source.set_property("extra-headers", extra)
-        if source.find_property("user-agent") is not None:
-            source.set_property("user-agent", f"MuzixDesktop/{__version__}")
+        _dress(source, self.headers)
 
     def _messages(self):
         while (msg := self.bus.pop()) is not None:

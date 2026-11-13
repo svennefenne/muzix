@@ -471,13 +471,13 @@ def check() -> int:
         assert relay.web_dir(), "the web interface isn't there"
         assert player.available(), "GStreamer's player (playbin3) isn't there"
         need = [("flacdec",), ("opusdec",), ("vorbisdec",), ("mpg123audiodec", "avdec_mp3"), ("avdec_aac", "faad", "fdkaacdec"),
-                ("wavpackdec", "avdec_wavpack"), ("spectrum",), ("souphttpsrc", "curlhttpsrc")]
+                ("wavpackdec", "avdec_wavpack"), ("spectrum",), ("souphttpsrc", "reqwesthttpsrc", "curlhttpsrc")]
         missing = [n[0] for n in need if not any(player.Gst.ElementFactory.find(x) for x in n)]
         assert not missing, (f"GStreamer lacks {', '.join(missing)} (its packages: {player.gst_packages()}, plugins from "
                              f"{os.environ.get('GST_PLUGIN_SYSTEM_PATH_1_0') or os.environ.get('GST_PLUGIN_PATH')})")
         # Linux: streams through souphttpsrc, with the libsoup that comes along (muzix-desktop.spec), made here as
         # it loads libsoup only then: curlhttpsrc can't seek in a podcast and stops in long streams. (Windows'
-        # GStreamer packages have no souphttpsrc that starts: curlhttpsrc there, for now)
+        # GStreamer packages have no souphttpsrc that starts: reqwesthttpsrc there, player.http_source)
         if sys.platform == "linux":
             try:
                 made = player.Gst.ElementFactory.make("souphttpsrc")
@@ -500,7 +500,11 @@ def check() -> int:
         assert "Saira" in QFontDatabase.families(), "the fonts aren't there"
         assert not theme.icon().isNull(), "the icon isn't there"
         qt.quit()
-        text, code = "Muzix Desktop: OK", 0
+        # and a song plays over http, as the window's songs come from the relay: 0.4.25 for Windows passed all of
+        # the above and played nothing (curlhttpsrc never started there)
+        why = player.stream_check()
+        assert not why, why
+        text, code = f"Muzix Desktop: OK (songs through {player.http_source()})", 0
     except BaseException:
         text, code = traceback.format_exc(), 1
     if sys.stdout:
