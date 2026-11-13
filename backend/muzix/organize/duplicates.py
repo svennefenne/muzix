@@ -20,18 +20,40 @@ _NUMBER = re.compile(r"^\s*(?:(?:cd|disc|disk)\s*\d+\s*[-._]?\s*)?\d{1,3}(?:\s*[
 _BRACKETS = re.compile(r"[(\[{][^)\]}]*[)\]}]")
 _NOT_WORD = re.compile(r"[\W_]+")
 _LETTER = re.compile(r"[^\W\d_]")
+_APOSTROPHE = re.compile(r"['’`´]")
+_NOISE = re.compile(r"\s+bonus(?:\s+track)?$")      # what Bandcamp adds to a title: "...-remix-bonus-track"
 MUSIC = ("native", "decode")
 
 
 def norm(s: str) -> str:
-    """Case, accents and punctuation aside: "Motörhead - Ace of Spades!" -> "motorhead ace of spades"."""
-    s = unicodedata.normalize("NFKD", s.casefold().replace("&", " and "))
+    """Case, accents and punctuation aside: "Motörhead - Ace of Spades!" -> "motorhead ace of spades"; an
+    apostrophe goes without a space, as file names leave it out: "Devil's Cave" -> "devils cave"."""
+    s = unicodedata.normalize("NFKD", _APOSTROPHE.sub("", s.casefold()).replace("&", " and "))
     return " ".join(_NOT_WORD.sub(" ", "".join(c for c in s if not unicodedata.combining(c))).split())
 
 
 def base(s: str) -> str:
     """Without what's in brackets: "Battery (Remastered 2017)" -> "battery"."""
     return norm(_BRACKETS.sub(" ", s))
+
+
+def title_keys(title: str) -> set[str]:
+    """The ways a song's title may be written in a file's name: as it is and without what's in brackets, each
+    without "and" (Bandcamp's names drop an "&": "parts-1-2") or an added "bonus track", and squashed (its
+    punctuation dropped rather than spaced: "isaiah-1320" for "Isaiah 13:20")."""
+    out = set()
+    for t in (norm(title), base(title)):
+        t = _NOISE.sub("", t)
+        for k in (t, " ".join(w for w in t.split() if w != "and")):
+            if k:
+                out |= {k, k.replace(" ", "")}
+    return out
+
+
+def same_title(a: str, b: str) -> bool:
+    """Whether two titles are one, punctuation, "&" and "and" aside: "Death Walks Parts 1 and 2", "death-walks-parts-1-2"."""
+    squash = lambda t: "".join(w for w in _NOISE.sub("", norm(t)).split() if w != "and")
+    return squash(a) == squash(b)
 
 
 def titles(stem: str) -> set[str]:
@@ -132,7 +154,7 @@ def check(files: list[tuple[str, int]], db: Session) -> dict:
                           .where(Track.kind == "music", Track.peer_id.is_(None))
                           .execution_options(include_hidden=True))
         for t in rows:
-            if key := base(t.title):
+            for key in title_keys(t.title or ""):
                 index.setdefault(key, []).append(t)
         for path, _ in songs:
             folder, stem = os.path.split(os.path.splitext(path)[0])
@@ -140,14 +162,14 @@ def check(files: list[tuple[str, int]], db: Session) -> dict:
             loose = not _LETTER.search(context)          # a bare title: nothing else to go by
             best, rank = None, None
             for title in titles(stem):
-                for t in index.get(base(title), ()):
+                for t in {id(t): t for k in title_keys(title) for t in index.get(k, ())}.values():
                     named = {norm(t.artist), norm(t.albumartist)} - {"", "various artists"}
                     albums = {a for a in (norm(t.album), base(t.album)) if len(a) > 2}
                     by_artist = any(f" {n} " in context for n in named)
                     on_album = any(f" {a} " in context for a in albums)
                     if not (by_artist or on_album or loose):
                         continue
-                    same = (by_artist or on_album) and norm(title) == norm(t.title)
+                    same = (by_artist or on_album) and same_title(title, t.title)
                     # the same title on the same album beats a live or compilation version
                     if rank is None or (same, on_album, by_artist) > rank:
                         best, rank = t, (same, on_album, by_artist)

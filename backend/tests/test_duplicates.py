@@ -117,3 +117,39 @@ def test_the_upload_area_lists_while_an_import_takes_batches_away(monkeypatch):
     assert ("02.flac", 6) in duplicates._waiting()          # the duplicate check's look goes on too
     for d in (going, staying):
         shutil.rmtree(d)
+
+
+def test_bandcamps_file_names_find_the_songs_the_library_has(tmp_path):
+    """Bandcamp names its files without punctuation ("devils-cave", "gently-johnny-instrumental", "isaiah-1320",
+    "parts-1-2"): its albums in the watch folder's _Duplicates, uploaded again, each song found as the library's
+    (2026-11-13: 48 of 272 weren't). A title by another artist and album stays new."""
+    lib = [("Devil's Cave", "Garden Gate", "Canyon Of Blood"),
+           ("Gently Johnny", "Ivan the Tolerable", "Sounds Of The Unexpected"),
+           ("Gently Johnny (Instrumental)", "Ivan the Tolerable", "Sounds Of The Unexpected"),
+           ("Sortilege I — Isaiah 13:20", "Missionary Work", "The Ash Tree"),
+           ("Death Walks Parts 1 and 2", "Dream Division", "Death Walks On Nitrate"),
+           ("Title Sequence - Natasha's Motorbike", "Garden Gate", "Blood Mansion"),
+           ("Roddie & Vincent", "Ivan the Tolerable", "The Continuous Katherine Mortenhoe"),
+           ("White Tears III (Hugh Major remix)", "Ivan the Tolerable", "White Tears"),
+           ("Lord Octavia's Library", "The Hologram People", "Village of the Snake God")]
+    with db.session() as s:
+        root = Root(path="/bclib", kind="music")
+        s.add(root)
+        s.flush()
+        s.add_all([Track(root_id=root.id, path=f"/bclib/{artist}/{album}/{n}. {title}.mp3", title=title, artist=artist,
+                         albumartist=artist, album=album, format="mp3") for n, (title, artist, album) in enumerate(lib, 1)])
+    files = [(p, 5_000_000) for p in (
+        "garden-gate/canyon-of-blood/01 - devils-cave.mp3",
+        "library-of-the-occult/sounds-of-the-unexpected/04 - gently-johnny-instrumental.mp3",
+        "missionary-work/the-ash-tree/06 - sortilege-i-isaiah-1320.mp3",
+        "dream-division/death-walks-on-nitrate/01 - death-walks-parts-1-2.mp3",
+        "garden-gate/blood-mansion/01 - title-sequence-natashas-motorbike.mp3",
+        "ivan-the-tolerable/the-continuous-katherine-mortenhoe/02 - roddie-vincent.mp3",
+        "ivan-the-tolerable/white-tears/11 - white-tears-iii-hugh-major-remix-bonus-track.mp3",
+        "the-hologram-people/village-of-the-snake-god/09 - lord-octavias-library.mp3",
+        "someone-else/another-album/01 - devils-cave.mp3")]
+    with db.session() as s:
+        got = {f["path"]: f for f in duplicates.check(files, s)["found"]}
+    assert set(got) == {p for p, _ in files[:-1]}
+    assert {f["why"] for f in got.values()} == {"library"}
+    assert got[files[1][0]]["match"]["title"] == "Gently Johnny (Instrumental)"      # not the sung one
