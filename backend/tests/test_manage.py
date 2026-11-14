@@ -424,14 +424,55 @@ def test_songs_can_swap_names(library):
     assert tags.read(first).title == "First"
 
 
-def test_a_file_changed_since_it_was_read_stops_the_edit(library):
-    top, album, album_id = library
+def _png(color):
+    from io import BytesIO
+
+    from PIL import Image
+    img = BytesIO()
+    Image.new("RGB", (50, 50), color).save(img, "PNG")
+    return img.getvalue()
+
+
+def test_an_album_edited_again_after_its_cover_was_set(library):
+    """The edit window saves the fields, then the cover picked in it (into the files): editing it again
+    right after works, without scanning the library first."""
+    _, _, album_id = library
+    r = manage.edit_album(album_id, {"title": "Better Album"}, [])
+    manage.set_cover("album", album_id, _png((20, 90, 200)), r["edit_id"])
+    with db.session() as s:
+        for t in s.scalars(select(Track).where(Track.album_id == album_id)):
+            st = os.stat(t.path)
+            assert (t.size, t.mtime) == (st.st_size, st.st_mtime)      # as Muzix left them
+    r2 = manage.edit_album(album_id, {"title": "Best Album"}, [])
+    assert r2["moved_to"].endswith("Old Artist - 1990 - Best Album")
+
+
+def test_a_file_changed_since_it_was_read(library):
+    """Changed by another program since the last scan: read again, the edit goes ahead when only its
+    pictures or size changed; when its tags did (the edit window showed them as they were), it stops, read
+    again, so the window opens with them as they are now. Gone: a scan first."""
+    _, album, album_id = library
     path = os.path.join(album, "1. Old Artist - Old Album - First (1990).wav")
-    was = raw(path)
-    os.utime(path, (1, 1))
-    with pytest.raises(manage.ManageError, match="scan the library folder first"):
+    os.utime(path, (1, 1))                                              # only touched
+    r = manage.edit_album(album_id, {"year": 1991}, [])
+    album = r["moved_to"]
+    path = os.path.join(album, "1. Old Artist - Old Album - First (1991).wav")
+    assert tags.read(path).year == 1991
+
+    tagwrite.write(path, {"title": "Outside"})                          # tagged by another program, later
+    os.utime(path, (os.stat(path).st_atime, os.stat(path).st_mtime + 10))
+    with pytest.raises(manage.ManageError, match="changed by another program"):
         manage.edit_album(album_id, {"title": "Better Album"}, [])
-    assert raw(path) == was and os.path.isdir(album)
+    assert tags.read(path).album == "Old Album" and os.path.isdir(album)       # nothing written
+    with db.session() as s:
+        assert s.scalar(select(Track.title).where(Track.path == path)) == "Outside"      # read again
+    assert manage.edit_album(album_id, {"title": "Better Album"}, [])["moved_to"]        # now it goes
+
+    with db.session() as s:
+        gone = s.scalar(select(Track.path).where(Track.title == "Second"))
+    os.remove(gone)
+    with pytest.raises(manage.ManageError, match="isn't there any more"):
+        manage.edit_album(album_id, {"title": "Best Album"}, [])
 
 
 def test_a_save_that_fails_halfway_puts_the_files_back(library, monkeypatch):
@@ -450,9 +491,11 @@ def test_a_save_that_fails_halfway_puts_the_files_back(library, monkeypatch):
 
 def test_several_albums_go_to_the_trash_at_once(library):
     """Admin → Albums without artwork: the albums ticked, each into the trash as its own entry."""
+    from types import SimpleNamespace
+
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
-    from types import SimpleNamespace
+
     from muzix.api import manage as manage_api
     from muzix.security import admin_user
     top, album, album_id = library

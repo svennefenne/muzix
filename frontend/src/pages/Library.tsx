@@ -505,7 +505,7 @@ export function AlbumPage() {
             <span className="dotsep">{a.track_count} songs, {fmtLong(a.duration)}</span>
             {a.peer && <FromPeer peer={a.peer} />}
           </div>
-          {a.artist_tags.length > 0 && <TagLinks tags={a.artist_tags.slice(0, 6)} />}
+          {a.artist_tags.length > 0 && <TagLinks tags={a.own_tags ? a.artist_tags : a.artist_tags.slice(0, 6)} />}
           {inAndroidApp ? (
             <div className="row-actions album-actions">
               <button className="btn accent" onClick={() => (here ? engine.toggle() : playAlbum(a.id))}>

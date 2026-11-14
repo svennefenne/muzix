@@ -101,6 +101,12 @@ def test_an_albums_own_tags_for_it_alone():
         assert _album(ids["dnb"])["artist_tags"] == ["zq drum & bass", "Electronic"]
         assert c.put(f"/api/admin/albums/{ids['dnb']}/tags", json={"tags": ["zqgone"]}).json()["removed_everywhere"] == ["zqgone"]
 
+        # an added one goes last: every one of its own is shown, not only the first few as an artist's
+        seven = ["zqa", "zqb", "zqc", "zqd", "zqe", "zqf", "zqadded"]
+        c.put(f"/api/admin/albums/{ids['dnb']}/tags", json={"tags": seven}).raise_for_status()
+        assert _album(ids["dnb"])["artist_tags"] == [*seven, "Electronic"]
+        assert _songs(ids["a"])["a"] == [*seven, "Electronic"]
+
         # its artist's again
         r = c.put(f"/api/admin/albums/{ids['dnb']}/tags", json={"tags": None}).json()
         assert r["own"] is False and _album(ids["dnb"])["own_tags"] is False

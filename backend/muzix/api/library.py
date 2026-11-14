@@ -53,14 +53,15 @@ def artist_tags(db: Session, artist_ids) -> dict:
 
 def album_tags(db: Session, album_ids) -> dict:
     """{album id: its tags as shown} of the albums with tags of their own (Edit tags on an album's cog,
-    tagging.album_names), its genre folder last as an artist's is."""
+    tagging.album_names): every one the admin gave it (not only the first few, as an artist's: one added
+    goes last), its genre folder last as an artist's is."""
     ids = {i for i in album_ids if i}
     if not ids:
         return {}
     rules, out = None, {}
     for a in db.scalars(select(Album).where(Album.id.in_(ids), Album.own_tags.is_not(None))):
         rules = rules or tagging.Rules(db)
-        names = (tagging.album_names(a, rules) or [])[:tagging.SHOWN]
+        names = tagging.album_names(a, rules) or []
         out[a.id] = names + ([a.genre] if a.genre and a.genre.casefold() not in {n.casefold() for n in names} else [])
     return out
 

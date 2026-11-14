@@ -118,7 +118,8 @@ export interface AlbumDetail extends Album {
   more: Album[];
   colors: string[];
   folder: string;
-  artist_tags: string[];
+  artist_tags: string[];       // its artist's, or (own_tags) its own, the admin's for it alone
+  own_tags?: boolean;
 }
 
 export interface Artist {

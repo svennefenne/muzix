@@ -27,7 +27,7 @@ import re
 import shutil
 import threading
 import time
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
 import httpx
@@ -305,7 +305,7 @@ def _restore(s, item: TrashItem) -> int | None:
         _save_pictures(now, os.path.join(newer.folder, EMBEDDED))
     for src, dst in item.moves:
         _move(dst, src)
-    if item.kind == "cover" and not _put_pictures(os.path.join(item.folder, EMBEDDED)):
+    if item.kind == "cover" and not _put_pictures(s, os.path.join(item.folder, EMBEDDED)):
         _embed_again(s, item.moves[0][0])       # trashed before Muzix kept the pictures
     _remove_empty(item.folder)
     root_id = item.root_id
@@ -345,7 +345,7 @@ def _save_pictures(saved: dict, path: str):
         json.dump(saved, f)
 
 
-def _put_pictures(path: str) -> bool:
+def _put_pictures(s, path: str) -> bool:
     """The pictures saved in `path` back into the files that are still where they were."""
     try:
         with open(path, encoding="utf-8") as f:
@@ -358,8 +358,24 @@ def _put_pictures(path: str) -> bool:
                 tagwrite.put_pictures(file, saved["pictures"][key])
             except (tagwrite.TagError, OSError) as e:
                 log.warning("couldn't put the pictures back into %s: %s", file, e)
+    _restat(s, list(saved["files"]))
     os.remove(path)
     return True
+
+
+def _restat(s, paths: list[str], art: bool | None = None):
+    """Files Muzix put pictures into (their tags otherwise as they were): their size and time as they are now,
+    so the next edit doesn't take them for changed by another program. `art`: they have a picture now."""
+    if not paths:
+        return
+    for t in s.scalars(select(Track).where(Track.path.in_(paths))):
+        try:
+            st = os.stat(t.path)
+        except OSError:
+            continue
+        t.size, t.mtime = st.st_size, st.st_mtime
+        if art is not None:
+            t.embedded_art = art
 
 
 def _embed_again(s, cover: str):
@@ -371,12 +387,15 @@ def _embed_again(s, cover: str):
     except (OSError, ManageError):
         return
     tracks = _tracks_in(s, folder)
+    done = []
     for t in tracks:
         if _taggable(t):
             try:
                 tagwrite.embed_cover(t.path, small)
+                done.append(t.path)
             except (tagwrite.TagError, OSError) as e:
                 log.warning("couldn't put the cover back into %s: %s", t.path, e)
+    _restat(s, done, art=True)
     for aid in {t.album_id for t in tracks if t.album_id}:
         s.get(Album, aid).art = cover
 
@@ -760,6 +779,43 @@ def _check_unchanged(rows: list[Track]):
                           "scan the library folder first (Admin → Library folders), then edit again")
 
 
+def _catch_up(where):
+    """Before an edit: songs (`where`) whose files changed since Muzix last read them, by another program
+    (a cover put in, tags written), read again as a scan would, so the library needn't be scanned first.
+    When only their pictures or size changed, the edit goes ahead. When their tags did (the edit window
+    showed them as they were, and saving it would put them back), it stops, them read again: the window
+    opens with them as they are now. A file that's gone stops it too: a scan finds where it went."""
+    gone = changed = None
+    with db.session() as s:
+        stale = [t for t in s.scalars(select(Track).where(where)) if not _unchanged(t)]
+        if not stale:
+            return
+        gone = next((os.path.basename(t.path) for t in stale if not os.path.exists(t.path)), None)
+        if gone is None:
+            def shown(ids):     # what the edit window shows of them
+                return {r[0]: tuple(r[1:]) for r in s.execute(
+                    select(Track.id, *(getattr(Track, f) for f in TRACK_FIELDS)).where(Track.id.in_(ids)))}
+            ids = [t.id for t in stale]
+            was, albums = shown(ids), {t.album_id for t in stale}
+            by_root = defaultdict(list)
+            for t in stale:
+                by_root[t.root_id].append((t.id, t.subsong, t.path))
+            resolver = scanner.Resolver()
+            for root_id, files in by_root.items():
+                _reread(s, s.get(Root, root_id), files, resolver)
+            s.flush()
+            now = shown(ids)
+            changed = next((os.path.basename(t.path) for t in stale if now.get(t.id) != was.get(t.id)), None)
+            albums |= set(s.scalars(select(Track.album_id).where(Track.id.in_(ids))))
+            _summarize(s, {a for a in albums if a})
+    if gone:
+        raise ManageError(f"{gone} isn't there any more; scan the library folder (Admin → Library folders), then edit again")
+    if changed:
+        _tidy_later()
+        raise ManageError(f"{changed} was changed by another program since Muzix read it. It has been read again: "
+                          "open the edit window again to see it as it is now")
+
+
 def _set_paths(s, moves: list[tuple[Track, str]]):
     """Songs to their new paths, through temporary ones: when songs swap names, a path can't be
     two songs' at once, even for a moment."""
@@ -842,6 +898,7 @@ def edit_album(id_: int, fields: dict, tracks: list[dict], remember: bool = True
     album_level = _clean_fields({k: v for k, v in album_level.items() if v is not None})
     per_track = {int(t["id"]): _clean_fields(t) for t in tracks if "id" in t}
     notes = []
+    _catch_up(Track.album_id == id_)
     with db.session() as s:
         alb = _row(s, "album", id_)
         title_before, art_before = alb.title, alb.art
@@ -932,6 +989,7 @@ def edit_track(id_: int, fields: dict, remember: bool = True) -> dict:
     to another album's folder is left to editing that album. `remember` as for edit_album."""
     changes_in = _clean_fields(fields)
     notes = []
+    _catch_up(Track.id == id_)
     with db.session() as s:
         t = _row(s, "track", id_)
         root = s.get(Root, t.root_id)
@@ -1082,6 +1140,7 @@ def merge_albums(ids: list[int], fields: dict) -> dict:
     """Merges the albums into the first one (see _merging): every song's tags say the merged album
     and its disc, the songs go into the first album's folder, filed and named again, and what else
     the others' own folders held goes to the trash. One edit, to undo."""
+    _catch_up(Track.album_id.in_(ids))
     with db.session() as s:
         m = _merging(s, ids, fields)
         albums, root, folder, target, new = m["albums"], m["root"], m["folder"], m["target"], m["new"]
@@ -1486,7 +1545,7 @@ def _undo_cover(s, u: dict):
             if alb is not None:
                 alb.art = c["art"]
     if c.get("pictures"):
-        _put_pictures(c["pictures"])        # exactly what the files had, none if none
+        _put_pictures(s, c["pictures"])     # exactly what the files had, none if none
     s.flush()
 
 
@@ -1630,14 +1689,16 @@ def _put_cover(kind: str, id_: int, data: bytes, edit_id: int | None) -> tuple[s
                 with open(path + ".part", "wb") as f:
                     f.write(big)
                 os.replace(path + ".part", path)
-                embedded = 0
+                done = []
                 for t in tracks:
                     if _taggable(t):
                         try:
                             tagwrite.embed_cover(t.path, small)
-                            embedded += 1
+                            done.append(t.path)
                         except (tagwrite.TagError, OSError) as e:
                             notes.append(f"{os.path.basename(t.path)}: {e}")
+                _restat(s, done, art=True)
+                embedded = len(done)
                 row.art = path
                 return kind, id_, {"art": path, "embedded": embedded, "notes": notes}
             path = _own_art("album-art", id_)       # a folder shared with other albums, or read-only
