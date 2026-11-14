@@ -317,3 +317,60 @@ def edit_artist_tags(s: Session, a: Artist, add=(), remove=()) -> list[str]:
     now = [n for n, _, _ in names(given(a), a.tag_edits, rules)]
     gone = {x.casefold() for x in remove}
     return set_artist_tags(s, a, [n for n in now if n.casefold() not in gone] + list(add))
+
+
+# ---------------------------------------------------------------- one album
+
+SHOWN = 6       # an artist's tags an album's page shows (api/library.py artist_tags)
+
+
+def album_names(a, rules: Rules) -> list[str] | None:
+    """An album's own tags (Album.own_tags) after the rules: renamed or merged as the artists' are, those
+    removed everywhere or in a hidden category left out. None: it has its artist's."""
+    if a.own_tags is None:
+        return None
+    out: dict[str, str] = {}
+    for t in a.own_tags:
+        n = rules.resolve(str(t))
+        if n and rules.show(n) != "hidden":
+            out.setdefault(n.casefold(), n)
+    return list(out.values())
+
+
+def spellings(s: Session, tag: str) -> list[str]:
+    """The names (casefolded) that come out as this tag after the renames, for finding albums whose own
+    tags were typed before a rename; none when it's hidden."""
+    rules = Rules(s)
+    want = tag.casefold()
+    if rules.show(tag) == "hidden":
+        return []
+    return sorted({want} | {k for k in rules.rules if (rules.resolve(k) or "").casefold() == want})
+
+
+def album_tags(s: Session, a) -> dict:
+    """An album's tags for its editor: its own, or else its artist's as its page shows them; each with
+    whether it isn't its artist's (added for the album) and its category; its artist's it doesn't have."""
+    rules = Rules(s)
+    artist = [n for n, _ in ((a.artist.tags if a.artist else None) or [])[:SHOWN]]
+    own = album_names(a, rules)
+    now = artist if own is None else own
+    theirs = {n.casefold() for n in artist}
+    return {"tags": [{"name": n, "added": n.casefold() not in theirs, "category": rules.category(n)} for n in now],
+            "taken_off": [n for n in artist if n.casefold() not in {x.casefold() for x in now}],
+            "given": [], "own": own is not None, "artist": a.artist.name if a.artist else a.artist_name}
+
+
+def set_album_tags(s: Session, a, wanted: list[str] | None) -> list[str]:
+    """Gives an album these tags of its own (None: its artist's again). Returns those that won't show:
+    removed everywhere."""
+    if wanted is None:
+        a.own_tags = None
+        return []
+    rules = Rules(s)
+    keep: dict[str, str] = {}
+    for t in wanted:
+        t = " ".join(t.split())[:128]
+        if t:
+            keep.setdefault(t.casefold(), t)
+    a.own_tags = list(keep.values())
+    return [t for t in a.own_tags if rules.resolve(t) is None]

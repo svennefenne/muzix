@@ -1,3 +1,4 @@
+import json
 import os
 import random
 import re
@@ -6,7 +7,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
-from sqlalchemy import case, delete, func, or_, select, text, true
+from sqlalchemy import and_, case, delete, func, or_, select, text, true
 from sqlalchemy.orm import Session
 
 from .. import art, credits, lyrics, mirror, serial, tagging
@@ -50,12 +51,27 @@ def artist_tags(db: Session, artist_ids) -> dict:
             for a in db.scalars(select(Artist).where(Artist.id.in_(ids)))}
 
 
+def album_tags(db: Session, album_ids) -> dict:
+    """{album id: its tags as shown} of the albums with tags of their own (Edit tags on an album's cog,
+    tagging.album_names), its genre folder last as an artist's is."""
+    ids = {i for i in album_ids if i}
+    if not ids:
+        return {}
+    rules, out = None, {}
+    for a in db.scalars(select(Album).where(Album.id.in_(ids), Album.own_tags.is_not(None))):
+        rules = rules or tagging.Rules(db)
+        names = (tagging.album_names(a, rules) or [])[:tagging.SHOWN]
+        out[a.id] = names + ([a.genre] if a.genre and a.genre.casefold() not in {n.casefold() for n in names} else [])
+    return out
+
+
 def tracks_json(db: Session, user: User, tracks: list[Track]) -> list[dict]:
     lk = liked(db, user, "track")
     # each song's own artist, when it has a page here: a compilation's songs aren't Various Artists' (credits.py)
     who = credits.credit(db, tracks)
     tags = artist_tags(db, who.values())
-    return [serial.track(t, lk, tags, who) for t in tracks]
+    own = album_tags(db, {t.album_id for t in tracks})
+    return [serial.track(t, lk, tags, who, own) for t in tracks]
 
 
 def on_system(system: str):
@@ -169,9 +185,13 @@ def album(album_id: int, db: Session = Depends(get_db_with_copies), user: User =
                                               Album.shadowed.is_(False)).order_by(Album.year.desc()).limit(12)).all()
     lk = liked(db, user, "album")
     colors = mirror.colors(a.art)
+    own = album_tags(db, [a.id]).get(a.id)
     return {**serial.album(a, lk), "tracks": tracks_json(db, user, tracks), "offset": offset,
             "more": [serial.album(m, lk) for m in more], "colors": colors,
-            "folder": "" if a.peer_id else a.folder, "artist_tags": artist_tags(db, [a.artist_id]).get(a.artist_id, [])}
+            "folder": "" if a.peer_id else a.folder,
+            # its own tags (the admin's, for it alone) or its artist's
+            "artist_tags": own if own is not None else artist_tags(db, [a.artist_id]).get(a.artist_id, []),
+            "own_tags": own is not None}
 
 
 def _artists_query(user: User, genre: str | None, liked_only: bool):
@@ -282,7 +302,7 @@ def random_tracks(db: Session = Depends(get_db), user: User = Depends(current_us
     if genre:
         q = q.where(Track.genre == genre)
     if tag:
-        q = q.where(tagged(tag))
+        q = q.where(tagged(db, tag))
     if artist_id:
         q = q.where(Track.artist_id == artist_id)
     if album_id:
@@ -437,16 +457,22 @@ def tag_artists(tag: str):
         func.casefold(Artist.genre) == func.casefold(tag)))
 
 
-def tagged(tag: str):
-    """Tracks carrying a tag: by an artist with it, or filed in a genre folder of that name."""
-    return or_(Track.artist_id.in_(tag_artists(tag)),
+def tagged(db: Session, tag: str):
+    """Tracks carrying a tag: by an artist with it (unless their album has tags of its own), on an album
+    whose own tags have it, or filed in a genre folder of that name."""
+    own = select(Album.id).where(Album.own_tags.is_not(None))
+    has = own.where(text("EXISTS (SELECT 1 FROM json_each(albums.own_tags) j "
+                         "WHERE casefold(j.value) IN (SELECT value FROM json_each(:names)))")
+                    .bindparams(names=json.dumps(tagging.spellings(db, tag))))
+    return or_(and_(Track.artist_id.in_(tag_artists(tag)), or_(Track.album_id.is_(None), Track.album_id.not_in(own))),
+               Track.album_id.in_(has),
                Track.album_id.in_(select(Album.id).where(func.casefold(Album.genre) == func.casefold(tag))))
 
 
 @router.get("/tags/{tag}")
 def tag_page(tag: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """What a tag gathers: its artists (most albums first), albums and a song count."""
-    album_ids = select(Track.album_id).where(tagged(tag), Track.album_id.is_not(None)).distinct()
+    album_ids = select(Track.album_id).where(tagged(db, tag), Track.album_id.is_not(None)).distinct()
     counts = select(Album.artist_id, func.count().label("n")).where(Album.id.in_(album_ids)) \
         .group_by(Album.artist_id).subquery()
     artists_ = db.execute(select(Artist, counts.c.n).join(counts, counts.c.artist_id == Artist.id)
@@ -455,7 +481,7 @@ def tag_page(tag: str, db: Session = Depends(get_db), user: User = Depends(curre
                          .order_by(func.random()).limit(24)).all()
     lk_artists, lk_albums = liked(db, user, "artist"), liked(db, user, "album")
     return {"name": tag,
-            "tracks": db.scalar(select(func.count()).select_from(Track).where(tagged(tag))),
+            "tracks": db.scalar(select(func.count()).select_from(Track).where(tagged(db, tag))),
             "albums": db.scalar(select(func.count()).select_from(album_ids.subquery())),
             "artists": [serial.artist(a, lk_artists, n) for a, n in artists_],
             "album_list": [serial.album(a, lk_albums) for a in albums_]}
@@ -465,7 +491,7 @@ def tag_page(tag: str, db: Session = Depends(get_db), user: User = Depends(curre
 def tag_tracks(tag: str, db: Session = Depends(get_db), user: User = Depends(current_user),
                limit: int = Query(100, le=500), offset: int = 0):
     """A tag's songs, artist by artist and album by album."""
-    q = select(Track).where(tagged(tag))
+    q = select(Track).where(tagged(db, tag))
     total = db.scalar(select(func.count()).select_from(q.subquery()))
     rows = db.scalars(q.outerjoin(Album, Album.id == Track.album_id)
                       .order_by(func.lower(Track.albumartist), Album.year, func.lower(Track.album), *album_order(), Track.id)

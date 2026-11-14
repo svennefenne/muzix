@@ -113,6 +113,9 @@ class Album(Base):
     release_set: Mapped[str] = mapped_column(String(16), default="", server_default="")
     # when a guessed one was looked up at MusicBrainz (its artist's page opened: releases.py), found or not
     release_checked: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # the admin's own genre tags for it instead of its artist's (Edit tags on its cog: a compilation isn't
+    # Various Artists' psytrance), as typed, the rules applied as they're read (tagging.album_names); None: its artist's
+    own_tags: Mapped[list | None] = mapped_column(JSON(none_as_null=True), nullable=True)
     artist: Mapped[Artist | None] = relationship()
 
 

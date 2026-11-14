@@ -168,14 +168,16 @@ export interface MenuItem {
 }
 
 interface MenuState {
-  open: { x: number; y: number; items: MenuItem[] } | null;
-  show: (e: { clientX: number; clientY: number }, items: MenuItem[]) => void;
+  // `anchor`: what it was opened on (else what's at that point), so only a scroll that moves it closes the menu
+  open: { x: number; y: number; items: MenuItem[]; anchor: Element | null } | null;
+  show: (e: { clientX: number; clientY: number; target?: EventTarget | null }, items: MenuItem[]) => void;
   hide: () => void;
 }
 
 export const useMenu = create<MenuState>((set) => ({
   open: null,
-  show: (e, items) => set({ open: { x: e.clientX, y: e.clientY, items } }),
+  show: (e, items) => set({ open: { x: e.clientX, y: e.clientY, items,
+                                    anchor: e.target instanceof Element ? e.target : document.elementFromPoint(e.clientX, e.clientY) } }),
   hide: () => set({ open: null }),
 }));
 
@@ -190,12 +192,18 @@ export function MenuHost() {
       hide();
     };
     const key = (e: KeyboardEvent) => e.key === "Escape" && hide();
+    // only a scroll that moves what it was opened on: the lyrics following the song in the side panel leave it open
+    const scrolled = (e: Event) => {
+      const moved = e.target instanceof Element ? e.target : null;
+      if (moved && (ref.current?.contains(moved) || (open.anchor?.isConnected && !moved.contains(open.anchor)))) return;
+      hide();
+    };
     window.addEventListener("mousedown", close);
-    window.addEventListener("scroll", hide, true);
+    window.addEventListener("scroll", scrolled, true);
     window.addEventListener("keydown", key);
     return () => {
       window.removeEventListener("mousedown", close);
-      window.removeEventListener("scroll", hide, true);
+      window.removeEventListener("scroll", scrolled, true);
       window.removeEventListener("keydown", key);
     };
   }, [open, hide]);

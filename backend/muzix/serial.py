@@ -44,11 +44,14 @@ def art_url(kind: str, id_: int | None) -> str | None:
     return art.url(kind, id_) if id_ else None
 
 
-def track(t: Track, liked: set[int] | None = None, artist_tags: dict | None = None, credit: dict | None = None) -> dict:
-    """`credit`: {song id: its artist to go to} (credits.py), the song's own over its album's."""
+def track(t: Track, liked: set[int] | None = None, artist_tags: dict | None = None, credit: dict | None = None,
+          album_tags: dict | None = None) -> dict:
+    """`credit`: {song id: its artist to go to} (credits.py), the song's own over its album's. `album_tags`:
+    {album id: its own tags}, a song's when it's its album's artist's (or nobody's)."""
     ext = t.format
     extra = t.extra or {}
     artist_id = credit.get(t.id, t.artist_id) if credit is not None else t.artist_id
+    own = (album_tags or {}).get(t.album_id) if artist_id in (t.artist_id, None) else None
     return {
         "id": t.id, "title": t.title, "artist": t.artist, "albumartist": t.albumartist,
         "album": t.album, "album_id": t.album_id, "artist_id": artist_id,
@@ -62,7 +65,7 @@ def track(t: Track, liked: set[int] | None = None, artist_tags: dict | None = No
         "art": art_url("album", t.album_id),
         "stream": f"/api/stream/{t.id}",
         "liked": bool(liked and t.id in liked),
-        "tags": (artist_tags or {}).get(artist_id, []),
+        "tags": own if own is not None else (artist_tags or {}).get(artist_id, []),
         "peer": peer(t.peer_id),
     }
 

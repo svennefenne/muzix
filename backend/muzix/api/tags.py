@@ -1,5 +1,5 @@
 """Admin → Tags: the artists' genre tags (tagging.py), each one removed, renamed or merged into
-another, put in a category, and one artist's tags edited."""
+another, put in a category, and one artist's tags edited; and an album's own (Edit tags on its cog)."""
 
 from typing import Literal
 
@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from .. import db, serial, settings, tagging
-from ..models import Artist, TagCategory
+from ..models import Album, Artist, TagCategory
 from ..security import admin_user
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(admin_user)])
@@ -40,6 +40,10 @@ class CategoryChange(BaseModel):
 
 class ArtistTags(BaseModel):
     tags: list[str] = Field(max_length=100)
+
+
+class AlbumTags(BaseModel):
+    tags: list[str] | None = Field(max_length=100)      # None: its artist's again
 
 
 class ArtistEdit(BaseModel):
@@ -183,3 +187,28 @@ def edit_artist_tags(artist_id: int, body: ArtistEdit):
         a = _artist(s, artist_id)
         hidden = tagging.edit_artist_tags(s, a, body.add, body.remove)
         return {"id": a.id, "name": a.name, **tagging.artist_tags(s, a), "removed_everywhere": hidden}
+
+
+def _album(s, album_id: int) -> Album:
+    a = s.get(Album, album_id)
+    if a is None or a.peer_id:
+        raise HTTPException(404, "No such album")
+    return a
+
+
+@router.get("/albums/{album_id}/tags")
+def album_tags(album_id: int):
+    with db.session() as s:
+        a = _album(s, album_id)
+        return {"id": a.id, "name": a.title, **tagging.album_tags(s, a)}
+
+
+@router.put("/albums/{album_id}/tags")
+def set_album_tags(album_id: int, body: AlbumTags):
+    """The album's own tags, instead of its artist's, for it alone (None: its artist's again); returns
+    them as they are now, and those that won't show (removed everywhere)."""
+    with db.session() as s:
+        a = _album(s, album_id)
+        hidden = tagging.set_album_tags(s, a, body.tags)
+        s.flush()
+        return {"id": a.id, "name": a.title, **tagging.album_tags(s, a), "removed_everywhere": hidden}

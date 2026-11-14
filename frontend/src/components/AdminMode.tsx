@@ -1,5 +1,5 @@
 /** Admin mode: a cog on every library item (albums, songs, artists, books, podcasts, playlists,
- * stations) with Edit metadata, Hide from library and Delete (and an artist's Edit tags, an album's Merge). Deleted files go to a trash on
+ * stations) with Edit metadata, Hide from library and Delete (and an artist's or album's Edit tags, an album's Merge). Deleted files go to a trash on
  * their share; hidden things and the trash are on the admin page. */
 
 import { Combine, Disc3, EyeOff, ListMusic, Pencil, Settings, Tags, Trash2 } from "lucide-react";
@@ -67,10 +67,12 @@ interface AdminDialogs {
   edit: Target | null;
   confirm: Target | null;
   tags: number | null;                  // the artist whose tags are edited
+  albumTags: number | null;             // the album whose tags are edited (its own, for it alone)
   merge: number | null;                 // the album others are merged into
   setEdit: (t: Target | null) => void;
   setConfirm: (t: Target | null) => void;
   setTags: (artist: number | null) => void;
+  setAlbumTags: (album: number | null) => void;
   setMerge: (album: number | null) => void;
 }
 
@@ -78,10 +80,12 @@ export const useAdminDialogs = create<AdminDialogs>((set) => ({
   edit: null,
   confirm: null,
   tags: null,
+  albumTags: null,
   merge: null,
   setEdit: (edit) => set({ edit }),
   setConfirm: (confirm) => set({ confirm }),
   setTags: (tags) => set({ tags }),
+  setAlbumTags: (albumTags) => set({ albumTags }),
   setMerge: (merge) => set({ merge }),
 }));
 
@@ -114,7 +118,7 @@ export function AdminCog({ kind, id, title, className = "", peer }: {
 }) {
   const on = useAdminMode();
   const showMenu = useMenu((s) => s.show);
-  const { setEdit, setConfirm, setTags, setMerge } = useAdminDialogs();
+  const { setEdit, setConfirm, setTags, setAlbumTags, setMerge } = useAdminDialogs();
   if (!on) return null;
   const t = { kind, id, title };
   return (
@@ -123,7 +127,7 @@ export function AdminCog({ kind, id, title, className = "", peer }: {
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              const at = { clientX: e.clientX, clientY: e.clientY };
+              const at = { clientX: e.clientX, clientY: e.clientY, target: e.currentTarget };
               showMenu(e, peer ? [
                 { heading: title },
                 { label: "Hide from library", icon: <EyeOff size={16} />, onClick: () => hide(t) },
@@ -133,6 +137,7 @@ export function AdminCog({ kind, id, title, className = "", peer }: {
                 { heading: title },
                 { label: "Edit metadata", icon: <Pencil size={16} />, onClick: () => setEdit(t) },
                 ...(kind === "artist" ? [{ label: "Edit tags", icon: <Tags size={16} />, onClick: () => setTags(id) }] : []),
+                ...(kind === "album" ? [{ label: "Edit tags", icon: <Tags size={16} />, onClick: () => setAlbumTags(id) }] : []),
                 ...(kind === "album" ? [{ label: "Merge with another album", icon: <Combine size={16} />, onClick: () => setMerge(id) }] : []),
                 // album, EP or single: a second menu, where the cog was clicked
                 ...(kind === "album" ? [{ label: "Change type", icon: <Disc3 size={16} />, onClick: () => showMenu(at, [
@@ -184,11 +189,12 @@ async function makeCompilation(id: number) {
 
 /** The edit window and the delete question, wherever a cog was clicked. */
 export function AdminHost() {
-  const { edit, confirm, tags, merge, setEdit, setConfirm, setTags, setMerge } = useAdminDialogs();
+  const { edit, confirm, tags, albumTags, merge, setEdit, setConfirm, setTags, setAlbumTags, setMerge } = useAdminDialogs();
   return (
     <>
       {edit && <EditDialog kind={edit.kind} id={edit.id} onClose={() => setEdit(null)} />}
       {tags !== null && <TagEditor id={tags} onClose={() => setTags(null)} />}
+      {albumTags !== null && <TagEditor kind="album" id={albumTags} onClose={() => setAlbumTags(null)} />}
       {merge !== null && <MergeAlbums id={merge} onClose={() => setMerge(null)} />}
       {confirm && <ConfirmDelete t={confirm} onClose={() => setConfirm(null)} />}
     </>

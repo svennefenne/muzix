@@ -1,6 +1,7 @@
 /** One artist's genre tags, edited by an admin: taken off it, or added to it. What the sources gave
  * it stays as it came (backend tagging.py), so later lookups still come through and each change
- * can be taken back here. */
+ * can be taken back here. An album's (kind "album"): tags of its own instead of its artist's, for it
+ * alone (a compilation isn't Various Artists' psytrance), until its artist's are given back. */
 
 import { useQuery } from "@tanstack/react-query";
 import { Plus, RotateCcw, X } from "lucide-react";
@@ -11,7 +12,10 @@ import { refreshAll } from "./AdminMode";
 import { Loading, Modal } from "./ui";
 
 interface ArtistTag { name: string; added: boolean; category: number | null }
-interface ArtistTags { id: number; name: string; tags: ArtistTag[]; taken_off: string[]; given: string[]; removed_everywhere?: string[] }
+interface ArtistTags {
+  id: number; name: string; tags: ArtistTag[]; taken_off: string[]; given: string[]; removed_everywhere?: string[];
+  own?: boolean; artist?: string;       // an album's: tags of its own, and whose it has otherwise
+}
 export interface TagOverview {
   tagged: number;
   tags: { name: string; artists: number; added: number; category: number | null; aliases: string[] }[];
@@ -20,13 +24,17 @@ export interface TagOverview {
   places?: { on: boolean; tags: { name: string; artists: number }[] };   // the general rule: place names off
 }
 
+/** "Various Artists'", "Plonk's" */
+const whose = (name = "") => (/s$/i.test(name) ? `${name}'` : `${name}'s`);
+
 export function useTagOverview() {
   return useQuery({ queryKey: ["admin-tags"], queryFn: () => api.get<TagOverview>("/api/admin/tags") });
 }
 
-export function TagEditor({ id, onClose }: { id: number; onClose: () => void }) {
+export function TagEditor({ id, kind = "artist", onClose }: { id: number; kind?: "artist" | "album"; onClose: () => void }) {
   const notify = useUi((s) => s.notify);
-  const q = useQuery({ queryKey: ["artist-tags", id], queryFn: () => api.get<ArtistTags>(`/api/admin/artists/${id}/tags`) });
+  const url = `/api/admin/${kind}s/${id}/tags`;
+  const q = useQuery({ queryKey: [`${kind}-tags`, id], queryFn: () => api.get<ArtistTags>(url) });
   const all = useTagOverview();
   const [tags, setTags] = useState<ArtistTag[] | null>(null);
   const [typed, setTyped] = useState("");
@@ -43,13 +51,13 @@ export function TagEditor({ id, onClose }: { id: number; onClose: () => void }) 
   };
   // taken off this artist (before, or just now), and not given back yet
   const back = [...d.taken_off, ...d.tags.filter((t) => !t.added).map((t) => t.name)].filter((n) => !has(n));
-  const save = async () => {
+  const save = async (theirs = false) => {      // theirs: an album's artist's tags again
     setSaving(true);
     try {
-      const r = await api.put<ArtistTags>(`/api/admin/artists/${id}/tags`, { tags: now.map((t) => t.name) });
+      const r = await api.put<ArtistTags>(url, { tags: theirs ? null : now.map((t) => t.name) });
       notify(r.removed_everywhere?.length
         ? `Saved. Not shown: ${r.removed_everywhere.join(", ")} (removed everywhere, under Admin → Tags)`
-        : `${d.name}'s tags are saved`, r.removed_everywhere?.length ? "error" : "info");
+        : theirs ? `${d.name} has ${whose(d.artist)} tags again` : `${whose(d.name)} tags are saved`, r.removed_everywhere?.length ? "error" : "info");
       refreshAll();
       onClose();
     } catch (e) {
@@ -59,10 +67,12 @@ export function TagEditor({ id, onClose }: { id: number; onClose: () => void }) 
   };
   return (
     <Modal onClose={onClose} className="tag-editor">
-      <div className="kicker">Tags</div>
+      <div className="kicker">{kind === "album" ? "Album tags" : "Tags"}</div>
       <h2 className="h2">{d.name}</h2>
       <p className="dim" style={{ margin: "8px 0 14px" }}>
-        Take off the tags that don't fit this artist, or add your own. The next lookup keeps to it.
+        {kind === "artist" ? "Take off the tags that don't fit this artist, or add your own. The next lookup keeps to it."
+          : d.own ? `This album's own tags, instead of ${whose(d.artist)}. They're for this album only.`
+          : `It has ${whose(d.artist)} tags. Take off those that don't fit this album, or add your own: the changes are for this album only.`}
       </p>
       <div className="tags tag-edit">
         {now.map((t) => (
@@ -92,8 +102,10 @@ export function TagEditor({ id, onClose }: { id: number; onClose: () => void }) 
       )}
       {d.given.length > 0 && <p className="faint" style={{ fontSize: 12, margin: "14px 0 0" }}>From the lookup: {d.given.join(", ")}</p>}
       <div className="row-actions" style={{ justifyContent: "flex-end", marginTop: 20 }}>
+        {d.own && <button className="btn ghost" style={{ marginRight: "auto" }} disabled={saving} onClick={() => void save(true)}
+                          data-tip="Its own tags go">Use {whose(d.artist)} tags</button>}
         <button className="btn" onClick={onClose}>Cancel</button>
-        <button className="btn accent" disabled={saving || !tags} onClick={save}>{saving ? "Saving…" : "Save"}</button>
+        <button className="btn accent" disabled={saving || !tags} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</button>
       </div>
     </Modal>
   );
