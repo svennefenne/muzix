@@ -345,13 +345,13 @@ export function LibraryArtists() {
                  sorts={ARTIST_SORTS} letters={l.bar}
                  actions={<button className="btn" onClick={() => playRandom({ kind: "music" })}><Shuffle size={15} /> Shuffle all</button>}>
       <Infinite q={q} onTop={l.onTop} jump={l.jump}>
-        {(items) => <ArtistItems items={items} display={b.display} linkTo={(a) => `/library/artists/${a.id}`} />}
+        {(items) => <ArtistItems items={items} display={b.display} />}
       </Infinite>
     </BrowseShell>
   );
 }
 
-/** One artist's albums, reached from the Genre or the Artist view. */
+/** One artist's albums, reached from the Genre view, a search and the sidebar (the Artist view goes to the artist's page). */
 export function LibraryArtistAlbums() {
   const { id = "", genre } = useParams();
   const b = useBrowse("library.artist-albums", ALBUM_SORTS, "year", "albums");
