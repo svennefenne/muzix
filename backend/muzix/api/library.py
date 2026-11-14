@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import case, delete, func, or_, select, text, true
 from sqlalchemy.orm import Session
 
-from .. import art, lyrics, mirror, serial, tagging
+from .. import art, credits, lyrics, mirror, serial, tagging
 from ..db import get_db, get_db_with_copies
 from ..models import (Album, Artist, Book, Episode, EpisodeProgress, Feed, FilePlaylist, FilePlaylistItem, Like, PlayEvent,
                       RecentSearch, Station, Subscription, Track, User)
@@ -52,8 +52,10 @@ def artist_tags(db: Session, artist_ids) -> dict:
 
 def tracks_json(db: Session, user: User, tracks: list[Track]) -> list[dict]:
     lk = liked(db, user, "track")
-    tags = artist_tags(db, (t.artist_id for t in tracks))
-    return [serial.track(t, lk, tags) for t in tracks]
+    # each song's own artist, when it has a page here: a compilation's songs aren't Various Artists' (credits.py)
+    who = credits.credit(db, tracks)
+    tags = artist_tags(db, who.values())
+    return [serial.track(t, lk, tags, who) for t in tracks]
 
 
 def on_system(system: str):
@@ -256,6 +258,8 @@ def artist(artist_id: int, db: Session = Depends(get_db), user: User = Depends(c
     return {**serial.artist(a, liked(db, user, "artist"), len(albums_)),
             "tag_groups": tagging.groups(db, a),
             "albums": [serial.album(x, lk) for x in albums_],
+            # others' albums with songs of theirs: compilations, guest spots
+            "appears_on": [serial.album(x, lk) for x in credits.appears_on(db, a)],
             "top_tracks": tracks_json(db, user, top),
             "checking": releases.checking(artist_id)}     # the page asks again until it's done
 

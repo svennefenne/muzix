@@ -65,6 +65,23 @@ def test_picked_listed_fetched_and_moved(server, tmp_path):
         sharing._list("srv", {"path": incoming})
 
 
+def test_own_compilations_have_a_folder_of_their_own(server, tmp_path):
+    """_Compilations: made when the server first looks in it, its folders listed, fetched and deleted as any."""
+    server.watch = True
+    incoming = tmp_path / "Incoming"
+    incoming.mkdir()
+    sharing._set("srv", {"path": str(incoming)})
+    assert sharing._list("srv", {"path": str(incoming), "held": "_Compilations"}) == []
+    assert (incoming / "_Compilations").is_dir()
+    assert sharing._list("srv", {"path": str(incoming)}) == []              # not an album itself
+    (incoming / "_Compilations" / "Summer Mix").mkdir()
+    (incoming / "_Compilations" / "Summer Mix" / "01 a.mp3").write_bytes(b"mp3")
+    listed = sharing._list("srv", {"path": str(incoming), "held": "_Compilations"})
+    assert listed == [{"name": "Summer Mix", "files": [["Summer Mix/01 a.mp3", 3, listed[0]["files"][0][2]]]}]
+    assert sharing._delete("srv", {"path": str(incoming), "held": "_Compilations", "name": "Summer Mix"}) == {"deleted": True}
+    assert not (incoming / "_Compilations" / "Summer Mix").exists()
+
+
 def test_its_say_so_and_the_folder_kept_between_runs(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "PATH", str(tmp_path / "settings.json"))
     monkeypatch.setattr(config, "CONFIG_DIR", str(tmp_path))

@@ -2,7 +2,7 @@
  * stations) with Edit metadata, Hide from library and Delete (and an artist's Edit tags, an album's Merge). Deleted files go to a trash on
  * their share; hidden things and the trash are on the admin page. */
 
-import { Combine, Disc3, EyeOff, Pencil, Settings, Tags, Trash2 } from "lucide-react";
+import { Combine, Disc3, EyeOff, ListMusic, Pencil, Settings, Tags, Trash2 } from "lucide-react";
 import { create } from "zustand";
 import { queryClient } from "../actions";
 import { api } from "../api";
@@ -141,6 +141,7 @@ export function AdminCog({ kind, id, title, className = "", peer }: {
                   ...([["album", "Album"], ["ep", "EP"], ["single", "Single"], ["", "As tagged"]] as const)
                     .map(([type, label]) => ({ label, icon: <Disc3 size={16} />, onClick: () => void setRelease(id, type) })),
                 ]) }] : []),
+                ...(kind === "album" ? [{ label: "Make compilation", icon: <ListMusic size={16} />, onClick: () => void makeCompilation(id) }] : []),
                 { label: "Hide from library", icon: <EyeOff size={16} />, onClick: () => hide(t) },
                 { label: "Delete", icon: <Trash2 size={16} />, onClick: () => setConfirm(t) },
               ]);
@@ -157,6 +158,25 @@ async function setRelease(id: number, type: "" | "album" | "ep" | "single") {
     await api.put(`/api/manage/album/${id}/release`, { type });
     queryClient.invalidateQueries();
     notify(type ? `Marked as ${({ album: "an album", ep: "an EP", single: "a single" })[type]}` : "Its type as tagged");
+  } catch (e) {
+    notify((e as Error).message, "error");
+  }
+}
+
+/** The album made a compilation: by Various Artists, its files' album artist so and filed under it
+ * (<Genre>/Various Artists/), as editing its artist does; its songs keep theirs. Undone as any edit. */
+async function makeCompilation(id: number) {
+  const notify = useUi.getState().notify;
+  try {
+    const r = await api.put<{ written: number; moved_to?: string | null; notes?: string[]; edit_id?: number | null }>(
+      `/api/manage/album/${id}`, { fields: { artist: "Various Artists" }, tracks: [] });
+    refreshAll();
+    if (!r.written && !r.moved_to && !r.edit_id) {
+      notify("It's by Various Artists already");
+      return;
+    }
+    notify([r.moved_to ? `A compilation now, filed in ${r.moved_to.split("/").slice(-3).join(" / ")}` : "A compilation now, by Various Artists",
+            ...(r.notes || [])].join(". "), "info", r.edit_id ? { label: "Undo", run: () => void undoEdit(r.edit_id!) } : undefined);
   } catch (e) {
     notify((e as Error).message, "error");
   }

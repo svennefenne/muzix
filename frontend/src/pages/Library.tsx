@@ -604,6 +604,11 @@ export function ArtistPage() {
       <Discography title="Discography" albums={a.albums}>
         {(xs) => <div className="grid">{xs.map((x) => <AlbumCard key={x.id} a={x} />)}</div>}
       </Discography>
+      {!!a.appears_on?.length && (
+        <Section title="Appears on">
+          <div className="scroller">{a.appears_on.map((x) => <AlbumCard key={x.id} a={x} />)}</div>
+        </Section>
+      )}
     </div>
   );
 }

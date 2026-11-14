@@ -131,7 +131,8 @@ def unlink(server: config.Server):
 
 # ---------------------------------------------------------------- the server's watch folder, here
 
-HELD = ("_Done", "_Duplicates", "_Failed")
+HELD = ("_Done", "_Duplicates", "_Failed", "_Compilations")
+OWN = "_Compilations"       # the admin's own compilations, each folder in it filed as one (the server's watch.py)
 
 
 def _server(sid: str) -> config.Server:
@@ -202,6 +203,11 @@ def _list(sid: str, m: dict) -> list[dict]:
     """What's in the watch folder (or one of its HELD folders): each album with (path, size, modified) of its
     files, paths from that folder."""
     base = watched(sid, m.get("path"), m.get("held") or "")
+    if m.get("held") == OWN and not os.path.exists(base):
+        try:
+            os.makedirs(base)       # there to be found, to put compilations in
+        except OSError:
+            pass
     out = []
     for e in os.scandir(base):
         if e.name.startswith(("_", ".")):

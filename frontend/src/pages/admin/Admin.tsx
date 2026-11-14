@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Blocks, Disc3, EyeOff, FileQuestion, FolderOpen, Gamepad2, HardDrive, History, Image as ImageIcon, Library, Network, Plus, RefreshCw, Save, Settings2, Tags as TagsIcon, Trash2, Upload, Users, X } from "lucide-react";
+import { Activity, Blocks, Disc3, EyeOff, FileQuestion, FolderOpen, Gamepad2, HardDrive, History, Image as ImageIcon, Library, ListMusic, Network, Plus, RefreshCw, Save, Settings2, Tags as TagsIcon, Trash2, Upload, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { create } from "zustand";
@@ -219,10 +219,14 @@ interface Found {
   match?: { title: string; artist: string; album: string; format: string; path: string };
 }
 interface Review { files: Pending[]; found: Found[]; skip: string[]; resolve: (send: Pending[] | null) => void }
-/** An album in an upload, as its songs' tags say (by its folder, without an album tag). */
-interface UploadAlbum { artist: string; album: string; year: number; songs: number; formats: string[]; size: number; folder: string }
+/** An album in an upload, as its songs' tags say (by its folder, without an album tag), or a folder marked an own
+ * compilation (`compilation`: its songs as one album by Various Artists, backend/muzix/organize/compilation.py). */
+interface UploadAlbum {
+  artist: string; album: string; year: number; songs: number; formats: string[]; size: number; folder: string; compilation?: boolean;
+}
 interface Batch {
   batch: string; files: { path: string; size: number; kind: string }[]; created: string; albums: UploadAlbum[];
+  compilations?: string[];      // its folders marked own compilations
   job: { id: number; status: string; progress: number; message: string } | null;
 }
 /** An import, and where it filed each album (its page here, once the library has scanned it). */
@@ -232,25 +236,57 @@ interface ImportDone {
   watched: string;          // from the watch folder: what was put there; "" for an upload
   duplicate: boolean;       // the watch folder set it aside, as the library seems to have it
   albums: { artist: string; album: string; year: number; songs: number; where: string; album_id: number | null;
-            match: "musicbrainz" | "bandcamp" | "none" | "" }[];
+            match: "musicbrainz" | "bandcamp" | "none" | "own" | "" }[];
 }
 const MUSIC_KINDS = ["native", "decode"];
 
-/** What a batch's files are: its albums, its chiptunes and tracker modules, and anything else. */
-function BatchContents({ b }: { b: Batch }) {
+/** What a batch's files are: its albums, its chiptunes and tracker modules, and anything else. A folder whose songs
+ * are of several albums (a mix put together by hand) can be made an own compilation before it's imported:
+ * filed as one album by Various Artists, named after the folder, rather than song by song. */
+function BatchContents({ b, onChange }: { b: Batch; onChange?: () => void }) {
+  const notify = useUi((s) => s.notify);
   const chips = b.files.filter((f) => !MUSIC_KINDS.includes(f.kind) && f.kind !== "other");
   const others = b.files.filter((f) => f.kind === "other");
   const name = (p: string) => p.split("/").pop();
+  const editable = !b.job || b.job.status === "failed";
+  const mark = async (folder: string, on: boolean) => {
+    try {
+      await api.put(`/api/upload/batch/${b.batch}/compilation`, { folder, on });
+      onChange?.();
+    } catch (e) {
+      notify((e as Error).message, "error");
+    }
+  };
+  // by folder, in the order they come: a folder of several albums under a line of its own
+  const folders = new Map<string, UploadAlbum[]>();
+  for (const a of b.albums) folders.set(a.folder, [...(folders.get(a.folder) || []), a]);
+  const row = (a: UploadAlbum, inFolder = false) => (
+    <li key={`${a.artist}|${a.album}|${a.folder}`} className={inFolder ? "in-folder" : ""}>
+      <Disc3 size={15} aria-hidden />
+      <span className="grow ellipsis"><b>{a.album}</b> <span className="dim">{a.artist || "artist unknown"}</span></span>
+      {a.compilation && <span className="badge" data-tip="Its songs filed together as one album by Various Artists, named after its folder">Compilation</span>}
+      <span className="faint">{[a.year || null, `${a.songs} ${a.songs === 1 ? "song" : "songs"}`, a.formats.join(", ").toUpperCase(),
+        fmtBytes(a.size)].filter(Boolean).join(" · ")}</span>
+      {a.compilation && editable && (
+        <button className="mini" aria-label={`${a.album}: not a compilation`} data-tip="Not a compilation: its songs filed by their own albums"
+                onClick={() => void mark(a.folder, false)}><X size={14} /></button>
+      )}
+    </li>
+  );
   return (
     <ul className="upload-contents">
-      {b.albums.map((a) => (
-        <li key={`${a.artist}|${a.album}|${a.folder}`}>
-          <Disc3 size={15} aria-hidden />
-          <span className="grow ellipsis"><b>{a.album}</b> <span className="dim">{a.artist || "artist unknown"}</span></span>
-          <span className="faint">{[a.year || null, `${a.songs} ${a.songs === 1 ? "song" : "songs"}`, a.formats.join(", ").toUpperCase(),
-            fmtBytes(a.size)].filter(Boolean).join(" · ")}</span>
-        </li>
-      ))}
+      {[...folders].map(([folder, albums]) => albums.length > 1 && !albums[0].compilation ? [
+        <li key={`folder|${folder}`} className="upload-folder">
+          <FolderOpen size={15} aria-hidden />
+          <span className="grow ellipsis"><b>{folder ? name(folder) : "Loose songs"}</b>{" "}
+            <span className="dim">songs from {albums.length} albums</span></span>
+          {folder && editable && (
+            <button className="btn small" data-tip="File its songs together as one album by Various Artists, named after the folder"
+                    onClick={() => void mark(folder, true)}><ListMusic size={14} /> Make compilation</button>
+          )}
+        </li>,
+        ...albums.map((a) => row(a, true)),
+      ] : albums.map((a) => row(a)))}
       {chips.length > 0 && (
         <li>
           <Gamepad2 size={15} aria-hidden />
@@ -319,6 +355,7 @@ function RecentImports() {
                         <span className="faint mono-path" data-tip="Where it was filed in the music upload folder">→ {a.where}</span></span>
                       {a.match === "none" && <span className="badge" data-tip="Neither MusicBrainz nor Bandcamp had it: filed as its tags said, worth a look in admin mode">No match</span>}
                       {a.match === "bandcamp" && <span className="badge" data-tip="Named as Bandcamp has it (MusicBrainz didn't)">Bandcamp</span>}
+                      {a.match === "own" && <span className="badge" data-tip="An own compilation: its songs as one album by Various Artists">Compilation</span>}
                       {a.album_id ? <Link className="btn small" to={`/album/${a.album_id}`}>Open</Link>
                         : <span className="faint" data-tip="It shows up once the library has read the folder">being added…</span>}
                     </li>
@@ -603,7 +640,7 @@ function UploadArea() {
                       batches.refetch();
                     }}><X size={15} /></button>
                   </div>
-                  <BatchContents b={b} />
+                  <BatchContents b={b} onChange={() => void batches.refetch()} />
                   <details style={{ marginTop: 8 }}>
                     <summary className="dim" style={{ cursor: "pointer", fontSize: 12.5 }}>All {b.files.length} files</summary>
                     <pre className="log">{b.files.map((f) => `${f.path}  (${fmtBytes(f.size)})`).join("\n")}</pre>

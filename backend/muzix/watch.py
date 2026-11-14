@@ -18,6 +18,10 @@ fewer it's filed as any album. From _Duplicates the admin sees why (the songs an
 library) and files it anyway: into the library's Duplicates/<artist>/<album> (2) beside its other copies, as
 an album of its own, or in place of the library's copy, which goes to Duplicates instead; or throws it away
 (into the computer's trash; on the server, deleted). One that couldn't be filed goes to _Failed/<album>.
+
+A folder put in _Compilations is an own compilation (organize/compilation.py): songs from different albums
+the admin put together, filed as one album by Various Artists named after the folder, whether the library has
+its songs or not (2026-11-14). It's taken as any album is, once it stays as it is.
 Folders whose names start with "_" or "." are the watch folder's own, and left alone.
 """
 
@@ -38,7 +42,7 @@ from sqlalchemy import select
 from . import db, enrich, env, formats, jobs, providers, settings, tunnel
 from .meta import tags, tagwrite
 from .models import Job, Peer, Root
-from .organize import duplicates, importer
+from .organize import compilation, duplicates, importer
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +50,7 @@ POLL = 60               # seconds between looks at the folder
 DISC = re.compile(r"^(cd|dis[ck])[\s._-]*\d{1,2}$", re.I)    # an album's disc, in a folder of its own
 SETTLE = 120            # seconds an album must stay as it is before it's taken
 HELD = ("_Done", "_Duplicates", "_Failed")
+OWN = "_Compilations"   # own compilations: each folder in it filed as one (organize/compilation.py)
 DUPES = "Duplicates"    # the library's own folder for its other copies (organize/beetsplug/musicorg.py), not scanned
 MUSIC = ("native", "decode")
 
@@ -108,6 +113,11 @@ class ServerPlace(Place):
     def entries(self, held=""):
         base = self.root / held if held else self.root
         out = {}
+        if held == OWN and not base.exists():
+            try:
+                base.mkdir()                # there to be found, for the admin to put compilations in
+            except OSError:
+                pass
         if not base.is_dir():
             return out
         for e in os.scandir(base):
@@ -452,7 +462,7 @@ def _aside(folder: str) -> str:
 def import_watched(ctx: jobs.JobContext, name: str, key: str, held: str = "", how: str = ""):
     """One album from the watch folder (`held`: from _Duplicates or _Failed, filed anyway; from _Duplicates
     `how`: into the library's Duplicates folder (the default), as an album of its own, or in place of the
-    library's copy)."""
+    library's copy; from _Compilations, an own compilation)."""
     where = place(key)
     if where is None or where.key != key:
         raise RuntimeError("the watch folder changed or can't be reached")
@@ -500,7 +510,14 @@ def import_watched(ctx: jobs.JobContext, name: str, key: str, held: str = "", ho
             raise RuntimeError("there's no music in it")
         if chips:
             out["vgm_folder"] = _file_chips(ctx, chips, folder, name)
-        if music_paths:
+        if music_paths and held == OWN:
+            made = compilation.make(folder)
+            ctx.log(f"an own compilation: its {made['songs']} songs as {compilation.VA} - {made['album']}")
+            out.update(importer.file_music(ctx, folder, batch, autotag=False, own=True))
+            for a in out.get("albums") or []:
+                a["match"] = "own"
+            out["match"] = "own"
+        elif music_paths:
             albums = _albums_in(folder, music_paths)
             only = where.only == "bandcamp"         # a Bandcamp-only folder: no MusicBrainz, beets' either; its genre
                                                     # Bandcamp's tags' alone
@@ -652,10 +669,26 @@ NOW_LOOK = 3.0      # seconds between Transfer now's two looks: an album that ch
 
 
 def _busy(key: str) -> set[str]:
+    """What's being filed from the folder: names, and _Compilations/<name> for its compilations."""
     with db.session() as s:
-        return {(j.params or {}).get("name", "") for j in s.scalars(
+        return {_seen_as((j.params or {}).get("held", ""), (j.params or {}).get("name", "")) for j in s.scalars(
             select(Job).where(Job.type == "import_watched", Job.status.in_(("queued", "running"))))
             if (j.params or {}).get("key") == key}
+
+
+def _seen_as(held: str, name: str) -> str:
+    return f"{OWN}/{name}" if held == OWN else name
+
+
+def _own(where: Place) -> dict:
+    """The compilations in _Compilations; none from a computer whose Muzix Desktop doesn't know it (before 0.4.33)."""
+    try:
+        return where.entries(OWN)
+    except Exception as e:
+        if not isinstance(where, ComputerPlace):
+            raise
+        log.debug("the watch folder's %s on the computer: %s", OWN, e)
+        return {}
 
 
 def _look(files) -> tuple:
@@ -698,10 +731,10 @@ def _check_one(key: str, now: bool) -> dict:
             raise RuntimeError(st["error"])
         return {"taken": [], "waiting": []}
     try:
-        found = where.entries()
+        found = where.entries() | {f"{OWN}/{n}": fs for n, fs in _own(where).items()}
         if now:
             time.sleep(NOW_LOOK)
-            again = where.entries()
+            again = where.entries() | {f"{OWN}/{n}": fs for n, fs in _own(where).items()}
     except Exception as e:      # a computer gone meanwhile, a share away: next time
         st.update(error=str(e) or e.__class__.__name__, checked=time.time())
         if now:
@@ -719,7 +752,11 @@ def _check_one(key: str, now: bool) -> dict:
         if before is None or before[0] != look:
             seen[name] = (look, t)
         if (bool(again.get(name)) and _look(again[name]) == look) if now else t - seen[name][1] >= SETTLE:
-            jobs.submit("import_watched", f"Watch folder: {name}", name=name, key=key)
+            if name.startswith(OWN + "/"):
+                own = name[len(OWN) + 1:]
+                jobs.submit("import_watched", f"Watch folder: {own} (own compilation)", name=own, key=key, held=OWN)
+            else:
+                jobs.submit("import_watched", f"Watch folder: {name}", name=name, key=key)
             seen.pop(name, None)
             taken.append(name)
         else:

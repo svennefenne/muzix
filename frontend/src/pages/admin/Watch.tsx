@@ -43,14 +43,15 @@ interface Why {
 type How = "album" | "replace" | "duplicates";
 
 const MATCHED: Record<string, string> = { musicbrainz: "Matched on MusicBrainz", bandcamp: "Matched on Bandcamp",
-                                          none: "No match: filed as its tags say, worth a look in admin mode" };
+                                          none: "No match: filed as its tags say, worth a look in admin mode",
+                                          own: "An own compilation: filed as one album by Various Artists" };
 
 /** "19 albums: 15 matched on MusicBrainz, 4 filed as their tags say", for a folder of albums. */
 function matched(albums: Watched["recent"][number]["albums"], match: string) {
   if (albums.length < 2) return MATCHED[match] ?? "Filed";
   const n = (m: string) => albums.filter((a) => a.match === m).length;
   const parts = [n("musicbrainz") && `${n("musicbrainz")} matched on MusicBrainz`, n("bandcamp") && `${n("bandcamp")} on Bandcamp`,
-                 n("none") && `${n("none")} filed as their tags say`].filter(Boolean);
+                 n("none") && `${n("none")} filed as their tags say`, n("own") && `${n("own")} own compilations`].filter(Boolean);
   return `${albums.length} albums${parts.length ? `: ${parts.join(", ")}` : ""}`;
 }
 
@@ -206,10 +207,13 @@ function WatchCard({ f, only, computers, refetch, onPick, onOff }: {
           Year - Album, as uploads are. An album is taken two minutes after its last file arrived, or at once with Transfer now. An
           album at least half of whose songs the library seems to have already goes to _Duplicates (of a folder of albums, an
           artist's say, each album by itself: those the library has go to _Duplicates under the folder's name, the rest are filed),
-          and one that couldn't be filed to _Failed.{computer
+          and one that couldn't be filed to _Failed. A folder put in _Compilations is an own compilation: songs from different albums
+          filed together as one album by Various Artists, named after the folder ("Summer Mix", or "Summer Mix (2024)" with a
+          year), even when the library has the songs already.{computer
             ? ` On ${computer.name}, an album is deleted once the library has every song of it; one that isn't all filed goes to _Done.`
             : " What's left of an album (covers, .cue, .log) goes to _Done."} A folder on a computer: in Muzix Desktop there,
-          Settings → Servers → "May pick a folder here to watch" (0.4.24 and later for both on one computer).
+          Settings → Servers → "May pick a folder here to watch" (0.4.24 and later for both on one computer, 0.4.33 for
+          _Compilations).
         </p>
       )}
       {f && (f.held._Duplicates.length > 0 || f.held._Failed.length > 0) && (

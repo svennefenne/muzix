@@ -18,16 +18,18 @@ from sqlalchemy import select
 
 from .. import db, env, formats, jobs, lyrics, settings
 from ..models import Artist, Root
+from . import compilation
 
 PLUGIN_DIR = Path(__file__).parent / "beetsplug"
 BEET = shutil.which("beet") or "beet"
 
 
 def beets_config(music_root: str, batch: str, autotag: bool | None = None, bandcamp_tags: str = "",
-                 bandcamp_only: bool = False) -> str:
+                 bandcamp_only: bool = False, own: bool = False) -> str:
     """beets' settings for one import; `autotag` False: the files' tags as they are (matched already);
     `bandcamp_tags`: a file of Bandcamp's tags for the albums, by their folders (musicorg's genres go by them);
-    `bandcamp_only`: those tags alone (the watch folder for Bandcamp alone)."""
+    `bandcamp_only`: those tags alone (the watch folder for Bandcamp alone); `own`: an own compilation
+    (compilation.py), whose cover is one in its folder or none: a search by its name finds another's."""
     cfg = {
         "directory": music_root,
         "library": str(env.BEETS_DIR / "library.db"),
@@ -47,7 +49,7 @@ def beets_config(music_root: str, batch: str, autotag: bool | None = None, bandc
         "original_date": True, "per_disc_numbering": False, "id3v23": True, "max_filename_length": 200,
         "match": {"strong_rec_thresh": 0.10},
         "musicbrainz": {"genres": True, "search_limit": 5},
-        "fetchart": {"auto": False, "sources": ["coverart", "filesystem", "itunes", "amazon", "albumart"],
+        "fetchart": {"auto": False, "sources": ["filesystem"] if own else ["coverart", "filesystem", "itunes", "amazon", "albumart"],
                      "cautious": False, "cover_names": ["cover", "front", "folder", "albumart", "album", "art"],
                      "minwidth": 200, "maxwidth": 1200, "quality": 90},
         "embedart": {"auto": False, "maxwidth": 600, "quality": 88, "ifempty": False, "remove_art_file": False},
@@ -124,6 +126,30 @@ def upload_root(kind: str) -> str | None:
         return r.path if r else None
 
 
+def own_file(batch: str) -> Path:
+    """Beside the upload batch (not in it, where it would be one of its files): its folders marked own
+    compilations (api/upload.py)."""
+    return env.UPLOAD_DIR / f".{batch}.compilations.json"
+
+
+def compilations(batch: str) -> list[str]:
+    """The batch's folders (paths in it) marked own compilations."""
+    try:
+        got = json.loads(own_file(batch).read_text())
+    except (OSError, ValueError):
+        return []
+    return [f for f in got if isinstance(f, str)] if isinstance(got, list) else []
+
+
+def _together(done: list[dict]) -> dict:
+    """Several filings' results (file_music) as one."""
+    out: dict = {"albums": [a for d in done for a in d.get("albums") or []],
+                 "report": "\n".join(d["report"] for d in done if d.get("report"))[-2000:]}
+    if done:
+        out["music_root"] = done[-1].get("music_root")
+    return out
+
+
 @jobs.job("import_upload")
 def import_upload(ctx: jobs.JobContext, batch: str):
     batch_dir = (env.UPLOAD_DIR / batch).resolve()
@@ -156,11 +182,26 @@ def import_upload(ctx: jobs.JobContext, batch: str):
         result["vgm_folder"] = os.path.join(dest_root, "Uploads")
 
     if music:
-        result.update(file_music(ctx, batch_dir, batch))
+        done = []
+        # the folders marked own compilations first, each by itself (organize/compilation.py), then the rest
+        for i, rel in enumerate(compilations(batch)):
+            folder = (batch_dir / rel).resolve()
+            if batch_dir not in folder.parents or not folder.is_dir() or not compilation.songs_in(folder):
+                continue
+            made = compilation.make(folder)
+            ctx.log(f"an own compilation: {rel}, its {made['songs']} songs as {compilation.VA} - {made['album']}")
+            got = file_music(ctx, folder, f"{batch}-own{i}", autotag=False, own=True)
+            for a in got.get("albums") or []:
+                a["match"] = "own"
+            done.append(got)
+        if any(os.path.exists(p) for p in music):
+            done.append(file_music(ctx, batch_dir, batch))
+        result.update(_together(done))
 
     left = [os.path.relpath(os.path.join(r, f), batch_dir) for r, _, fs in os.walk(batch_dir) for f in fs]
     if not left:
         shutil.rmtree(batch_dir, ignore_errors=True)
+        own_file(batch).unlink(missing_ok=True)
     else:
         ctx.log(f"{len(left)} files were not imported and stay in the upload area")
     result["left"] = left[:200]
@@ -170,12 +211,13 @@ def import_upload(ctx: jobs.JobContext, batch: str):
 
 def file_music(ctx: jobs.JobContext, source, batch: str, autotag: bool | None = None, search_id: str = "",
                duplicate: bool = False, bandcamp_tags: dict[str, list[str]] | None = None,
-               bandcamp_only: bool = False) -> dict:
+               bandcamp_only: bool = False, own: bool = False) -> dict:
     """The music in `source` matched with MusicBrainz (with `search_id`, as that release; with `autotag` False,
     as its tags have it), given a main genre and cover art, and moved into the music upload folder. `duplicate`:
     the library has it already, filed anyway: to Duplicates/<artist>/<album> (2), (3), ... as the library's own.
     `bandcamp_tags`: Bandcamp's tags of its albums, by the folders they're in (its genre first): the main genre
-    goes by them too (with `bandcamp_only`, by them alone), and each album filed says its own ("tags")."""
+    goes by them too (with `bandcamp_only`, by them alone), and each album filed says its own ("tags").
+    `own`: an own compilation, tagged as one already (compilation.py; with `autotag` False)."""
     out: dict = {}
     music_root = upload_root("music")
     if not music_root or not os.access(music_root, os.W_OK):
@@ -185,7 +227,7 @@ def file_music(ctx: jobs.JobContext, source, batch: str, autotag: bool | None = 
     if bandcamp_tags:
         bc_file = str(env.BEETS_DIR / f"bandcamp-{batch}.json")
         Path(bc_file).write_text(json.dumps(bandcamp_tags, ensure_ascii=False))
-    beet = Beet(ctx, beets_config(music_root, batch, autotag, bc_file, bandcamp_only))
+    beet = Beet(ctx, beets_config(music_root, batch, autotag, bc_file, bandcamp_only, own))
     tag = f"mo_batch:{batch}"
     plan = ("mplan", "--duplicates", tag) if duplicate else ("mplan", tag)
     ctx.update(0.05, "matching with MusicBrainz")

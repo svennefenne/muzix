@@ -143,6 +143,7 @@ export interface ArtistDetail extends Artist {
   tag_groups: { name: string; tags: string[] }[];     // tags in categories shown on a row of their own
   albums: Album[];
   top_tracks: Track[];
+  appears_on?: Album[];       // others' albums with songs of theirs: compilations, guest spots (backend/muzix/credits.py)
   checking?: boolean;         // its albums' types are being looked up (backend/muzix/releases.py): ask again soon
 }
 
