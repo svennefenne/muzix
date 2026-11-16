@@ -115,6 +115,22 @@ def filing(id_: int, genre: str = ""):
     return _do(manage.filing, id_, genre)
 
 
+@router.get("/album/{id_}/genres")
+def genre_choices(id_: int):
+    """What its cog's Change genre offers: the library's genre folders, and the one it's in."""
+    return _do(manage.genre_choices, id_)
+
+
+class Genre(BaseModel):
+    genre: str = Field(min_length=1, max_length=128)
+
+
+@router.put("/album/{id_}/genre")
+def change_genre(id_: int, body: Genre):
+    """The album given one of those genres: its songs tagged so, and it filed in that folder."""
+    return _do(manage.change_genre, id_, body.genre)
+
+
 @router.get("/{kind}/{id_}")
 def details(kind: str, id_: int):
     return _do(manage.details, _kind(kind), id_)

@@ -52,6 +52,15 @@ def fmt_bytes(n: float) -> str:
     return f"{n:.1f} GB"
 
 
+def playing_line(status: str, item: dict, speaker: str = "") -> str:
+    """The tray tooltip's line for what the window plays (Player.status() and .now()): "▶ Artist – Title",
+    "Paused: Artist – Title", "… on <speaker>" while a speaker plays it; "" when nothing does."""
+    song = " – ".join(x for x in (item.get("artist"), item.get("title")) if x)
+    if status == "Stopped" or not song:
+        return ""
+    return ("▶ " if status == "Playing" else "Paused: ") + song + (f" on {speaker}" if speaker else "")
+
+
 class Usage:
     """The bytes sent to the servers today (kept over a restart in usage.json)."""
 
@@ -144,6 +153,10 @@ class App:
         self.tray.setContextMenu(self.menu)
         self.tray.activated.connect(self._clicked)
         self.tray.show()
+        self.tip_lines: list[str] = []      # the tooltip's lines about sharing (_menu_text), under what plays here
+        self.tip = ""                       # the tooltip as last set (the system is told only of a new one)
+        if self.window.player:
+            self.window.player.changed.connect(self._tooltip)
         self._menu_text()
         if minimized and not QSystemTrayIcon.isSystemTrayAvailable():
             self._wait_for_tray()       # at login the desktop's tray may come a little after this app
@@ -240,13 +253,23 @@ class App:
         self.playing_action.setVisible(bool(playing))
         if playing:
             self.playing_action.setText(f"Playing: {playing[0]}" + (f" (and {len(playing) - 1} more)" if len(playing) > 1 else ""))
-        lines = ["Muzix Desktop"]
-        lines += [f"♪ {p}" for p in playing[:4]] + ([f"and {len(playing) - 4} more"] if len(playing) > 4 else [])
+        lines = [f"♪ {p}" for p in playing[:4]] + ([f"and {len(playing) - 4} more"] if len(playing) > 4 else [])
         if not playing:
             lines.append("Nobody is listening to your music right now")
         lines.append(text)
         lines.append(f"Sent today: {fmt_bytes(self.usage.sent if self.usage.day == date.today().isoformat() else 0)}")
-        self.tray.setToolTip("\n".join(lines))
+        self.tip_lines = lines
+        self._tooltip()
+
+    def _tooltip(self):
+        """The tray icon's tooltip (the bar shows it when the pointer is on the icon): the song that plays
+        here first, under the app's name, then the sharing (_menu_text)."""
+        p = self.window.player
+        here = playing_line(p.status(), p.now(), p.caster.name if p.caster and p.casting else "") if p else ""
+        tip = "\n".join(["Muzix Desktop", *([here] if here else []), *self.tip_lines])
+        if tip != self.tip:             # the player says it changed often (every state it tells the page)
+            self.tip = tip
+            self.tray.setToolTip(tip)
 
     def notify(self, title: str, text: str):
         self.tray.showMessage(title, text, theme.icon(), 6000)

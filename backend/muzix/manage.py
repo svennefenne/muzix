@@ -550,29 +550,78 @@ def genre_folder(root: str, genre: str) -> str | None:
     return folders.get(genre.casefold()) or folders.get((broad_genre(genre) or "").casefold())
 
 
-def _filed_under(root: str, folder: str, genre: str, changed: bool) -> tuple[str, bool]:
+def genre_folders(root: str) -> list[str]:
+    """The library's genre folders, A to Z: those of its main genres (as uploads file them) that it has; without
+    those rules, every folder but Duplicates, Other formats, Uncategorized and ones being sorted in ("_Metal")."""
+    try:
+        tops = [f for f in os.listdir(root) if os.path.isdir(os.path.join(root, f))]
+    except OSError:
+        return []
+    rules = _genre_rules()
+    if rules:
+        main = {g.casefold() for g in rules[0].MAIN_GENRES}
+        tops = [f for f in tops if f.casefold() in main]
+    else:
+        tops = [f for f in tops if f.casefold() not in KEEP_PLACE | {UNSORTED} and not f.startswith(("_", "."))]
+    return sorted(tops, key=str.casefold)
+
+
+def _filed_under(root: str, folder: str, genre: str, changed: bool, to: str | None = None) -> tuple[str, bool]:
     """(the genre folder an edited album is filed in, whether it looked for one and none fits):
-    its genre's when the edit changes its genre or it's in Uncategorized, otherwise where it is.
-    Duplicates and Other formats keep theirs."""
+    `to` when one is picked (Change genre), else its genre's when the edit changes its genre or it's in
+    Uncategorized, otherwise where it is. Duplicates and Other formats keep theirs."""
     top = os.path.relpath(folder, root).split(os.sep)[0]
-    if top.casefold() in KEEP_PLACE or not (changed or top.casefold() == UNSORTED):
+    if top.casefold() in KEEP_PLACE:
+        return top, False
+    if to:
+        return to, False
+    if not (changed or top.casefold() == UNSORTED):
         return top, False
     to = genre_folder(root, genre)
     return to or top, to is None
 
 
+def _album_place(s, id_: int) -> tuple[Album, Root | None, str]:
+    """(the album, its library folder, the folder its songs are in)."""
+    alb = _row(s, "album", id_)
+    rows = s.execute(select(Track.path, Track.root_id).where(Track.album_id == id_)).all()
+    root = s.get(Root, rows[0].root_id) if rows else None
+    return alb, root, album_dir(sorted({r.path for r in rows})) if rows else ""
+
+
 def filing(id_: int, genre: str) -> dict:
     """Where saving the album with this genre files it: {"now", "then", "no_fit"} (genre folders)."""
     with db.session() as s:
-        alb = _row(s, "album", id_)
-        rows = s.execute(select(Track.path, Track.root_id).where(Track.album_id == id_)).all()
-        root = s.get(Root, rows[0].root_id) if rows else None
+        alb, root, folder = _album_place(s, id_)
         current = alb.genre
     if root is None or root.kind != "music":
         return {"now": None, "then": None, "no_fit": False}
-    folder = album_dir(sorted({r.path for r in rows}))
     then, no_fit = _filed_under(root.path, folder, genre, genre.strip() != current)
     return {"now": os.path.relpath(folder, root.path).split(os.sep)[0], "then": then, "no_fit": no_fit}
+
+
+def genre_choices(id_: int) -> dict:
+    """The genres an album can be given from its cog (Change genre): {"genres": its library's genre folders,
+    "now": the one it's in (None: none of them), "genre": its genre tag, "stays": the folder it keeps
+    whatever its genre (Duplicates, Other formats), or None}."""
+    with db.session() as s:
+        alb, root, folder = _album_place(s, id_)
+        genre = alb.genre
+    if root is None or root.kind != "music":
+        raise ManageError("Only albums in a music library folder have a genre folder; Edit metadata sets the genre tag")
+    genres = genre_folders(root.path)
+    top = os.path.relpath(folder, root.path).split(os.sep)[0]
+    now = next((g for g in genres if g.casefold() == top.casefold()), None)
+    return {"genres": genres, "now": now, "genre": genre, "stays": top if top.casefold() in KEEP_PLACE else None}
+
+
+def change_genre(id_: int, genre: str) -> dict:
+    """The album given one of the library's genres (`genre_choices`): its songs tagged with it, and the album
+    filed in its folder (Genre / Artist / Artist - Year - Album), even when its tags said so already."""
+    picked = next((g for g in genre_choices(id_)["genres"] if g.casefold() == genre.strip().casefold()), None)
+    if picked is None:
+        raise ManageError(f"The library has no genre folder called {genre}")
+    return edit_album(id_, {"genre": picked}, [], file_in=picked)
 
 
 def album_name(album: dict, artist: str) -> str:
@@ -888,11 +937,13 @@ def _remember(s, kind: str, item_id: int, title: str, summary: str, undo: dict) 
     return rec.id
 
 
-def edit_album(id_: int, fields: dict, tracks: list[dict], remember: bool = True, by_genre: bool = True) -> dict:
+def edit_album(id_: int, fields: dict, tracks: list[dict], remember: bool = True, by_genre: bool = True,
+               file_in: str | None = None) -> dict:
     """The album's fields (title, artist, year, genre) and its songs' (title, artist, track_no,
     disc_no): into the files, then the album filed by its new tags (`by_genre`: in the folder of
-    a new genre, or of its genre when it's in Uncategorized). With `remember`, the edit is kept in
-    the list of edits to undo; otherwise what undoes it comes back as "undo"."""
+    a new genre, or of its genre when it's in Uncategorized; `file_in`: in that genre folder, its
+    genre then written to every song that hasn't it). With `remember`, the edit is kept in the list
+    of edits to undo; otherwise what undoes it comes back as "undo"."""
     album_level = {"album": fields.get("title"), "albumartist": fields.get("artist"),
                    "year": fields.get("year"), "genre": fields.get("genre")}
     album_level = _clean_fields({k: v for k, v in album_level.items() if v is not None})
@@ -904,7 +955,7 @@ def edit_album(id_: int, fields: dict, tracks: list[dict], remember: bool = True
         title_before, art_before = alb.title, alb.art
         # only what changed: the window sends every field
         current = {"album": alb.title, "albumartist": alb.artist_name, "year": alb.year, "genre": alb.genre}
-        album_level = {k: v for k, v in album_level.items() if v != current[k]}
+        album_level = {k: v for k, v in album_level.items() if v != current[k] or (k == "genre" and file_in)}
         rows = list(s.scalars(select(Track).where(Track.album_id == id_).order_by(Track.disc_no, Track.track_no)))
         if not rows:
             raise ManageError("The album has no songs")
@@ -942,7 +993,7 @@ def edit_album(id_: int, fields: dict, tracks: list[dict], remember: bool = True
                                 "disc_no": per_track.get(t.id, {}).get("disc_no", t.disc_no),
                                 "year": album_level.get("year", t.year)} for t in rows]
                 top = _filed_under(root.path, folder, album_level.get("genre", alb.genre),
-                                   "genre" in album_level)[0] if by_genre else None
+                                   "genre" in album_level, file_in)[0] if by_genre or file_in else None
                 target, moves = plan(root.path, folder, new, plan_tracks, top)
                 if os.path.normpath(target) != os.path.normpath(folder) or any(a != b for a, b in moves.items()):
                     refile(folder, target, moves)

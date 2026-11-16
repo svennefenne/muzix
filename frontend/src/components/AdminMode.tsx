@@ -1,8 +1,8 @@
 /** Admin mode: a cog on every library item (albums, songs, artists, books, podcasts, playlists,
- * stations) with Edit metadata, Hide from library and Delete (and an artist's or album's Edit tags, an album's Merge). Deleted files go to a trash on
+ * stations) with Edit metadata, Hide from library and Delete (and an artist's or album's Edit tags, an album's Merge, type and genre). Deleted files go to a trash on
  * their share; hidden things and the trash are on the admin page. */
 
-import { Combine, Disc3, EyeOff, ListMusic, Pencil, Settings, Tags, Trash2 } from "lucide-react";
+import { Check, Combine, Disc3, EyeOff, Guitar, ListMusic, Pencil, Settings, Tags, Trash2 } from "lucide-react";
 import { create } from "zustand";
 import { queryClient } from "../actions";
 import { api } from "../api";
@@ -146,6 +146,7 @@ export function AdminCog({ kind, id, title, className = "", peer }: {
                   ...([["album", "Album"], ["ep", "EP"], ["single", "Single"], ["", "As tagged"]] as const)
                     .map(([type, label]) => ({ label, icon: <Disc3 size={16} />, onClick: () => void setRelease(id, type) })),
                 ]) }] : []),
+                ...(kind === "album" ? [{ label: "Change genre", icon: <Guitar size={16} />, onClick: () => void pickGenre(at, t, () => setEdit(t)) }] : []),
                 ...(kind === "album" ? [{ label: "Make compilation", icon: <ListMusic size={16} />, onClick: () => void makeCompilation(id) }] : []),
                 { label: "Hide from library", icon: <EyeOff size={16} />, onClick: () => hide(t) },
                 { label: "Delete", icon: <Trash2 size={16} />, onClick: () => setConfirm(t) },
@@ -163,6 +164,50 @@ async function setRelease(id: number, type: "" | "album" | "ep" | "single") {
     await api.put(`/api/manage/album/${id}/release`, { type });
     queryClient.invalidateQueries();
     notify(type ? `Marked as ${({ album: "an album", ep: "an EP", single: "a single" })[type]}` : "Its type as tagged");
+  } catch (e) {
+    notify((e as Error).message, "error");
+  }
+}
+
+interface GenreChoices { genres: string[]; now: string | null; genre: string; stays: string | null }
+interface Edited { written: number; moved_to?: string | null; notes?: string[]; edit_id?: number | null }
+
+/** Change genre: a second menu, where the cog was clicked, of the library's genre folders (backend
+ * manage.genre_choices). One picked tags the album's songs so and files it in that folder; "Other genre…"
+ * is the edit window, for a genre tag of one's own. */
+async function pickGenre(at: { clientX: number; clientY: number; target?: EventTarget | null }, t: Target, other: () => void) {
+  const notify = useUi.getState().notify;
+  let c: GenreChoices;
+  try {
+    c = await api.get<GenreChoices>(`/api/manage/album/${t.id}/genres`);
+  } catch (e) {
+    notify((e as Error).message, "error");
+    return;
+  }
+  useMenu.getState().show(at, [
+    { heading: c.stays ? `Change genre (it stays in ${c.stays})` : "Change genre" },
+    ...c.genres.map((g) => ({ label: g, icon: g === c.now ? <Check size={16} /> : <Guitar size={16} />,
+                              onClick: () => void changeGenre(t, g) })),
+    ...(c.genres.length ? [{ sep: true }] : []),
+    { label: "Other genre…", icon: <Pencil size={16} />, onClick: other },
+  ]);
+}
+
+async function changeGenre(t: Target, genre: string) {
+  const notify = useUi.getState().notify;
+  try {
+    const r = await api.put<Edited>(`/api/manage/album/${t.id}/genre`, { genre });
+    refreshAll();
+    if (!r.written && !r.moved_to) {
+      notify(`${t.title} is ${genre} already`);
+      return;
+    }
+    const where = r.moved_to?.split("/").slice(-3);
+    // the genre folder has an album of that name already (the first disc of a double album, say): it got "[2]"
+    const twin = where && / \[\d+\]$/.test(where[2]) ? ". An album of that name is there already: Merge with another album makes them one" : "";
+    notify([where ? `${t.title} is ${genre} now, filed in ${where.join(" / ")}${twin}`
+            : `${t.title} is ${genre} now: ${r.written} song${r.written === 1 ? "" : "s"} tagged`,
+            ...(r.notes || [])].join(". "), "info", r.edit_id ? { label: "Undo", run: () => void undoEdit(r.edit_id!) } : undefined);
   } catch (e) {
     notify((e as Error).message, "error");
   }

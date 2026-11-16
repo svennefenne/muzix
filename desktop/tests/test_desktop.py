@@ -188,3 +188,13 @@ def test_started_at_login_minimized(tmp_path, monkeypatch):
     assert "Exec=/home/anna/Applications/muzix-desktop.AppImage --minimized" in entry and autostart.enabled()
     autostart.set_enabled(False)
     assert not autostart.enabled()
+
+
+def test_the_tray_tooltip_says_what_plays_here():
+    from muzix_desktop.app import playing_line
+    song = {"title": "Retaliation", "artist": "Entombed", "album": "Inferno / Averno"}
+    assert playing_line("Playing", song) == "▶ Entombed – Retaliation"
+    assert playing_line("Paused", song) == "Paused: Entombed – Retaliation"
+    assert playing_line("Playing", song, "Kitchen") == "▶ Entombed – Retaliation on Kitchen"
+    assert playing_line("Playing", {"title": "Radio Song"}) == "▶ Radio Song"      # a station's song, no artist
+    assert playing_line("Stopped", song) == "" and playing_line("Playing", {}) == ""
