@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import and_, case, delete, func, or_, select, text, true
 from sqlalchemy.orm import Session
 
-from .. import art, credits, lyrics, mirror, serial, tagging
+from .. import art, credits, lyrics, mirror, plays, serial, tagging
 from ..db import get_db, get_db_with_copies
 from ..models import (Album, Artist, Book, Episode, EpisodeProgress, Feed, FilePlaylist, FilePlaylistItem, Like, PlayEvent,
                       RecentSearch, Station, Subscription, Track, User)
@@ -95,10 +95,7 @@ def home(db: Session = Depends(get_db), user: User = Depends(current_user)):
         "WHERE p.user_id = :u AND t.album_id IS NOT NULL GROUP BY t.album_id ORDER BY m DESC LIMIT 14"),
         {"u": user.id})]
     played = {a.id: a for a in db.scalars(select(Album).where(Album.id.in_(played_ids)))}
-    top_ids = [r[0] for r in db.execute(text(
-        "SELECT t.album_id, count(*) c FROM plays p JOIN tracks t ON t.id = p.track_id "
-        "WHERE p.user_id = :u AND t.album_id IS NOT NULL GROUP BY t.album_id ORDER BY c DESC LIMIT 14"),
-        {"u": user.id})]
+    top_ids = plays.heavy_rotation(db, user.id)        # the last 30 days, each song once a day at most
     top = {a.id: a for a in db.scalars(select(Album).where(Album.id.in_(top_ids)))}
     rnd = db.scalars(select(Album).where(Album.kind == "music", Album.art != "")
                      .order_by(func.random()).limit(14))

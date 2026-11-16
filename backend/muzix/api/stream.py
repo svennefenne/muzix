@@ -7,10 +7,10 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .. import formats, mirror, render, settings, tunnel
+from .. import formats, mirror, plays, render, settings, tunnel
 from ..lengths import play_plan
 from ..db import get_db_with_copies
-from ..models import PlayEvent, Track, User
+from ..models import Track, User
 from ..security import cast_token, current_user, stream_user
 
 router = APIRouter(prefix="/api", tags=["stream"])
@@ -179,8 +179,7 @@ def cast_link(user: User = Depends(current_user)):
 
 @router.post("/plays")
 def played(body: Played, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
-    if db.get(Track, body.track_id) is None:
+    t = db.get(Track, body.track_id)
+    if t is None:
         raise HTTPException(404, "No such track")
-    db.add(PlayEvent(user_id=user.id, track_id=body.track_id))
-    db.commit()
-    return {"ok": True}
+    return {"ok": True, "counted": plays.record(db, user.id, t)}     # the same one sent again just now: once (plays.py)

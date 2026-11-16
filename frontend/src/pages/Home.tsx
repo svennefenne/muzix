@@ -128,7 +128,7 @@ export default function Home() {
       <Section kicker="Fresh in the library" title="Recently added" more={<Link className="see-all" to="/library?sort=added">See all</Link>}>
         <AlbumRow albums={d.recently_added} />
       </Section>
-      {d.most_played.length > 0 && <Section kicker="Your heavy rotation" title="Most played"><AlbumRow albums={d.most_played} /></Section>}
+      {d.most_played.length > 0 && <Section kicker="The last 30 days" title="Most played"><AlbumRow albums={d.most_played} /></Section>}
       <Section kicker="Pulled from the shelves" title="Rediscover"><AlbumRow albums={d.rediscover} /></Section>
       <Section kicker="Browse by" title="Genres" more={<Link className="see-all" to="/library/genres">All genres</Link>}>
         <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>

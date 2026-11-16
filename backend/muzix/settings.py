@@ -48,6 +48,8 @@ SCHEMA: list[Spec] = [
          "Whether the albums scanned before album types were read have had their files read (releases.py)."),
     Spec("tag_rules_applied", "str", "", "Tags", "General tag rules applied",
          "Which general rules every artist's tags were last worked out with (tagging.RULES_VERSION)."),
+    Spec("plays_tidied", "str", "", "Tags", "Repeated plays taken out",       # "Tags": kept out of the settings form
+         "Whether the plays a player sent over and over were taken out of the play history (plays.TIDIED)."),
     Spec("lyrics_online", "bool", True, "Library", "Look up lyrics online",
          "Songs without lyrics of their own (an .lrc file beside them, or lyrics in their tags) get "
          "them from LRCLIB (lrclib.net), a free, open lyrics database. It's sent the artist, title, "
