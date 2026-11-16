@@ -2,7 +2,7 @@
 computer with Muzix servers (the Library Network) and fixes albums' metadata and artwork. It stays in
 the system tray."""
 
-__version__ = "0.4.38"
+__version__ = "0.4.39"
 
 
 def ensure_streams():

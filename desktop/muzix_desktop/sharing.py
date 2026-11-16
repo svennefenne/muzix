@@ -313,12 +313,14 @@ class Sharing:
     """The connections to the linked servers, in a thread of their own. `on_status(server_id,
     status)` hears how each stands: connecting, waiting, linked, offline, removed; `on_playing(
     server_id, track_id)` that someone on that server plays one of the songs shared from here.
-    `sent` counts the bytes sent to the servers, `sending` the songs on their way now."""
+    `sent` counts the bytes of the shared music sent to the servers, `uploaded` those of the files they
+    fetch from their watch folders here, `sending` the files on their way now."""
 
     def __init__(self, catalog: Catalog, on_status=lambda sid, status: None, on_playing=lambda sid, track: None):
         self.catalog, self.on_status, self.on_playing = catalog, on_status, on_playing
         self.status: dict[str, str] = {}
         self.sent = 0
+        self.uploaded = 0
         self.sending = 0
         self.loop = asyncio.new_event_loop()
         self.tasks: dict[str, asyncio.Task] = {}
@@ -482,7 +484,8 @@ class Sharing:
             elif op == "lyrics":
                 await ws.send(json.dumps({"id": rid, "result": None}))
             elif op == "watch_file":
-                await self._send_file(sid, ws, rid, watched(sid, m.get("path"), m.get("held") or "", m.get("rel") or ""))
+                await self._send_file(sid, ws, rid, watched(sid, m.get("path"), m.get("held") or "", m.get("rel") or ""),
+                                      upload=True)
             elif op in WATCH:
                 result = await asyncio.to_thread(WATCH[op], sid, m)
                 await ws.send(json.dumps({"id": rid, "result": result}))
@@ -498,7 +501,8 @@ class Sharing:
         finally:
             self.cancelled.discard((sid, rid))
 
-    async def _send_file(self, sid: str, ws, rid: int, path: str):
+    async def _send_file(self, sid: str, ws, rid: int, path: str, upload: bool = False):
+        """A file to the server in chunks: a shared song, or (`upload`) one it fetches from a watch folder."""
         self.sending += 1
         try:
             with open(path, "rb") as f:
@@ -506,7 +510,10 @@ class Sharing:
                     chunk = await asyncio.to_thread(f.read, CHUNK)
                     last = len(chunk) < CHUNK
                     await ws.send(HEAD.pack(rid, 1 if last else 0) + chunk)
-                    self.sent += len(chunk)
+                    if upload:
+                        self.uploaded += len(chunk)
+                    else:
+                        self.sent += len(chunk)
                     if last:
                         return
         finally:

@@ -198,3 +198,25 @@ def test_the_tray_tooltip_says_what_plays_here():
     assert playing_line("Playing", song, "Kitchen") == "▶ Entombed – Retaliation on Kitchen"
     assert playing_line("Playing", {"title": "Radio Song"}) == "▶ Radio Song"      # a station's song, no artist
     assert playing_line("Stopped", song) == "" and playing_line("Playing", {}) == ""
+
+
+def test_shared_music_and_the_watch_folder_are_counted_apart(tmp_path, monkeypatch):
+    import json as json_
+    from datetime import date
+    from muzix_desktop import app
+    monkeypatch.setattr(app.config, "DATA_DIR", str(tmp_path))
+    today = date.today().isoformat()
+    # before 0.4.39 one number held both: that day starts over rather than call the uploads shared music
+    (tmp_path / "usage.json").write_text(json_.dumps({"day": today, "sent": 20_000_000_000}))
+    u = app.Usage()
+    assert u.today() == (0, 0)
+    u.add(3 * 1024 ** 2)
+    u.add(2 * 1024 ** 3, uploaded=True)
+    assert app.Usage().today() == (3 * 1024 ** 2, 2 * 1024 ** 3)       # kept over a restart
+    assert app.usage_lines(*u.today(), sharing=False, watching=True) == [
+        "Shared music sent today: 3.0 MB", "Watch folder sent today: 2.0 GB"]
+    assert app.usage_lines(0, 5 * 1024 ** 3, sharing=False, watching=True) == ["Watch folder sent today: 5.0 GB"]
+    assert app.usage_lines(0, 0, sharing=True, watching=False) == ["Shared music sent today: 0 B"]
+    assert app.usage_lines(0, 0, sharing=False, watching=False) == []
+    u.day = "2026-01-01"                       # another day: nothing sent yet
+    assert u.today() == (0, 0)

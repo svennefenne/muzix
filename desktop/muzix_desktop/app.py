@@ -62,7 +62,8 @@ def playing_line(status: str, item: dict, speaker: str = "") -> str:
 
 
 class Usage:
-    """The bytes sent to the servers today (kept over a restart in usage.json)."""
+    """The bytes sent to the servers today (kept over a restart in usage.json): `sent`, of the music shared
+    from here; `uploaded`, from the watch folders here (sharing.py's watch_file)."""
 
     def __init__(self):
         self.path = os.path.join(config.DATA_DIR, "usage.json")
@@ -71,24 +72,42 @@ class Usage:
                 saved = json.load(f)
         except (OSError, ValueError):
             saved = {}
-        self.day, self.sent = saved.get("day", ""), int(saved.get("sent") or 0)
-        self.saved_at = self.sent
+        # before 0.4.39 one number held both: they can't be told apart, so that day starts over
+        if "uploaded" not in saved:
+            saved = {}
+        self.day = saved.get("day", "")
+        self.sent, self.uploaded = int(saved.get("sent") or 0), int(saved.get("uploaded") or 0)
+        self.saved_at = self.sent + self.uploaded
 
-    def add(self, n: int):
+    def add(self, n: int, uploaded: bool = False):
         today = date.today().isoformat()
         if self.day != today:
-            self.day, self.sent, self.saved_at = today, 0, -1
-        self.sent += n
-        if self.sent - self.saved_at >= 1024 ** 2 or self.saved_at < 0:
+            self.day, self.sent, self.uploaded, self.saved_at = today, 0, 0, -1
+        if uploaded:
+            self.uploaded += n
+        else:
+            self.sent += n
+        if self.sent + self.uploaded - self.saved_at >= 1024 ** 2 or self.saved_at < 0:
             self.save()
+
+    def today(self) -> tuple[int, int]:
+        """(shared music sent, watch folder files sent) today."""
+        return (self.sent, self.uploaded) if self.day == date.today().isoformat() else (0, 0)
 
     def save(self):
         try:
             with open(self.path, "w", encoding="utf-8") as f:
-                json.dump({"day": self.day, "sent": self.sent}, f)
-            self.saved_at = self.sent
+                json.dump({"day": self.day, "sent": self.sent, "uploaded": self.uploaded}, f)
+            self.saved_at = self.sent + self.uploaded
         except OSError:
             pass
+
+
+def usage_lines(sent: int, uploaded: int, sharing: bool, watching: bool) -> list[str]:
+    """The tray tooltip's lines for what was sent today: the music shared from here, and the watch folders'
+    files, each when there's some or it's set up (folders shared; a server's watch folders here)."""
+    return ([f"Shared music sent today: {fmt_bytes(sent)}"] if sharing or sent else []) + \
+        ([f"Watch folder sent today: {fmt_bytes(uploaded)}"] if watching or uploaded else [])
 
 
 class App:
@@ -107,6 +126,7 @@ class App:
         self.plays: dict[tuple[str, int], float] = {}     # (server, song) → until when it counts as playing
         self.usage = Usage()
         self.counted = 0                # of sharing.sent, what's in usage already
+        self.counted_up = 0             # of sharing.uploaded (the watch folders'), the same
         self.active = False
         self.scanning = False
         self.fix_window = None
@@ -199,10 +219,13 @@ class App:
     def _tick(self):
         now = time.monotonic()
         self.plays = {k: until for k, until in self.plays.items() if until > now}
-        sent = self.sharing.sent
+        sent, uploaded = self.sharing.sent, self.sharing.uploaded
         if sent > self.counted:
             self.usage.add(sent - self.counted)
             self.counted = sent
+        if uploaded > self.counted_up:
+            self.usage.add(uploaded - self.counted_up, uploaded=True)
+            self.counted_up = uploaded
         active = bool(self.plays) or self.sharing.sending > 0
         if active != self.active:
             self.active = active
@@ -257,7 +280,8 @@ class App:
         if not playing:
             lines.append("Nobody is listening to your music right now")
         lines.append(text)
-        lines.append(f"Sent today: {fmt_bytes(self.usage.sent if self.usage.day == date.today().isoformat() else 0)}")
+        lines += usage_lines(*self.usage.today(), sharing=bool(self.cfg.folders),
+                             watching=any(s.watch_folders for s in self.cfg.servers if s.state == "linked"))
         self.tip_lines = lines
         self._tooltip()
 
