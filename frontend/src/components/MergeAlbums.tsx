@@ -9,6 +9,7 @@ import { api, fmtNumber } from "../api";
 import { useUi } from "../store/ui";
 import type { Album, AlbumDetail, Paged } from "../types";
 import { refreshAll, undoEdit } from "./AdminMode";
+import { mergeCandidates } from "./mergeCandidates";
 import { Art, Loading, Modal } from "./ui";
 
 interface Plan {
@@ -67,8 +68,7 @@ export function MergeAlbums({ id, onClose }: { id: number; onClose: () => void }
     [n[at], n[at + by]] = [n[at + by], n[at]];
     setOrder(n);
   };
-  const candidates = [...(same.data?.items || []), ...(term.length > 1 ? found.data?.albums || [] : [])]
-    .filter((x, k, list) => !byId.has(x.id) && !x.peer && x.kind === "music" && list.findIndex((y) => y.id === x.id) === k);
+  const candidates = mergeCandidates(a, same.data?.items || [], found.data?.albums || [], term, new Set(byId.keys()));
   const discOf = (albumId: number) => plan.data?.albums.find((p) => p.album_id === albumId)?.discs;
   const merge = async () => {
     setMerging(true);
@@ -124,7 +124,7 @@ export function MergeAlbums({ id, onClose }: { id: number; onClose: () => void }
         </label>
         {candidates.length > 0 && (
           <div className="merge-candidates">
-            {candidates.slice(0, 12).map((x) => (
+            {candidates.map((x) => (
               <button key={x.id} className="merge-candidate" onClick={() => add(x)}>
                 <Plus size={14} /><span className="ellipsis"><b>{x.title}</b> <span className="faint">{x.artist}{x.year ? ` · ${x.year}` : ""} · {x.track_count} songs</span></span>
               </button>
