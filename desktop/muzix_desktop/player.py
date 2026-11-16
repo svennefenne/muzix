@@ -301,7 +301,7 @@ class Player(QObject):
         try:
             if fn := getattr(self, "_on_" + t, None):
                 fn(m)
-            elif t in ("server", "open", "cast", "update", "library", "folder"):
+            elif t in ("server", "open", "cast", "update", "library", "folder", "copy"):
                 self.command.emit(t, m)
         except Exception:       # a message that fails goes to the log; the window carries on
             log.exception("The page's %r failed", t)
@@ -316,7 +316,8 @@ class Player(QObject):
             self.queue, self.index, self.failures = resume["queue"], resume["index"], 0
         # nothing to play: what played last, which the page shows paused (frontend/src/player/last.ts)
         last = self._kept() if not self.queue else None
-        self._send(t="hello", version=f"MuzixDesktop/{__version__}", saves=False, updates=True, opens=True,
+        # clipboard: it copies the links the page shares itself (window.py "copy"; Qt's page may not be allowed to)
+        self._send(t="hello", version=f"MuzixDesktop/{__version__}", saves=False, updates=True, opens=True, clipboard=True,
                    desktop={"version": __version__, "platform": system},
                    device=platform.node() or "Computer", deviceId=self.device_id,
                    volume=self.caster.level if self.casting else self.level, library=self.library(),

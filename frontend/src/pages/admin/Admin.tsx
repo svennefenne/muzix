@@ -1,11 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Blocks, Disc3, EyeOff, FileQuestion, FolderOpen, Gamepad2, HardDrive, History, Image as ImageIcon, Library, ListMusic, Network, Plus, RefreshCw, Save, Settings2, Tags as TagsIcon, Trash2, Upload, Users, X } from "lucide-react";
+import { Activity, Blocks, Disc3, EyeOff, FileQuestion, FolderOpen, Gamepad2, HardDrive, History, Image as ImageIcon, Library, ListMusic, Network, Plus, RefreshCw, Save, Settings2, Share2, Tags as TagsIcon, Trash2, Upload, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { create } from "zustand";
 import { ago, api, fmtBytes, fmtNumber } from "../../api";
 import { queryClient } from "../../actions";
 import { refreshAll, useAdminDialogs } from "../../components/AdminMode";
+import { SharedLinks } from "../../components/Share";
 import { Art, Display, Empty, Kicker, Loading, Modal, Switch } from "../../components/ui";
 import { useUi } from "../../store/ui";
 import type { Album, Job } from "../../types";
@@ -854,7 +855,8 @@ export default function Admin() {
   const files = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
   const nav = [["", "Overview", Activity], ["library", "Library folders", Library], ["modules", "Modules", Blocks],
     ...(modules.network ? [["network", "Library Network", Network] as const] : []), ["upload", "Upload", Upload],
-    ["tags", "Tags", TagsIcon], ["edits", "Edits", History], ["hidden", "Hidden & trash", EyeOff], ["jobs", "Jobs", RefreshCw], ["settings", "Settings", Settings2], ["users", "Users", Users]] as const;
+    ["tags", "Tags", TagsIcon], ["edits", "Edits", History], ["hidden", "Hidden & trash", EyeOff], ["jobs", "Jobs", RefreshCw], ["settings", "Settings", Settings2], ["users", "Users", Users],
+    ["shares", "Shared links", Share2]] as const;
   return (
     <div className="page wide"
          onDragOver={(e) => { if (!files(e)) return; e.preventDefault(); setDragging(true); }}
@@ -889,10 +891,25 @@ export default function Admin() {
             <Route path="jobs" element={<Jobs />} />
             <Route path="settings" element={<AdminSettings />} />
             <Route path="users" element={<AdminUsers />} />
+            <Route path="shares" element={<AdminShares />} />
             <Route path="artwork" element={<WithoutArtwork />} />
           </Routes>
         </div>
       </div>
     </div>
+  );
+}
+
+/** Everyone's public links (components/Share.tsx): who made which, and taking one away. */
+function AdminShares() {
+  return (
+    <section className="panel">
+      <div className="panel-head"><div className="h3">Shared links</div></div>
+      <p className="dim" style={{ marginTop: 0 }}>
+        Public links people on this server made with Share link…: anyone who has one can listen in a browser, without an
+        account, until it runs out. Removing one stops it at once. Turn links off for an account under Users.
+      </p>
+      <SharedLinks all />
+    </section>
   );
 }

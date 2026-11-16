@@ -10,6 +10,7 @@ import { playRandom, toggleLike } from "../actions";
 import { hasLyrics, LyricsCard, LyricsLines, LyricsSource, noLyrics, tinted, useLyrics } from "../components/Lyrics";
 import { useStationHistory } from "../components/StationHistory";
 import { linkData } from "../chat/store";
+import { playingTarget, ShareButton } from "../components/Share";
 import { Art } from "../components/ui";
 import { engine } from "../player/engine";
 import { usePlayer, type PlayItem } from "../store/player";
@@ -60,6 +61,7 @@ export function NowPanel() {
   const cur = index >= 0 ? queue[index] : null;
   const next = queue.slice(index + 1, index + 6);
   const isLiked = cur ? liked[cur.key] ?? !!cur.liked : false;
+  const share = live ? null : playingTarget(cur);
 
   if (lyricsMode) return <LyricsMode cur={cur} />;
   return (
@@ -89,6 +91,7 @@ export function NowPanel() {
                 <Heart size={18} fill={isLiked ? "currentColor" : "none"} />
               </button>
             )}
+            {share && <ShareButton target={share} label={false} className="ctl" />}
           </div>
           {theme.skin && (
             <p className="np-skin" data-tip="The look follows the genre of what plays; pin one or turn them off in Settings">

@@ -13,7 +13,7 @@ import threading
 
 import httpx
 from PySide6.QtCore import QByteArray, QFile, QObject, QTimer, QUrl, Qt, Signal, Slot
-from PySide6.QtGui import QCursor, QDesktopServices
+from PySide6.QtGui import QCursor, QDesktopServices, QGuiApplication
 from PySide6.QtNetwork import QNetworkCookie, QNetworkInformation
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineScript
@@ -418,6 +418,9 @@ class Window(QMainWindow):
             self._use_library(m.get("which"))
         elif t == "folder":
             self.add_folder()
+        elif t == "copy":
+            # a link the page shares (frontend/src/components/Share.tsx)
+            QGuiApplication.clipboard().setText(str(m.get("text") or ""))
         elif t == "open":
             url = QUrl(m.get("url") or "")
             if url.scheme() in ("http", "https"):

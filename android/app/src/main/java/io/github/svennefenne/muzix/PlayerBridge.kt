@@ -158,6 +158,8 @@ class PlayerBridge(
         val c = player ?: return
         when (val t = m.optString("t")) {
             "hello" -> send(JSONObject().put("t", "hello").put("version", PlaybackService.USER_AGENT).put("saves", true).put("updates", true)
+                // copies to the clipboard and opens the share sheet itself (MainActivity: "copy", "share")
+                .put("clipboard", true).put("shares", true)
                 .put("downloads", Downloads.list()).put("offline", Downloads.offline)
                 .put("device", deviceName()).put("deviceId", deviceId()).put("volume", mediaVolume()).put("library", if (Server.local) "local" else "server")
                 .put("queue", JSONArray((0 until c.mediaItemCount).map { c.getMediaItemAt(it).carried() }))

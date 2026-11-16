@@ -2,6 +2,8 @@ package io.github.svennefenne.muzix
 
 import android.annotation.SuppressLint
 import android.app.AlertDialog
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.graphics.Color
@@ -165,6 +167,13 @@ class MainActivity : ComponentActivity() {
             // the server's web version in the browser (its admin pages: the app has none)
             "open" -> Uri.parse(m.optString("url")).takeIf { it.scheme in setOf("http", "https") }?.let {
                 runCatching { startActivity(Intent(Intent.ACTION_VIEW, it)) }
+            }
+            // a link the page shares (components/Share.tsx): copied, or handed to Android's share sheet
+            "copy" -> getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Muzix", m.optString("text")))
+            "share" -> runCatching {
+                val send = Intent(Intent.ACTION_SEND).setType("text/plain")
+                    .putExtra(Intent.EXTRA_TEXT, m.optString("url")).putExtra(Intent.EXTRA_SUBJECT, m.optString("title"))
+                startActivity(Intent.createChooser(send, null))
             }
         }
     }

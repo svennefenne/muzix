@@ -4,7 +4,7 @@ import logging
 import os
 
 from fastapi import Depends, FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import API_VERSION, __version__, chat, db, env, jobs, modules, network, settings, tunnel, watch
@@ -49,7 +49,7 @@ def create_app() -> FastAPI:
     from .organize import importer  # noqa: F401
     from .api import admin, android, auth, books as books_api, chat as chat_api, library, me, podcasts as podcasts_api
     from .api import connect, manage as manage_api, network as network_api, online, radio, setup
-    from .api import schemes, stream, tags, upload, watch as watch_api
+    from .api import schemes, shares, stream, tags, upload, watch as watch_api
 
     app = FastAPI(title="Muzix", version=__version__, docs_url="/api/docs", openapi_url="/api/openapi.json")
     app.add_middleware(NoProxyBuffering)
@@ -57,7 +57,7 @@ def create_app() -> FastAPI:
     module_of = {books_api: "audiobooks", podcasts_api: "podcasts", radio: "radio", online: "vgm", network_api: "network",
                  chat_api: "network"}
     for mod in (auth, setup, library, stream, me, admin, books_api, podcasts_api, radio, upload,
-                online, manage_api, connect, android, network_api, chat_api, tags, schemes, watch_api):
+                online, manage_api, connect, android, network_api, chat_api, tags, schemes, watch_api, shares):
         needs = [Depends(modules.needed(module_of[mod]))] if mod in module_of else []
         app.include_router(mod.router, dependencies=needs)
         if hasattr(mod, "art_router"):
@@ -110,6 +110,15 @@ def create_app() -> FastAPI:
         if index.exists():
             return FileResponse(index, headers={"Cache-Control": "no-cache"})
         return JSONResponse({"detail": "The web interface isn't built (frontend/ → npm run build)"}, 404)
+
+    @app.get("/s/{token}", include_in_schema=False)
+    def shared_page(token: str, request: Request):
+        """A public link's page (api/shares.py): the web app, its head telling a chat app what's shared."""
+        index = static / "index.html"
+        if not index.exists():
+            return _index()
+        return HTMLResponse(shares.og_page(token, index.read_text(encoding="utf-8"), request),
+                            headers={"Cache-Control": "no-cache"})
 
     @app.get("/{path:path}", include_in_schema=False)
     def spa(path: str):

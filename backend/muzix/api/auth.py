@@ -25,7 +25,7 @@ def user_json(db: Session, u: User | None, token: str | None):
     if u is None:
         return None
     return {"id": u.id, "username": u.username, "is_admin": u.is_admin, "avatar": serial.avatar(u),
-            "prefs": device_prefs(db, u, token)}
+            "can_share": u.is_admin or u.can_share, "prefs": device_prefs(db, u, token)}
 
 
 @router.get("/state")
@@ -37,6 +37,8 @@ def state(request: Request, db: Session = Depends(get_db), user: User | None = D
         "modules": modules.states_for(user),
         "user": user_json(db, user, login_token(request)),
         "site_name": settings.get("site_name"),
+        # where the server is found from outside: the links people copy and share point there
+        "public_url": settings.get("public_url") or "",
         "allow_signup": settings.get("allow_signup"),
         "version": __version__,
     }

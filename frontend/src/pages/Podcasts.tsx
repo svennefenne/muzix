@@ -7,6 +7,7 @@ import { podcastsChanged, queryClient } from "../actions";
 import { AdminCog } from "../components/AdminMode";
 import { DownloadButton, useDownloadItem } from "../components/DownloadButton";
 import { Segmented } from "../components/Browse";
+import { ShareButton, shareItems } from "../components/Share";
 import { Art, Display, Empty, Kicker, Loading, Modal, NewDot, Section, Switch, useMenu } from "../components/ui";
 import { appPlayer, inAndroidApp, inDesktopApp, useShell } from "../player/app";
 import { engine } from "../player/engine";
@@ -51,6 +52,8 @@ export function EpisodeRow({ e, feed }: { e: Episode; feed?: Feed }) {
         .then(podcastsChanged),
     },
     ...(e.published ? [{ label: "Mark older as finished", icon: <ListChecks size={16} />, onClick: () => void finishOlder(e) }] : []),
+    ...shareItems({ kind: "episode", id: e.id, title: e.title, sub: e.feed_title || feed?.title || "", art: e.image || feed?.image,
+                    path: `/podcasts/episode/${e.id}` }, false),
   ]);
   const kicker = (
     <div className="kicker" style={{ fontSize: 10 }}>
@@ -490,6 +493,7 @@ export function PodcastPage() {
           {f.error && <p className="error-text">Last refresh failed: {f.error}</p>}
           <div className="row-actions">
             {next && <button className="btn accent" onClick={() => engine.play([fromEpisode(next, f.title, f.image)])}><Play size={15} fill="currentColor" /> Play {order === "oldest" ? "oldest" : "latest"} unplayed</button>}
+            <ShareButton className="btn" target={{ kind: "podcast", id: f.id, title: f.title, sub: f.author, art: f.image, path: `/podcasts/${f.id}` }} />
             <AdminCog kind="podcast" id={f.id} title={f.title} className="inline" />
             {f.subscribed ? (
               <>
@@ -597,6 +601,8 @@ function EpisodeView({ e }: { e: EpisodeDetail }) {
               await api.put(`/api/podcasts/episodes/${e.id}/progress`, { position: e.finished ? 0 : e.duration, finished: !e.finished });
               podcastsChanged();
             }}><CircleCheck size={15} /> {e.finished ? "Mark as unplayed" : "Mark as played"}</button>
+            <ShareButton className="btn ghost" target={{ kind: "episode", id: e.id, title: e.title, sub: f.title, art: e.image || f.image,
+                                                         path: `/podcasts/episode/${e.id}` }} />
           </div>
         </div>
       </div>

@@ -27,6 +27,8 @@ class User(Base):
     limits: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # the account's icon: {"color", "letter"} or {"picture": a file in env.AVATAR_DIR}; None: the first letter
     avatar: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # may make public links (shares.py) to what it can play; an admin can turn it off for the account
+    can_share: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
 
 
 class AuthSession(Base):
@@ -206,6 +208,23 @@ class Playlist(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # admin: hidden from everyone
+
+
+class Share(Base):
+    """A public link to a song, album, playlist, artist, podcast or episode of this server's own library
+    (api/shares.py): whoever has it listens in a browser, without an account, until it runs out
+    (expires_at; None: never) or its maker takes it away."""
+    __tablename__ = "shares"
+    token: Mapped[str] = mapped_column(String(32), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(16))        # track | album | playlist | artist | podcast | episode
+    item_id: Mapped[int] = mapped_column(Integer)
+    title: Mapped[str] = mapped_column(String(512), default="")     # its name when it was shared, for the lists
+    sub: Mapped[str] = mapped_column(String(512), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    opened: Mapped[int] = mapped_column(Integer, default=0)          # times its page was opened
+    user: Mapped[User] = relationship()
 
 
 class Scheme(Base):

@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { ChevronRight, Disc3, Heart, ListPlus, MessageCircle, Mic2, MoreVertical, Pause, Play, Plus, Shuffle, Tags, Trash2, UserRound } from "lucide-react";
+import { ChevronRight, Disc3, Heart, ListPlus, Mic2, MoreVertical, Pause, Play, Plus, Shuffle, Tags, Trash2, UserRound } from "lucide-react";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Link, Navigate, NavLink, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, fmtLong, fmtNumber, sized } from "../api";
@@ -8,9 +8,10 @@ import {
   ALBUM_SORTS, AlbumItems, ARTIST_SORTS, ArtistItems, DisplaySwitch, GENRE_SORTS, GenreItems, Segmented, SortMenu,
   useBrowse, type Choice,
 } from "../components/Browse";
-import { linkData, shareInChat, useChatOn } from "../chat/store";
+import { linkData, useChatOn } from "../chat/store";
 import { AdminCog } from "../components/AdminMode";
 import { DownloadButton, useDownloadItem } from "../components/DownloadButton";
+import { ShareButton, shareItems, type ShareTarget } from "../components/Share";
 import { likedCollection } from "../downloads";
 import { inAndroidApp } from "../player/app";
 import { engine } from "../player/engine";
@@ -480,13 +481,14 @@ export function AlbumPage() {
   if (!q.data) return <div className="page"><Loading /></div>;
   const a = q.data;
   const isLiked = liked ?? a.liked;
+  const share: ShareTarget = { kind: "album", id: a.id, title: a.title, sub: a.artist, art: a.art, path: `/album/${a.id}`, peer: a.peer,
+                               chat: { kind: "album", id: a.id, title: a.title, sub: a.artist, art: a.art } };
   // the Android app: Play and Shuffle, smaller, and the rest in a menu, so the songs start higher up
   const more: MenuItem[] = [
     { label: isLiked ? "Remove from your library" : "Save to your library", icon: <Heart size={16} fill={isLiked ? "currentColor" : "none"} />,
       onClick: async () => setLiked(await toggleLike("album", a.id, isLiked)) },
     { label: "Add to playlist…", icon: <ListPlus size={16} />, onClick: () => pick(a.tracks.map((t) => t.id)) },
-    ...(chat ? [{ label: "Share in chat", icon: <MessageCircle size={16} />,
-                  onClick: () => shareInChat({ kind: "album", id: a.id, title: a.title, sub: a.artist, art: a.art }) }] : []),
+    ...shareItems(share, chat),
     ...(download ? [download] : []),
   ];
   const formats = a.formats.map((f) => f.toUpperCase()).join(" / ");
@@ -528,12 +530,7 @@ export function AlbumPage() {
               <Heart size={15} fill={isLiked ? "currentColor" : "none"} /> {isLiked ? "Saved" : "Save"}
             </button>
             <button className="btn" onClick={() => pick(a.tracks.map((t) => t.id))}><ListPlus size={15} /> Add to playlist</button>
-            {chat && (
-              <button className="btn" data-tip="Send the album to someone in a message"
-                      onClick={() => shareInChat({ kind: "album", id: a.id, title: a.title, sub: a.artist, art: a.art })}>
-                <MessageCircle size={15} /> Share
-              </button>
-            )}
+            <ShareButton target={share} className="btn" />
             <DownloadButton id={`album:${a.id}`} title={a.title} make={makeDownload} />
             <AdminCog kind="album" id={a.id} title={a.title} className="inline" peer={a.peer} />
           </div>
@@ -594,6 +591,9 @@ export function ArtistPage() {
           <div className="row-actions">
             <button className="btn accent" data-tip="Play the top songs" onClick={() => playTracks(a.top_tracks, 0)}><Play size={15} fill="currentColor" /> Play</button>
             <button className="btn" data-tip={`Shuffle every song by ${a.name}`} onClick={() => playRandom({ artist_id: a.id, kind: "all" })}><Shuffle size={15} /> Shuffle</button>
+            <ShareButton className="btn" target={{ kind: "artist", id: a.id, title: a.name, sub: a.genre, art: a.art, path: `/artist/${a.id}`,
+                                                   // only in friends' libraries: theirs to share
+                                                   peer: a.albums.length && a.albums.every((x) => x.peer) ? a.albums[0].peer : null }} />
             <AdminCog kind="artist" id={a.id} title={a.name} className="inline" />
           </div>
         </div>
@@ -728,6 +728,8 @@ export function PlaylistPage() {
                 id: `playlist:${p.id}`, kind: "playlist", title: p.name, subtitle: `${p.track_count} songs`, art: p.art[0], path: `/playlist/${p.id}`,
                 pages: { [`/api/playlists/${p.id}`]: p }, items: p.tracks!.map(fromTrack) })} />
             )}
+            <ShareButton className="btn" target={{ kind: "playlist", id: p.id, title: p.name, sub: `${p.track_count} songs`, art: p.art[0],
+                                                   path: `/playlist/${p.id}` }} />
             {mine && <button className="btn" onClick={() => { setName(p.name); setEditing(true); }}>Rename</button>}
             <AdminCog kind="playlist" id={p.id} title={p.name} className="inline" />
             {mine && <button className="btn danger" onClick={async () => {

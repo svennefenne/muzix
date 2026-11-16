@@ -221,6 +221,7 @@ class UserBody(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str | None = Field(default=None, min_length=6, max_length=256)
     is_admin: bool = False
+    can_share: bool | None = None       # may make public links (api/shares.py); None: as it is
 
 
 class LimitsBody(BaseModel):
@@ -248,7 +249,7 @@ def _limits_json(db: Session, raw: dict | None) -> dict:
 @router.get("/users")
 def users(db: Session = Depends(get_db_all)):
     return [{"id": u.id, "username": u.username, "is_admin": u.is_admin, "avatar": serial.avatar(u),
-             "limits": _limits_json(db, u.limits), "created_at": serial.iso(u.created_at)}
+             "can_share": u.can_share, "limits": _limits_json(db, u.limits), "created_at": serial.iso(u.created_at)}
             for u in db.scalars(select(User).order_by(User.id))]
 
 
@@ -258,7 +259,8 @@ def add_user(body: UserBody, db: Session = Depends(get_db)):
         raise HTTPException(400, "A new user needs a password")
     if db.scalar(select(User.id).where(func.casefold(User.username) == body.username.casefold())):
         raise HTTPException(409, "That username is taken")
-    u = User(username=body.username, password_hash=hash_password(body.password), is_admin=body.is_admin)
+    u = User(username=body.username, password_hash=hash_password(body.password), is_admin=body.is_admin,
+             can_share=body.can_share is not False)
     db.add(u)
     db.commit()
     return {"id": u.id}
@@ -272,6 +274,8 @@ def edit_user(user_id: int, body: UserBody, db: Session = Depends(get_db), me: U
     if u.id == me.id and not body.is_admin:
         raise HTTPException(400, "You can't remove your own admin rights")
     u.username, u.is_admin = body.username, body.is_admin
+    if body.can_share is not None:
+        u.can_share = body.can_share
     if body.password:
         u.password_hash = hash_password(body.password)
     db.commit()

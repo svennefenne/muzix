@@ -9,6 +9,7 @@ interface UiState {
   user: User | null;
   accountLook: AvatarLook | null;  // the server account's icon, in the app's own library (Avatar.tsx)
   siteName: string;
+  publicUrl: string;               // the server's address from outside (components/Share.tsx); "": this page's
   modules: Modules;              // the server's (modules.ts)
   scheme: string;
   mode: Mode;
@@ -82,6 +83,7 @@ export const useUi = create<UiState>((set, get) => ({
   user: null,
   accountLook: null,
   siteName: "Muzix",
+  publicUrl: "",
   modules: { vgm: true, audiobooks: true, podcasts: true, radio: true, network: true },
   scheme: initial.scheme || "muzix",
   mode: initial.mode || "system",

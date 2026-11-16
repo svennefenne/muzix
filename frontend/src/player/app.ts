@@ -56,6 +56,8 @@ class AppPlayer {
   private offset = 0;              // where the current song's stream started, when it was restarted at a time
   private handed = new Set<string>();
   private asked = "";              // the item we last started; one the app goes on to by itself starts at 0
+  sharesNative = false;            // the app opens Android's share sheet (copy, shareSheet)
+  private clipboard = false;       // the app copies to the clipboard
   /** The app saves where episodes and audiobooks got to, and carries on in one heard partly, itself
    * (since 0.5.0): the page sleeps with the screen off, the app's player doesn't. */
   saves = false;
@@ -132,6 +134,19 @@ class AppPlayer {
   /** Another folder for the app's own library: the system's folder picker (Android 0.10.1, Muzix Desktop 0.3.2 on). */
   addFolder() {
     this.send({ t: "folder" });
+  }
+
+  /** The app puts text on the system's clipboard itself (Android 0.10.32, Muzix Desktop 0.4.37 on): a page
+   * on a plain-http address, or in Qt's web view, may not be allowed to. False: the page has to. */
+  copy(text: string): boolean {
+    if (!this.clipboard) return false;
+    this.send({ t: "copy", text });
+    return true;
+  }
+
+  /** Android's share sheet (messages, mail, chat apps) for a link (Android 0.10.32 on). */
+  shareSheet(url: string, title: string) {
+    this.send({ t: "share", url, title });
   }
 
   /** A page of the server's web version, in the phone's browser: the app has no admin pages of its own. */
@@ -377,7 +392,7 @@ class AppPlayer {
   private onHello(m: { queue: string[]; index: number; state: AppState; saves?: boolean; device?: string; volume?: number; updates?: boolean;
                        downloads?: Downloaded[]; offline?: boolean; opens?: boolean; desktop?: { version: string; platform: string };
                        library?: Library; last?: { queue: string[]; index: number; position: number; at: number };
-                       deviceId?: string }) {
+                       deviceId?: string; shares?: boolean; clipboard?: boolean }) {
     // an app that opens the web version's admin pages in the browser (Android 0.9 on, Muzix Desktop) has none of its own;
     // Muzix Desktop says its version and system, for its updates (appUpdate.ts); an app with a library of its
     // own (Android 0.10.1, Muzix Desktop 0.3.1 on) says which one shows
@@ -391,6 +406,9 @@ class AppPlayer {
     this.connected = true;
     this.saves = !!m.saves;
     this.updates = !!m.updates;
+    // copies to the clipboard (both apps) and opens the share sheet (Android) itself
+    this.clipboard = !!m.clipboard;
+    this.sharesNative = !!m.shares;
     this.deviceName = m.device || "";
     this.deviceId = m.deviceId || "";
     this.prefs();

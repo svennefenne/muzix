@@ -7,6 +7,7 @@ import { appVersion } from "../appUpdate";
 import { useChatOn } from "../chat/store";
 import { AvatarSettings } from "../components/Avatar";
 import { castStatus } from "../components/CastButton";
+import { SharedLinks } from "../components/Share";
 import { SEARCH_ENGINES } from "../components/StationHistory";
 import { Display, Kicker, Switch } from "../components/ui";
 import { appPlayer, useShell } from "../player/app";
@@ -484,6 +485,15 @@ export default function Settings() {
       </section>
 
       <Devices />
+
+      {shell.library !== "local" && (
+        <section className="panel">
+          <div className="panel-head"><div><div className="kicker">Account</div><div className="h2">Shared links</div></div></div>
+          <p className="dim">The links you made with Share link…: anyone who has one can listen, without an account, until it runs out
+            or you remove it here.</p>
+          <SharedLinks />
+        </section>
+      )}
 
       {appPlayer.available && (
         <section className="panel">

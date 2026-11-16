@@ -3,6 +3,7 @@ export interface User {
   username: string;
   is_admin: boolean;
   avatar?: AvatarLook;
+  can_share?: boolean;             // may make public links (components/Share.tsx)
   prefs: Prefs;
 }
 
@@ -59,6 +60,7 @@ export interface AuthState {
   modules: Modules;
   user: User | null;
   site_name: string;
+  public_url?: string;             // where the server is found from outside: shared links point there
   allow_signup: boolean;
   version: string;
   offline?: boolean;          // the app's kept copy, while the server can't be reached (downloads.ts)

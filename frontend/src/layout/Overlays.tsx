@@ -9,6 +9,7 @@ import { playTracks, queryClient, toggleQueuedLike, usePlaylistPicker } from "..
 import { CastButton, CastNote } from "../components/CastButton";
 import { hasLyrics, LyricsCard, LyricsLines, LyricsSource, noLyrics, tinted, useLyrics } from "../components/Lyrics";
 import { useStationHistory } from "../components/StationHistory";
+import { playingTarget, ShareButton } from "../components/Share";
 import { Art, Modal, Switch } from "../components/ui";
 import { inAndroidApp } from "../player/app";
 import { engine } from "../player/engine";
@@ -335,6 +336,7 @@ export function NowPlaying() {
                 )}
                 <LyricsButton />
                 <CastButton className="btn" size={15} label />
+                {playingTarget(cur) && <ShareButton className="btn" target={playingTarget(cur)!} />}
               </div>
               <div className="np-desktop-actions"><CastNote /></div>
             </>

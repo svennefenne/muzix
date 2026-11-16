@@ -1,13 +1,14 @@
-import { Clock, Disc3, Heart, ListEnd, ListPlus, ListStart, MessageCircle, MoreHorizontal, MoreVertical, Pause, Play, Trash2, User } from "lucide-react";
+import { Clock, Disc3, Heart, ListEnd, ListPlus, ListStart, MoreHorizontal, MoreVertical, Pause, Play, Trash2, User } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { fmtTime } from "../api";
 import { playTracks, toggleLike, usePlaylistPicker } from "../actions";
-import { linkData, shareInChat, useChatOn } from "../chat/store";
+import { linkData, useChatOn } from "../chat/store";
 import { engine } from "../player/engine";
 import { fromTrack, usePlayer } from "../store/player";
 import type { Track } from "../types";
 import { AdminCog } from "./AdminMode";
+import { shareItems } from "./Share";
 import { likeTip } from "../layout/PlayerBar";
 import { Art, useMenu, type MenuItem } from "./ui";
 
@@ -67,8 +68,8 @@ export function TrackList({ tracks, showArt, showAlbum = true, numbered = "index
     { label: "Add to queue", icon: <ListEnd size={16} />, onClick: () => engine.enqueue([fromTrack(t)]) },
     { label: "Add to playlist…", icon: <ListPlus size={16} />, onClick: () => pick([t.id]) },
     { label: isLiked(t) ? "Remove from liked songs" : "Add to liked songs", icon: <Heart size={16} />, onClick: () => like(t) },
-    ...(chat ? [{ label: "Share in chat", icon: <MessageCircle size={16} />,
-                  onClick: () => shareInChat({ kind: "track", id: t.id, title: t.title, sub: t.artist, art: t.art }) }] : []),
+    ...shareItems({ kind: "track", id: t.id, title: t.title, sub: t.artist, art: t.art, peer: t.peer,
+                    path: t.album_id ? `/album/${t.album_id}` : "/", chat: { kind: "track", id: t.id, title: t.title, sub: t.artist, art: t.art } }, chat),
     { sep: true },
     ...(t.album_id ? [{ label: "Go to album", icon: <Disc3 size={16} />, onClick: () => nav(`/album/${t.album_id}`) }] : []),
     ...(t.artist_id ? [{ label: "Go to artist", icon: <User size={16} />, onClick: () => nav(`/artist/${t.artist_id}`) }] : []),

@@ -12,7 +12,7 @@ import type { AvatarLook, ModuleKey } from "../../types";
 
 interface Named { id: number; name: string }
 interface Limits { genres: string[]; tags: string[]; untagged: string[]; artists: Named[]; allow: Named[]; sections: string[]; every_tag: boolean }
-interface Account { id: number; username: string; is_admin: boolean; avatar: AvatarLook; limits: Limits; created_at: string }
+interface Account { id: number; username: string; is_admin: boolean; can_share: boolean; avatar: AvatarLook; limits: Limits; created_at: string }
 interface Choices { genres: { name: string; albums: number; artists: number }[]; tags: { name: string; artists: number }[] }
 interface Preview { artists: number; albums: number; songs: number; examples: string[] }
 
@@ -76,6 +76,14 @@ export function AdminUsers() {
               </div>
               <label className="row-actions dim" style={{ gap: 6 }}>
                 <Switch checked={u.is_admin} onChange={async (v) => { await api.put(`/api/admin/users/${u.id}`, { username: u.username, is_admin: v }); q.refetch(); }} /> Admin
+              </label>
+              <label className="row-actions dim" style={{ gap: 6 }}
+                     data-tip={u.is_admin ? "Admins can always share links" : "Public links: anyone with one can listen without an account. Off: their links stop working too"}>
+                <Switch checked={u.is_admin || u.can_share} onChange={async (v) => {
+                  if (u.is_admin) return;
+                  await api.put(`/api/admin/users/${u.id}`, { username: u.username, is_admin: u.is_admin, can_share: v });
+                  q.refetch();
+                }} /> Links
               </label>
               <button className="btn small" onClick={() => setLimiting(u)}><SlidersHorizontal size={14} /> Limits</button>
               <button className="btn small" onClick={async () => {

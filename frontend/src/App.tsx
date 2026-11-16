@@ -9,6 +9,7 @@ import { AdminHost } from "./components/AdminMode";
 import { useAccountLook } from "./components/Avatar";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Logo } from "./components/Logo";
+import { ShareHost } from "./components/Share";
 import { StationHistory } from "./components/StationHistory";
 import { Tooltips } from "./components/Tooltips";
 import { Display, Kicker, Loading, MenuHost } from "./components/ui";
@@ -268,6 +269,7 @@ function Shell() {
       <PlaylistPicker />
       <StationHistory />
       <MenuHost />
+      <ShareHost />
       <Tooltips />
       <AdminHost />
       <ChatHost />
@@ -346,13 +348,22 @@ function AuthScreen({ state, onDone }: { state: AuthState; onDone: () => void })
   );
 }
 
+/** A public link (components/Share.tsx): its page, for anyone, signed in or not; none of the app around it. */
+const SharePage = lazy(() => import("./pages/SharePage"));
+
 export default function App() {
+  const shared = useLocation().pathname.match(/^\/s\/([\w-]+)\/?$/);
+  if (shared) return <Suspense fallback={<div className="auth"><Loading /></div>}><SharePage token={shared[1]} /></Suspense>;
+  return <SignedIn />;
+}
+
+function SignedIn() {
   const state = useQuery({ queryKey: ["auth"], queryFn: () => api.get<AuthState>("/api/auth/state"), staleTime: Infinity });
   const setUser = useUi((s) => s.setUser);
   useEffect(() => {
     const s = state.data;
     if (!s) return;
-    useUi.setState({ siteName: s.site_name, modules: s.modules });
+    useUi.setState({ siteName: s.site_name, modules: s.modules, publicUrl: s.public_url || "" });
     if (s.user) setUser(s.user);
     // the app keeps it, to open offline (downloads.ts)
     if (s.user && !s.offline && appPlayer.available) appPlayer.signedIn(s);

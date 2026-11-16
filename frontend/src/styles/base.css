@@ -1889,3 +1889,68 @@ button.lyr:hover { color: var(--lyr-now); text-decoration: underline; text-decor
   .user-row { flex-wrap: wrap; }
   .user-row .grow { flex-basis: calc(100% - 44px); }
 }
+
+/* ---------------------------------------------------------------- sharing (components/Share.tsx, pages/SharePage.tsx) */
+
+.modal.share-dialog { width: min(480px, 100%); }
+.share-what { display: flex; align-items: center; gap: 14px; margin: 12px 0 14px; }
+.share-what .share-art { width: 64px; height: 64px; flex-shrink: 0; border-radius: 8px; }
+.share-what .share-art.round { border-radius: 50%; }
+.share-title { font: 800 17px/1.25 var(--font-ui); }
+.share-note { margin: 0 0 18px; font-size: 13.5px; }
+.share-lasts-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 20px; }
+.share-link .input { width: 100%; font-family: var(--font-mono); font-size: 13px; }
+.share-lasts { margin: 8px 0 18px; font-size: 12.5px; }
+
+/* the public page: what was shared, and its own player along the bottom */
+.share-page { min-height: 100%; }
+.share-top { display: flex; align-items: center; max-width: 1180px; margin: 0 auto; padding: 22px 32px 0; }
+.share-top .logo { font-size: 30px; }
+.share-main { max-width: 920px; padding-bottom: calc(120px + env(safe-area-inset-bottom)); }
+.share-desc { max-width: 720px; white-space: pre-line; }
+.share-album { margin-top: 30px; }
+.share-album-head { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+.share-album-head .art { width: 56px; height: 56px; flex-shrink: 0; border-radius: 6px; }
+.share-songs { list-style: none; margin: 0; padding: 0; }
+.share-row {
+  display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 12px; width: 100%;
+  min-height: 52px; padding: 6px 12px; border: 0; border-radius: 8px; background: transparent; color: var(--text);
+  font: inherit; text-align: left; cursor: pointer; transition: background .15s;
+}
+.share-row:hover { background: var(--surface-2); }
+.share-row:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.share-row.on { background: color-mix(in srgb, var(--primary) 12%, transparent); }
+.share-row.on .share-name > :first-child, .share-row.on .share-no { color: var(--primary); }
+.share-no { display: grid; place-items: center; font: 500 12.5px/1 var(--font-mono); color: var(--text-faint); }
+.share-name { display: grid; min-width: 0; font-size: 14.5px; font-weight: 600; }
+.share-sub { font-size: 12.5px; font-weight: 400; color: var(--text-dim); }
+.share-time { font: 500 12.5px/1 var(--font-mono); color: var(--text-faint); }
+.share-disc { margin: 16px 12px 4px; font: 600 10.5px/1 var(--font-mono); letter-spacing: .2em; text-transform: uppercase; color: var(--text-faint); }
+.share-foot { margin-top: 36px; font-size: 12px; }
+
+.share-bar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+  display: grid; grid-template-columns: 52px minmax(0, 1fr) auto minmax(220px, 1.4fr); align-items: center; gap: 14px;
+  padding: 12px 24px calc(12px + env(safe-area-inset-bottom));
+  background: color-mix(in srgb, var(--surface) 92%, transparent); border-top: 1px solid var(--border);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+}
+.share-bar-art { width: 52px; height: 52px; border-radius: 6px; }
+.share-bar-id { min-width: 0; font-size: 13px; }
+.share-bar-title { font-weight: 700; font-size: 14px; }
+.share-bar-ctl { display: flex; align-items: center; gap: 10px; }
+.share-bar-ctl .iconbtn { width: 38px; height: 38px; border: 0; background: transparent; color: var(--text); }
+.share-bar-ctl .iconbtn:disabled { opacity: .35; }
+.share-bar-play.btn.round { width: 46px; height: 46px; }
+.share-bar-seek { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; font-size: 11.5px; color: var(--text-faint); }
+.share-bar-seek input { width: 100%; accent-color: var(--primary); }
+@media (max-width: 720px) {
+  .share-top { padding: 16px 16px 0; }
+  .share-top .logo { font-size: 24px; }
+  .share-main { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
+  .share-row { padding: 6px 4px; gap: 10px; }
+  .share-bar { grid-template-columns: 44px minmax(0, 1fr) auto; gap: 10px 12px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); }
+  .share-bar-art { width: 44px; height: 44px; }
+  .share-bar-seek { grid-column: 1 / -1; grid-row: 2; }
+  .share-bar-ctl { gap: 4px; }
+}
