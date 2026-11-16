@@ -4,6 +4,7 @@ disc. Undoing puts it back. Only the library's genre folders can be picked; Dupl
 import os
 import tempfile
 import threading
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select, text
@@ -19,6 +20,9 @@ ENTOMBED = "Entombed - 2004 - Inferno _ Averno"
 @pytest.fixture
 def inferno(monkeypatch):
     monkeypatch.setattr(manage.jobs, "submit", lambda *a, **k: None)
+    # the main genres as uploads file them (beets' musicorg, which the server's image has; the tests may not)
+    rules = SimpleNamespace(MAIN_GENRES=("Metal", "Rock", "Pop", "Electronic"))
+    monkeypatch.setattr(manage, "_genre_rules", lambda: (rules, None))
     top = tempfile.mkdtemp(prefix="muzix-genre-")
     discs = {"Metal": ("Death Metal", ["Retaliation", "The Fix Is In"]), "Rock": ("Rock", ["When Humanity's Gone"])}
     for genre, (tag, titles) in discs.items():
@@ -92,3 +96,11 @@ def test_only_the_librarys_genres_and_duplicates_stay(inferno):
     r = manage.change_genre(ids["Duplicates"], "Rock")       # tagged Rock, but it stays a duplicate
     assert r["moved_to"] is None and r["written"] == 1
     assert os.path.isdir(os.path.join(top, "Duplicates", "Entombed", "Entombed - 1997 - Wreckage"))
+
+
+def test_without_the_genre_rules_every_folder_but_the_kept_ones_is_a_genre(tmp_path, monkeypatch):
+    monkeypatch.setattr(manage, "_genre_rules", lambda: None)
+    for f in ("Metal", "rock", "Bandcamp", "_Metal", ".trash", "Duplicates", "Other formats", "Uncategorized"):
+        (tmp_path / f).mkdir()
+    (tmp_path / "cover.jpg").write_bytes(b"")
+    assert manage.genre_folders(str(tmp_path)) == ["Bandcamp", "Metal", "rock"]
