@@ -16,14 +16,15 @@ from . import group, make, place, sources
 log = logging.getLogger("muzix.audiobook")
 
 
-def file_books(ctx: jobs.JobContext, source: Path, label: str) -> dict:
-    """Every book under ``source`` into the library. {"books": [...], "failed": [...]}."""
+def file_books(ctx: jobs.JobContext, source: Path, label: str, named: bool = False) -> dict:
+    """Every book under ``source`` into the library. {"books": [...], "failed": [...]}. ``named``: the folder's
+    name is the user's (the watch folder's), and says what a book lying loose in it is."""
     root = importer.upload_root("audiobooks")
     if not root or not os.access(root, os.W_OK):
         raise RuntimeError("there's no audiobook folder Muzix may write to: Admin → Library, an audiobook folder "
                            "as the upload target, mounted read-write")
     ctx.log(f"looking for books in {label}")
-    found = group.scan(str(source))
+    found = group.scan(str(source), named_root=named)
     if not found:
         raise RuntimeError("there are no audiobooks in it")
     ctx.log(f"{len(found)} book{'s' if len(found) != 1 else ''}")
@@ -104,7 +105,7 @@ def import_books_watched(ctx: jobs.JobContext, name: str, key: str, held: str = 
         if folder.is_file():
             (work / folder.stem).mkdir(parents=True, exist_ok=True)
             folder = Path(shutil.move(str(folder), str(work / folder.stem / folder.name))).parent
-        out = {"name": name, **file_books(ctx, folder, f"the watch folder: {name}")}
+        out = {"name": name, **file_books(ctx, folder, f"the watch folder: {name}", named=True)}
         if out["failed"]:
             where.move(name, held, "_Failed")
             ctx.log(f"{len(out['failed'])} couldn't be made: set aside in _Failed")

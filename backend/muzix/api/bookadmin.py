@@ -1,5 +1,5 @@
 """The admin's side of audiobooks coming in (audiobook/pipeline.py): the latest imports, the books filed unsure
-("Needs a look": the right one picked from Audible, or kept as it is), and those set aside as duplicates
+("Needs a look": the right one picked from any source, or kept as it is), and those set aside as duplicates
 (Audiobooks/_Duplicates: filed beside the library's copy, in its place, or thrown away)."""
 
 import json
@@ -56,12 +56,20 @@ def review(db: Session = Depends(get_db, scope="function")):
                                            .order_by(Book.added_at.desc()))]
 
 
+@router.get("/sources")
+def lookup_sources():
+    """The sources "Pick the right book" asks, in order."""
+    return [{"id": k, "name": v} for k, v in sources.SOURCES.items()]
+
+
 @router.get("/lookup")
-def lookup(q: str, author: str = ""):
-    """Audible's books for a search: to pick the right one."""
-    found = sources.audible_search(q, author) or sources.audible_search("", keywords=f"{q} {author}".strip())
-    return [{k: p[k] for k in ("asin", "title", "subtitle", "authors", "narrators", "runtime", "release", "series",
-                                "language", "image")} for p in found]
+def lookup(q: str, author: str = "", source: str = "audible"):
+    """A source's books for a search, or for a link to one of its books: to pick the right one."""
+    if source not in sources.SOURCES:
+        raise HTTPException(400, "No such source")
+    return [{**{k: p[k] for k in ("source", "id", "asin", "url", "title", "subtitle", "authors", "narrators", "runtime",
+                                   "release", "year", "series", "image")}, "language": place.language_code(p["language"])}
+            for p in sources.search(source, q, author)]
 
 
 def _folder(b: Book) -> str:
@@ -108,24 +116,28 @@ def _roots(s: Session) -> list[str]:
 
 
 class Match(BaseModel):
-    asin: str
+    source: str = "audible"
+    id: str = ""
+    asin: str = ""          # what the apps before 0.10.35 / 0.4.42 send
 
 
 @router.post("/{book_id}/match")
 def match(book_id: int, body: Match, db: Session = Depends(get_db, scope="function")):
-    """The book is this Audible title: tagged and named as it, and moved where that puts it."""
+    """The book is this one of a source's: tagged and named as it, and moved where that puts it."""
     root = _root()
     b = db.get(Book, book_id)
     if b is None:
         raise HTTPException(404, "No such book")
     if not b.path.lower().endswith(".m4b") or not os.path.isfile(b.path):
         raise HTTPException(400, "Only a book that is one .m4b can be matched (Muzix makes uploads so)")
-    p = sources.audible_get(body.asin)
+    if body.source not in sources.SOURCES:
+        raise HTTPException(400, "No such source")
+    p = sources.get(body.source, body.id or body.asin)
     if p is None:
-        raise HTTPException(404, "Audible doesn't know that title")
-    g = sources.Guess(title=sources.bare_title(p["title"]), authors=p["authors"][:1], asin=p["asin"], duration=b.duration)
-    f = sources.identify(g)
-    f.sure = True
+        raise HTTPException(404, f"{sources.SOURCES[body.source]} doesn't know that book")
+    g = sources.Guess(title=sources.bare_title(p["title"]), authors=p["authors"][:1], asin=p["asin"], duration=b.duration,
+                      language=p["language"])
+    f = sources.identify(g, chosen=p)
     genre = "Warhammer" if f.warhammer else place.author_genre(root, f.authors[0] if f.authors else "") or place.genre_of(f)
     language = place.language_code(f.language)
     cover = None

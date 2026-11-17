@@ -2171,9 +2171,18 @@ a.bk-title:hover { color: var(--primary); }
 .pick-hits { max-height: 52vh; overflow-y: auto; }
 .pick-cover { width: 48px; aspect-ratio: 1; border-radius: 6px; object-fit: cover; background: var(--surface-3); display: block; }
 .pick-near { color: var(--success); }
+.pick-source + .pick-source { margin-top: 6px; border-top: 1px solid var(--border); }
+.pick-source-head { padding: 12px 2px 6px; }
+.pick-source .pick-note { padding: 2px 2px 12px; }
+.pick-more { margin: 2px 0 8px; }
+.bk-row.pick-hit { grid-template-columns: 48px minmax(0, 1fr) auto auto; gap: 8px 12px; }
+.btn.small.ghost.pick-link { width: 30px; padding: 0; }
 @media (max-width: 640px) {
   .bk-row, .bk-dupe { grid-template-columns: minmax(0, 1fr); }
   .bk-row > .art, .bk-row > .pick-cover { display: none; }
+  .bk-row.pick-hit { grid-template-columns: minmax(0, 1fr) auto; }
+  .bk-row.pick-hit > .grow { grid-column: 1 / -1; }
+  .bk-row.pick-hit > .pick-link { justify-self: start; }
   .pick-search { flex-wrap: wrap; }
 }
 .lrow .l-sm .blabels { margin-top: 5px; }

@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 
 from .. import formats
 from ..meta import tags
-from .sources import Guess
+from .sources import Guess, sim, split_by
 
 DISC = re.compile(r"(^|\s|[-_.])(cd|disc|disk|part|del)\s*[-_.]?\s*\d+$|\[\d+\]$|^\d+$", re.I)
 JUNK_DIR = {"__MACOSX"}
@@ -62,8 +62,9 @@ def _read(path: str) -> Part:
                 title=i.title, year=str(i.year or ""), track=i.track_no)
 
 
-def scan(root: str) -> list[Found]:
-    """Every book under ``root``."""
+def scan(root: str, named_root: bool = False) -> list[Found]:
+    """Every book under ``root``. ``named_root``: the root's own name says what's in it (a folder put in the watch
+    folder), for a book lying in it loose."""
     by_dir: dict[str, list[Part]] = collections.defaultdict(list)
     for dp, dns, fns in os.walk(root):
         dns[:] = [d for d in dns if d not in JUNK_DIR and not d.startswith(".")]
@@ -121,18 +122,28 @@ def scan(root: str) -> list[Found]:
             while os.path.dirname(h) != root and os.path.dirname(h).startswith(root) and under[os.path.dirname(h)] == {i}:
                 h = os.path.dirname(h)
             b.home = h
-        b.guess = guess(b, root)
+        b.guess = guess(b, root, named_root and len(books) == 1)
     return books
+
+
+LANGUAGE = {"svensk": "swedish", "svenska": "swedish", "swedish": "swedish", "english": "english", "engelska": "english",
+            "engelsk": "english", "deutsch": "german", "german": "german", "tysk": "german", "tyska": "german",
+            "norsk": "norwegian", "dansk": "danish", "suomi": "finnish", "finska": "finnish"}
+LANGUAGE_AT_END = re.compile(r"\s*(?:-|–|\(|\[)\s*(" + "|".join(LANGUAGE) + r")\s*[)\]]?\s*$", re.I)
 
 
 def from_folder(name: str) -> dict:
     """What a folder's name says: "Vol 5 - 2024 - Wind and Truth {Narrator}", "2011 - The Martian",
-    "1 - 1979 - Title [Author]", "Book 03 - Equal Rites"."""
+    "1 - 1979 - Title [Author]", "Book 03 - Equal Rites", "Kerstin Ekman - Mordets praktik - Svensk"."""
     g = {}
     m = re.search(r"\{([^}]+)\}", name)
     if m:
         g["narrator"] = m.group(1).strip()
         name = name.replace(m.group(0), "").strip()
+    m = LANGUAGE_AT_END.search(name)
+    if m:
+        g["language"] = LANGUAGE[m.group(1).lower()]
+        name = name[:m.start()].strip()
     for pat in (r"^Vol\s*(?P<vol>[\d.]+)\s*-\s*(?P<year>\d{4})\s*-\s*(?P<title>.+)$",
                 r"^(?P<vol>[\d.]+)\s*-\s*(?P<year>\d{4})\s*-\s*(?P<title>.+?)\s*\[(?P<author>[^\]]+)\]$",
                 r"^(?P<year>(19|20)\d\d)\s*-\s*(?P<title>.+)$",
@@ -156,7 +167,7 @@ def clean(t: str) -> str:
     return re.sub(r"\s+", " ", t).strip(" -_:,.")
 
 
-def guess(b: Found, root: str) -> Guess:
+def guess(b: Found, root: str, named_root: bool = False) -> Guess:
     from collections import Counter
 
     def most(attr):
@@ -164,12 +175,23 @@ def guess(b: Found, root: str) -> Guess:
         return c.most_common(1)[0][0] if c else ""
 
     album, author, narrator = most("album"), most("author"), most("narrator")
-    g = from_folder(os.path.basename(b.home)) if b.home else {}
+    g = from_folder(os.path.basename(b.home or (root if named_root else ""))) if b.home or named_root else {}
     titles = [clean(g.get("title", "")), clean(album)]
     if not b.home and len(b.files) == 1:
         titles.append(clean(os.path.splitext(os.path.basename(b.files[0].path))[0]))
+    first, last = [], []
+    for i, t in enumerate(titles):
+        title, who = split_by(t)            # "Mordets praktik av Kerstin Ekman": the title, and who wrote it ...
+        if title:
+            if any(sim(who, a) > 0.8 for a in (g.get("author", ""), author) if a):
+                titles[i:i + 1] = [title, t]
+                first.append(who)
+            else:                           # ... or "Death by Black Hole": one more way to put it, for a source to say
+                titles.append(title)
+                last.append(who)
+            break
     titles = [t for t in dict.fromkeys(titles) if t]
-    authors = [g.get("author", ""), author]
+    authors = [g.get("author", ""), *first, author, *last]
     authors = [a for a in dict.fromkeys(re.sub(r"\[.*?\]|graphic ?audio|;", "", a, flags=re.I).strip() for a in authors)
                if a and not re.search(r"black library|big finish|unknown|heavy ent|full cast", a, re.I)]
     asin = ""
@@ -185,5 +207,5 @@ def guess(b: Found, root: str) -> Guess:
             series = parent
     return Guess(title=titles[0] if titles else "", titles=titles[1:], authors=authors,
                  narrator=g.get("narrator") or narrator, series=series, vol=g.get("vol", "") if series else "",
-                 year=g.get("year", ""), asin=asin,
+                 year=g.get("year", ""), asin=asin, language=g.get("language", ""),
                  duration=sum(p.duration for p in b.files))

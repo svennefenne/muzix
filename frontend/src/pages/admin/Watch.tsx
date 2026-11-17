@@ -199,8 +199,8 @@ function WatchCard({ f, only, computers, refetch, onPick, onOff }: {
       )}
       {books ? (
         <p className="dim watch-about">
-          Each book put here (a folder, or one file) is looked up on Audible, then Apple Books and, for Warhammer, the Warhammer
-          40k wiki; made one .m4b with its chapters, cover and tags (several files are joined, an .mp3 converted); and filed as
+          Each book put here (a folder, or one file) is looked up on Audible (or Bonnier Audio, for a Swedish book Audible
+          doesn't know), then Apple Books and, for Warhammer, the Warhammer 40k wiki; made one .m4b with its chapters, cover and tags (several files are joined, an .mp3 converted); and filed as
           Genre/Author/Series/Vol N - Year - Title in the audiobook upload folder, with its cover.jpg and metadata.json beside it.
           A book none of them was sure of is filed all the same and listed under Needs a look; one the library has already goes to
           Audiobooks/_Duplicates, and one that couldn't be made to _Failed here. A book is taken two minutes after its last file

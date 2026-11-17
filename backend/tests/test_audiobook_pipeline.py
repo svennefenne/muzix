@@ -101,6 +101,19 @@ def test_audibles_chapters_for_a_book_whose_own_say_nothing(upload, tmp_path):
     assert [c["title"] for c in meta["chapters"]] == ["Opening", "The Iron"]
 
 
+def test_a_book_matched_again_loses_what_the_other_one_was(tmp_path):
+    path = tone(str(tmp_path / "b.m4b"), codec="aac")
+    make.write_tags(path, found("Warbreaker", "Brandon Sanderson", series="Warbreaker", vol="1", asin="B018UG5HJY",
+                                publisher="Recorded Books"), "Fantasy", "en", None, "A god returned.")
+    make.write_tags(path, found("Mordets praktik", "Kerstin Ekman", year="2009", publisher="Bonnier Audio"), "Fiction", "sv",
+                    None, "")
+    t = MP4(path).tags
+    assert (t["\xa9nam"], t["\xa9pub"], t["\xa9day"], t["\xa9wrt"]) == (["Mordets praktik"], ["Bonnier Audio"], ["2009"], ["A Reader"])
+    assert bytes(t["----:com.apple.iTunes:LANGUAGE"][0]) == b"sv"
+    assert not [k for k in ("----:com.apple.iTunes:ASIN", "----:com.apple.iTunes:SERIES", "----:com.apple.iTunes:SERIES-PART",
+                            "\xa9mvn", "\xa9mvi", "\xa9grp", "ldes", "desc") if k in t]
+
+
 def test_where_a_book_goes(tmp_path):
     f = found("Wind and Truth", "Brandon Sanderson", series="The Stormlight Archive", vol="5", year="2024")
     assert place.target(str(tmp_path), f, "Fantasy") == \
@@ -120,6 +133,12 @@ def test_genres_and_languages():
     assert place.genre_of(found("x", "y", warhammer=True)) == "Warhammer"
     assert place.genre_of(found("x", "y")) == "Uncategorized"
     assert place.language_code("english") == "en" and place.language_code("Svenska") == "sv" and place.language_code("") == ""
+    # Bonnier Audio's (Swedish) and Apple's
+    assert place.genre_of(found("x", "y", categories=[["Skönlitteratur och relaterande ämnen"], ["Polisromaner"]])) == "Thriller & Crime"
+    assert place.genre_of(found("x", "y", categories=[["Skönlitteratur och relaterande ämnen"], ["Skönlitteratur: allmänt"]])) == "Fiction"
+    assert place.genre_of(found("x", "y", categories=[["Sci-fi och fantasy"]])) == "Fantasy"
+    assert place.genre_of(found("x", "y", categories=[["Mysteries & Thrillers"]])) == "Thriller & Crime"
+    assert place.language_code("swedish") == "sv"
 
 
 @pytest.fixture
@@ -229,12 +248,13 @@ def test_needs_a_look_picked_and_filed(upload, library, monkeypatch, api):
     review = api.get("/api/admin/books/review").json()
     wt = next(b for b in review if b["title"] == "Wind and Truth")
     assert "Leviathan Wakes" not in [b["title"] for b in review]
-    monkeypatch.setattr(sources, "audible_get", lambda asin: {"asin": asin, "title": "Wind and Truth", "authors": ["Brandon Sanderson"]})
-    monkeypatch.setattr(sources, "identify", lambda g: found("Wind and Truth", "Brandon Sanderson", series="The Stormlight Archive",
-                                                            vol="5", year="2024", language="english", asin=g.asin,
-                                                            categories=[["Science Fiction & Fantasy", "Fantasy", "Epic"]],
-                                                            sources=["audible"], sure=True))
-    got = api.post(f"/api/admin/books/{wt['id']}/match", json={"asin": "B0TEST"}).json()
+    monkeypatch.setattr(sources, "audible_get", lambda asin: sources.book("audible", asin, asin=asin, title="Wind and Truth",
+                                                                          authors=["Brandon Sanderson"]))
+    monkeypatch.setattr(sources, "identify", lambda g, chosen=None: found("Wind and Truth", "Brandon Sanderson", series="The Stormlight Archive",
+                                                                         vol="5", year="2024", language="english", asin=g.asin,
+                                                                         categories=[["Science Fiction & Fantasy", "Fantasy", "Epic"]],
+                                                                         sources=["audible"], sure=True))
+    got = api.post(f"/api/admin/books/{wt['id']}/match", json={"asin": "B0TESTTEST"}).json()     # as the older apps ask
     want = library / "Fantasy" / "Brandon Sanderson" / "The Stormlight Archive" / "Vol 5 - 2024 - Wind and Truth" / "Wind and Truth.m4b"
     assert got["path"] == str(want) and want.is_file()                 # renamed as it's called now, and moved there
     assert MP4(str(want)).tags["\xa9gen"] == ["Fantasy"]
@@ -285,3 +305,16 @@ def test_a_length_that_wrapped_is_read_from_the_frames():
     assert round(make.length({"format": {"duration": "16530.657234"}}, a)) == 113922
     assert make.length({"format": {"duration": "113922.2"}}, a) == 113922.2      # read right: left as it is
     assert make.length({"format": {"duration": "3600"}}, {**a, "nb_frames": "100000"}) == 3600   # not a wrap
+
+
+BONNIER_BOOK = sources.book("bonnier", "155255", title="Mordets praktik", authors=["Kerstin Ekman"], runtime=24060,
+                            language="swedish")
+
+
+def test_pick_the_right_book_asks_any_source(api, monkeypatch):
+    assert [s["id"] for s in api.get("/api/admin/books/sources").json()] == ["audible", "bonnier", "apple", "wiki"]
+    monkeypatch.setattr(sources, "search", lambda source, q, author="": [BONNIER_BOOK] if source == "bonnier" else [])
+    [hit] = api.get("/api/admin/books/lookup", params={"q": "Mordets praktik", "source": "bonnier"}).json()
+    assert (hit["source"], hit["id"], hit["language"], hit["runtime"]) == ("bonnier", "155255", "sv", 24060)
+    assert api.get("/api/admin/books/lookup", params={"q": "x", "source": "nowhere"}).status_code == 400
+    assert api.post("/api/admin/books/1/match", json={"source": "bonnier", "id": "0"}).status_code in (400, 404)

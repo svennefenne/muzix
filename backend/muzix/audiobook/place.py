@@ -15,19 +15,20 @@ from .sources import Found, norm, sim
 GENRES = ["Fantasy", "Science Fiction", "Warhammer", "Horror", "Thriller & Crime", "Fiction", "Non-fiction", "Biography",
           "History", "Children's", "Humor", "Uncategorized"]
 DUPLICATES = "_Duplicates"
-# Audible's categories → ours, the more telling first
+# Audible's categories (and Bonnier Audio's Swedish ones, Apple's genre) → ours, the more telling first
 CATEGORY = [
-    (r"Science Fiction & Fantasy > Science Fiction|^Science Fiction(?! &)", "Science Fiction"),
-    (r"Science Fiction & Fantasy > Fantasy|> Fantasy|^Fantasy", "Fantasy"),
-    (r"Horror", "Horror"),
-    (r"Mystery|Thriller|Crime|Suspense|Detective", "Thriller & Crime"),
-    (r"Biographies|Memoir", "Biography"),
-    (r"^History|> History", "History"),
-    (r"Children|Teen & Young Adult|Young Adult", "Children's"),
+    (r"Science Fiction & Fantasy > Science Fiction|^Science Fiction(?! &)|(?i:science fiction$|: science fiction)", "Science Fiction"),
+    (r"Science Fiction & Fantasy > Fantasy|> Fantasy|^Fantasy|(?i:: fantasy|^sci-fi (&|och) fantasy)", "Fantasy"),
+    (r"Horror|(?i:skräck)", "Horror"),
+    (r"Mystery|Myster|Thriller|Crime|Suspense|Detective|(?i:krim|deckare|polisroman|spänning|thriller)", "Thriller & Crime"),
+    (r"Biographies|Memoir|(?i:biografi|memoar)", "Biography"),
+    (r"^History|> History|(?i:^historia)", "History"),
+    (r"Children|Teen & Young Adult|Young Adult|(?i:^barn|ungdom|^kids)", "Children's"),
     (r"Comedy|Humor", "Humor"),
-    (r"Literature & Fiction|Romance|Classics|Erotica", "Fiction"),
+    (r"Literature & Fiction|Romance|Classics|Erotica|(?i:^skönlitteratur|^fiction|roman$)", "Fiction"),
     (r"Business|Health|Science|Politics|Religion|Self|Education|Money|Relationships|Computers|Travel|Arts|Sports|"
-     r"Home|Psychology|Philosophy|Language", "Non-fiction"),
+     r"Home|Psychology|Philosophy|Language|(?i:^fakta|facklitteratur|samhälle|hälsa|ekonomi|psykologi|filosofi)",
+     "Non-fiction"),
 ]
 LANGUAGES = {"english": "en", "swedish": "sv", "german": "de", "french": "fr", "spanish": "es", "italian": "it",
              "dutch": "nl", "danish": "da", "norwegian": "no", "finnish": "fi", "polish": "pl", "russian": "ru",

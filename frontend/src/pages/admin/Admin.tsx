@@ -623,7 +623,7 @@ function UploadArea() {
           <div className="h3">Drop files or whole folders here</div>
           {books ? (
             <div className="dim" style={{ maxWidth: 560 }}>
-              A folder per book, or one file. Each is looked up on Audible, Apple Books and (Warhammer) the Warhammer 40k wiki,
+              A folder per book, or one file. Each is looked up on Audible (Bonnier Audio for a Swedish one), Apple Books and (Warhammer) the Warhammer 40k wiki,
               made one .m4b with chapters, cover and tags (a book in many files is joined, an .mp3 converted), and filed as
               Genre/Author/Series/Vol N - Year - Title in the audiobook upload folder. It starts as soon as the files are up.
             </div>

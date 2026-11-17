@@ -81,6 +81,7 @@ def order(files: list[dict]) -> list[dict]:
 def chapter_name(f: dict, i: int, book: str) -> str:
     stem = os.path.splitext(os.path.basename(f["path"]))[0]
     for cand in ((f["title"] or "").strip(), stem):
+        cand = cand.replace("_", " ") if " " not in cand else cand      # "Mordets_praktik_01"
         c = re.sub(re.escape(book), "", cand, flags=re.I) if book and len(book) > 3 else cand
         c = re.sub(r"^[\s\d._\-–:]+", "", c).strip(" -_.,;:")
         if re.match(r"^(chapter|part|kapitel|book)\s*\d+$", c, re.I):
@@ -193,27 +194,25 @@ def write_tags(path: str, f: Found, genre: str, language: str, cover: bytes | No
     t = mp4.tags
     authors = ", ".join(f.authors)
     t["\xa9nam"], t["\xa9alb"], t["\xa9ART"], t["aART"], t["\xa9gen"] = [f.title], [f.title], [authors], [authors], [genre]
-    if f.narrators:
-        t["\xa9wrt"] = [", ".join(f.narrators)]
-        t["----:com.apple.iTunes:NARRATOR"] = [MP4FreeForm(", ".join(f.narrators).encode())]
-    if f.year:
-        t["\xa9day"] = [f.year]
-    if description:
-        t["ldes"], t["desc"] = [description], [description[:250]]
-    if f.series:
-        t["\xa9grp"] = [f.series + (f" #{f.vol}" if f.vol else "")]
-        t["\xa9mvn"] = [f.series]
-        t["----:com.apple.iTunes:SERIES"] = [MP4FreeForm(f.series.encode())]
-        if f.vol:
-            t["----:com.apple.iTunes:SERIES-PART"] = [MP4FreeForm(f.vol.encode())]
-            if f.vol.isdigit():
-                t["\xa9mvi"] = [int(f.vol)]
-    if language:
-        t["----:com.apple.iTunes:LANGUAGE"] = [MP4FreeForm(language.encode())]
-    if f.asin:
-        t["----:com.apple.iTunes:ASIN"] = [MP4FreeForm(f.asin.encode())]
-    if f.publisher:
-        t["\xa9pub"] = [f.publisher]
+    narrators, vol = ", ".join(f.narrators), (f.vol if f.series else "")
+
+    def free(v: str) -> list:
+        return [MP4FreeForm(v.encode())]
+
+    said = {                    # tag: (what the book is said to be, the tag's value)
+        "\xa9wrt": (narrators, [narrators]), "----:com.apple.iTunes:NARRATOR": (narrators, free(narrators)),
+        "\xa9day": (f.year, [f.year]), "ldes": (description, [description]), "desc": (description, [description[:250]]),
+        "\xa9grp": (f.series, [f.series + (f" #{vol}" if vol else "")]), "\xa9mvn": (f.series, [f.series]),
+        "----:com.apple.iTunes:SERIES": (f.series, free(f.series)), "----:com.apple.iTunes:SERIES-PART": (vol, free(vol)),
+        "\xa9mvi": (vol if vol.isdigit() else "", [int(vol)] if vol.isdigit() else []),
+        "----:com.apple.iTunes:LANGUAGE": (language, free(language)), "----:com.apple.iTunes:ASIN": (f.asin, free(f.asin)),
+        "\xa9pub": (f.publisher, [f.publisher]),
+    }
+    for key, (what, value) in said.items():
+        if what:
+            t[key] = value
+        elif key in t:          # a book matched again: what the other one was (its series, its ASIN) goes
+            del t[key]
     t["stik"] = [2]
     if cover:
         t["covr"] = [MP4Cover(cover, imageformat=MP4Cover.FORMAT_JPEG)]

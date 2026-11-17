@@ -1,9 +1,9 @@
 /** Admin → Upload → Audiobooks (backend audiobook/pipeline.py, api/bookadmin.py): the books filed without a source
- * sure of them ("Needs a look": the right one picked from Audible, or kept as it is), those set aside in
+ * sure of them ("Needs a look": the right one picked from any source, or kept as it is), those set aside in
  * Audiobooks/_Duplicates (filed beside the library's copy, in its place, or deleted), and the latest imports. */
 
-import { useQuery } from "@tanstack/react-query";
-import { Check, Copy, Search, Trash2 } from "lucide-react";
+import { useQueries, useQuery } from "@tanstack/react-query";
+import { Check, Copy, ExternalLink, Search, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ago, api, fmtBytes, fmtLong } from "../../api";
@@ -18,9 +18,11 @@ interface Brief {
 }
 
 interface Hit {
-  asin: string; title: string; subtitle: string; authors: string[]; narrators: string[]; runtime: number; release: string;
-  series: [string, string][]; language: string; image: string;
+  source: string; id: string; asin: string; url: string; title: string; subtitle: string; authors: string[]; narrators: string[];
+  runtime: number; release: string; year: string; series: [string, string][]; language: string; image: string;
 }
+
+interface Source { id: string; name: string }
 
 interface Dupe {
   name: string; title: string; authors: string[]; narrators: string[]; size: number; seconds: number; library: Brief | null;
@@ -93,7 +95,7 @@ function NeedsALook() {
             </div>
           ))}
         </div>
-      ) : <Empty title="Nothing to look at">Every book was known to Audible, Apple Books or the Warhammer wiki.</Empty>}
+      ) : <Empty title="Nothing to look at">Every book was known to Audible, Bonnier Audio, Apple Books or the Warhammer wiki.</Empty>}
       {picking && <PickBook b={picking} onClose={() => setPicking(null)} />}
     </section>
   );
@@ -104,21 +106,34 @@ function hitSeries(h: Hit) {
   return name ? (n ? `Book ${n} of ${name}` : name) : "";
 }
 
-/** Audible's books for a search (the book's own title and author to begin with): the one it is retags, renames and
- * moves it where that puts it. */
+const LINK = /^(https?:\/\/|www\.)/i;
+const SHOWN = 4;
+
+/** Every source's books for a search (the book's own title and author to begin with), or the one a link is: the one
+ * it is retags, renames and moves it where that puts it. Each source answers on its own, the quick ones first. */
 function PickBook({ b, onClose }: { b: Brief; onClose: () => void }) {
   const [q, setQ] = useState(b.title);
   const [author, setAuthor] = useState(b.author.split(",")[0] || "");
   const [ask, setAsk] = useState({ q: b.title, author: b.author.split(",")[0] || "" });
+  const [open, setOpen] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState("");
-  const hits = useQuery({
-    queryKey: ["book-lookup", ask], enabled: !!ask.q, retry: false,
-    queryFn: () => api.get<Hit[]>("/api/admin/books/lookup", ask),
+  const list = useQuery({
+    queryKey: ["book-sources"], staleTime: Infinity,
+    // a server from before Bonnier Audio et al. has Audible only
+    queryFn: () => api.get<Source[]>("/api/admin/books/sources").catch(() => [{ id: "audible", name: "Audible" }]),
+  });
+  const srcs = list.data || [];
+  const link = LINK.test(ask.q.trim());
+  const results = useQueries({
+    queries: srcs.map((s) => ({
+      queryKey: ["book-lookup", s.id, ask], enabled: !!ask.q.trim(), retry: false, staleTime: 5 * 60_000,
+      queryFn: () => api.get<Hit[]>("/api/admin/books/lookup", { ...ask, source: s.id }),
+    })),
   });
   const pick = async (h: Hit) => {
-    setSaving(h.asin);
+    setSaving(`${h.source}:${h.id}`);
     try {
-      const got = await api.post<Brief>(`/api/admin/books/${b.id}/match`, { asin: h.asin });
+      const got = await api.post<Brief>(`/api/admin/books/${b.id}/match`, { source: h.source, id: h.id });
       useUi.getState().notify(`${got.title}: retagged and filed`);
       refresh();
       queryClient.invalidateQueries({ queryKey: ["book", b.id] });
@@ -129,6 +144,7 @@ function PickBook({ b, onClose }: { b: Brief; onClose: () => void }) {
       setSaving("");
     }
   };
+  const nowhere = link && results.length > 0 && results.every((r) => r.isSuccess && !r.data.length);
   return (
     <Modal onClose={onClose} className="pick-book">
       <div className="kicker">Pick the right book</div>
@@ -137,36 +153,65 @@ function PickBook({ b, onClose }: { b: Brief; onClose: () => void }) {
         Now {[b.author, b.duration ? fmtLong(b.duration) : null].filter(Boolean).join(" · ")}. The one you pick gives it its names,
         cover and tags, and moves it where those put it.
       </div>
-      <form className="row-actions pick-search" onSubmit={(e) => { e.preventDefault(); setAsk({ q, author }); }}>
-        <input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Title" aria-label="Title" />
-        <input className="input" value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="Author" aria-label="Author" />
-        <button className="btn" type="submit"><Search size={14} /> Search Audible</button>
+      <form className="row-actions pick-search" onSubmit={(e) => { e.preventDefault(); setOpen({}); setAsk({ q, author }); }}>
+        <input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Title, or a link to the book"
+               aria-label="Title, or a link to the book on Audible, Bonnier Audio, Apple Books or the Warhammer wiki" />
+        <input className="input" value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="Author" aria-label="Author"
+               disabled={LINK.test(q.trim())} />
+        <button className="btn" type="submit"><Search size={14} /> Search</button>
       </form>
-      {hits.isFetching ? <div className="dim pick-note">Asking Audible…</div>
-        : hits.isError ? <div className="error-text pick-note">{(hits.error as Error).message}</div>
-        : hits.data && !hits.data.length ? <div className="dim pick-note">Audible has nothing for that. Try fewer words.</div>
-        : (
-          <div className="list pick-hits">
-            {(hits.data || []).map((h) => {
-              const near = b.duration && h.runtime ? Math.abs(h.runtime - b.duration) / b.duration < 0.03 : false;
-              return (
-                <div key={h.asin} className="list-row bk-row">
-                  {h.image ? <img className="pick-cover" src={h.image} alt="" loading="lazy" /> : <span className="pick-cover" />}
-                  <div className="grow">
-                    <div className="bk-title ellipsis">{h.title}{h.subtitle && <span className="dim"> · {h.subtitle}</span>}</div>
-                    <div className="dim ellipsis">{h.authors.join(", ")}{h.narrators.length > 0 && ` · read by ${h.narrators.join(", ")}`}</div>
-                    <div className="faint ellipsis">
-                      {[hitSeries(h), h.release.slice(0, 4), h.runtime ? fmtLong(h.runtime) : null, h.language && languageName(h.language)].filter(Boolean).join(" · ")}
-                      {near && <span className="pick-near"> · as long as this one</span>}
-                    </div>
+      <div className="pick-hits">
+        {nowhere && <div className="dim pick-note">None of {srcs.map((s) => s.name).join(", ")} knows that link.</div>}
+        {srcs.map((s, i) => {
+          const r = results[i];
+          if (!r || (link && r.isSuccess && !r.data.length)) return null;      // a link to another source's book
+          const hits = r.data || [];
+          const shown = open[s.id] ? hits : hits.slice(0, SHOWN);
+          return (
+            <section key={s.id} className="pick-source" aria-busy={r.isFetching}>
+              <div className="kicker pick-source-head">{s.name}{r.isSuccess && !r.isFetching && ` · ${hits.length}`}</div>
+              {r.isFetching ? <div className="dim pick-note">Asking {s.name}…</div>
+                : r.isError ? <div className="error-text pick-note">{(r.error as Error).message}</div>
+                : !hits.length ? <div className="faint pick-note">Nothing for that here. Fewer words may find it.</div>
+                : (
+                  <div className="list">
+                    {shown.map((h) => <HitRow key={h.id} h={h} b={b} saving={saving} onPick={pick} />)}
+                    {hits.length > shown.length && (
+                      <button className="btn small ghost pick-more" onClick={() => setOpen({ ...open, [s.id]: true })}>
+                        {hits.length - shown.length} more from {s.name}
+                      </button>
+                    )}
                   </div>
-                  <button className="btn small accent" disabled={!!saving} onClick={() => pick(h)}>{saving === h.asin ? "Filing…" : "This one"}</button>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                )}
+            </section>
+          );
+        })}
+      </div>
     </Modal>
+  );
+}
+
+function HitRow({ h, b, saving, onPick }: { h: Hit; b: Brief; saving: string; onPick: (h: Hit) => void }) {
+  const near = b.duration && h.runtime ? Math.abs(h.runtime - b.duration) / b.duration < 0.03 : false;
+  const key = `${h.source}:${h.id}`;
+  return (
+    <div className="list-row bk-row pick-hit">
+      {h.image ? <img className="pick-cover" src={h.image} alt="" loading="lazy" /> : <span className="pick-cover" />}
+      <div className="grow">
+        <div className="bk-title ellipsis">{h.title}{h.subtitle && <span className="dim"> · {h.subtitle}</span>}</div>
+        <div className="dim ellipsis">{h.authors.join(", ")}{h.narrators.length > 0 && ` · read by ${h.narrators.join(", ")}`}</div>
+        <div className="faint ellipsis">
+          {[hitSeries(h), h.year || h.release.slice(0, 4), h.runtime ? fmtLong(h.runtime) : null, h.language && languageName(h.language)].filter(Boolean).join(" · ")}
+          {near && <span className="pick-near"> · as long as this one</span>}
+        </div>
+      </div>
+      {h.url && (
+        <a className="btn small ghost pick-link" href={h.url} target="_blank" rel="noreferrer" data-tip="Its page" aria-label={`${h.title}: its page`}>
+          <ExternalLink size={14} />
+        </a>
+      )}
+      <button className="btn small accent" disabled={!!saving} onClick={() => onPick(h)}>{saving === key ? "Filing…" : "This one"}</button>
+    </div>
   );
 }
 
