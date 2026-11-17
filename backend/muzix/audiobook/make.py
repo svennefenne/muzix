@@ -41,12 +41,24 @@ def probe(path: str) -> dict:
     d = json.loads(out or "{}")
     a = next((s for s in d.get("streams", []) if s.get("codec_type") == "audio"), {})
     t = {k.lower(): v for k, v in (d.get("format", {}).get("tags") or {}).items()}
-    return {"path": path, "duration": float(d.get("format", {}).get("duration") or a.get("duration") or 0),
+    return {"path": path, "duration": length(d, a),
             "codec": a.get("codec_name"), "profile": a.get("profile") or "", "rate": int(a.get("sample_rate") or 0),
             "ch": int(a.get("channels") or 0),
             "bitrate": int(d.get("format", {}).get("bit_rate") or 0), "title": t.get("title", ""), "track": t.get("track", ""),
             "chapters": [{"start": float(c["start_time"]), "end": float(c["end_time"]), "title": (c.get("tags") or {}).get("title", "")}
                          for c in d.get("chapters", [])]}
+
+
+def length(d: dict, a: dict) -> float:
+    """The length ffprobe gives, unless an .m4b's 32-bit length wrapped (a book over 27 h at 44.1 kHz: Disquiet Gods
+    said 4.6 h of its 31.6): then its AAC frames, 1024 samples each, tell."""
+    dur = float(d.get("format", {}).get("duration") or a.get("duration") or 0)
+    rate, nb = int(a.get("sample_rate") or 0), int(a.get("nb_frames") or 0)
+    if a.get("codec_name") == "aac" and rate and nb:
+        real, wrap = nb * 1024 / rate, 2 ** 32 / rate
+        if real - dur > 60 and abs((real - dur) / wrap - round((real - dur) / wrap)) < 0.01:
+            return real
+    return dur
 
 
 def order(files: list[dict]) -> list[dict]:

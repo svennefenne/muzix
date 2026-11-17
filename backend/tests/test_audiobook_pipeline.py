@@ -275,3 +275,11 @@ def test_duplicates_kept_or_thrown_away(upload, library, monkeypatch, api):
     assert kept["folder"] == "Warhammer/David Annandale/2012 - Veritas Ferrum"
     assert (library / kept["folder"] / "Veritas Ferrum.m4b").is_file()
     assert api.get("/api/admin/books/duplicates").json() == []
+
+
+def test_a_length_that_wrapped_is_read_from_the_frames():
+    # Disquiet Gods: 31.6 h at 44.1 kHz is more than 2³² samples, and its header said 4.6 h
+    a = {"codec_name": "aac", "sample_rate": "44100", "nb_frames": "4906220"}
+    assert round(make.length({"format": {"duration": "16530.657234"}}, a)) == 113922
+    assert make.length({"format": {"duration": "113922.2"}}, a) == 113922.2      # read right: left as it is
+    assert make.length({"format": {"duration": "3600"}}, {**a, "nb_frames": "100000"}) == 3600   # not a wrap
