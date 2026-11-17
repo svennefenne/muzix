@@ -40,7 +40,7 @@ type Form = Record<string, string | number>;
 /** A field picked from a list: an audiobook's genre (the server's, audiobook/place.py) and language (ISO codes). */
 const CHOICES: Record<string, [string, string][]> = {
   genre: [["", "Uncategorized"], ...["Fantasy", "Science Fiction", "Warhammer", "Horror", "Thriller & Crime", "Fiction", "Non-fiction",
-    "Biography", "History", "Children's", "Humor"].map((g): [string, string] => [g, g])],
+    "Biography", "History", "Science & Philosophy", "Children's", "Humor"].map((g): [string, string] => [g, g])],
   language: [["", "Unknown"], ["en", "English"], ["sv", "Svenska"], ["no", "Norsk"], ["da", "Dansk"], ["fi", "Suomi"], ["de", "Deutsch"],
     ["nl", "Nederlands"], ["fr", "Français"], ["es", "Español"], ["it", "Italiano"], ["pl", "Polski"], ["ja", "日本語"]],
 };

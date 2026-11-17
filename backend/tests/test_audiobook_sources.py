@@ -130,3 +130,53 @@ def test_links_go_to_their_source_only(offline):
     assert [sources.search(s, link) for s in ("audible", "apple", "wiki")] == [[], [], []]
     assert [sources.search(s, "B003ZWFO7E") for s in ("apple", "wiki")] == [[], []]           # an ASIN is Audible's
     assert called == []
+
+
+def test_a_title_with_the_author_and_series_around_it_is_the_sources():
+    names = ["Anne Rice", "The Vampire Chronicles"]
+    assert sources.around("Anne Rice - Vampire Chronicles 11 - Prince Lestat", "Prince Lestat", names)
+    assert sources.around("Carl Sagan The Demon Haunted World", "The Demon-Haunted World", ["Carl Sagan"])
+    assert not sources.around("The Lord of the Rings: The Two Towers", "The Lord of the Rings", ["J. R. R. Tolkien"])
+    assert not sources.around("Wind and Truth", "Wind and Truth", ["Brandon Sanderson"])
+
+
+def test_found_with_the_sources_title(offline):
+    offline.setattr(sources, "audible_search", lambda *a, **k: [sources.book(
+        "audible", "B0LESTATXX", asin="B0LESTATXX", title="Prince Lestat", authors=["Anne Rice"], runtime=3600,
+        series=[("The Vampire Chronicles", "11")], language="english")])
+    f = sources.identify(sources.Guess(title="Anne Rice - Vampire Chronicles 11 - Prince Lestat", authors=["Anne Rice"], duration=3600))
+    assert (f.title, f.series, f.vol) == ("Prince Lestat", "The Vampire Chronicles", "11")
+
+
+def test_the_year_first_published(monkeypatch):
+    asked = []
+
+    def answer(source, url, params=None, page=False):
+        asked.append(source)
+        if source == "wikidata":
+            rows = {"Interview with the Vampire": [("Interview with the Vampire", "Anne Rice", "1976-04-12"),
+                                                   ("Interview with the Vampire", "Anne Rice", "1977-01-01"),
+                                                   ("Interview with the Vampire: Claudia's Story", "Anne Rice", "2012-11-20")]}
+            hit = next((v for k, v in rows.items() if f'"{k}"' in params["query"]), [])
+            return {"results": {"bindings": [{"label": {"value": t}, "author": {"value": a}, "date": {"value": d + "T00:00:00Z"}}
+                                             for t, a, d in hit]}}
+        return {"docs": [{"title": "Blood Canticle", "first_publish_year": 1998, "author_name": ["Someone Else"]},
+                         {"title": "Blood Canticle", "first_publish_year": 1672, "author_name": ["Anne Rice"]},
+                         {"title": "Blood Canticle", "first_publish_year": 2003, "author_name": ["Anne Rice"]}]}
+
+    monkeypatch.setattr(sources, "_get", answer)
+    assert sources.first_published("Interview with the Vampire", "Anne Rice") == "1976"
+    assert asked == ["wikidata"]
+    # Wikidata hasn't it: Open Library's, the same author's and a year that can be
+    assert sources.first_published("Blood Canticle", "Anne Rice") == "2003"
+
+
+def test_science_and_philosophy():
+    def genre(*ladders):
+        return place.genre_of(sources.Found(title="x", authors=[], narrators=[], categories=list(ladders)))
+    assert genre(["Science & Engineering", "Science", "Astronomy & Space Science", "Astronomy"],
+                 ["Science & Engineering", "Science", "History & Philosophy", "Philosophy"]) == "Science & Philosophy"
+    assert genre(["Politics & Social Sciences", "Philosophy"]) == "Science & Philosophy"
+    assert genre(["Science & Nature"]) == "Science & Philosophy"           # Apple's
+    assert genre(["Science Fiction & Fantasy", "Science Fiction"]) == "Science Fiction"
+    assert genre(["History", "World"]) == "History" and genre(["Politics & Social Sciences", "Sociology"]) == "Non-fiction"

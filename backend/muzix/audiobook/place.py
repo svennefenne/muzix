@@ -13,7 +13,7 @@ from .make import safe
 from .sources import Found, norm, sim
 
 GENRES = ["Fantasy", "Science Fiction", "Warhammer", "Horror", "Thriller & Crime", "Fiction", "Non-fiction", "Biography",
-          "History", "Children's", "Humor", "Uncategorized"]
+          "History", "Science & Philosophy", "Children's", "Humor", "Uncategorized"]
 DUPLICATES = "_Duplicates"
 # Audible's categories (and Bonnier Audio's Swedish ones, Apple's genre) → ours, the more telling first
 CATEGORY = [
@@ -22,12 +22,15 @@ CATEGORY = [
     (r"Horror|(?i:skräck)", "Horror"),
     (r"Mystery|Myster|Thriller|Crime|Suspense|Detective|(?i:krim|deckare|polisroman|spänning|thriller)", "Thriller & Crime"),
     (r"Biographies|Memoir|(?i:biografi|memoar)", "Biography"),
+    # popular science and philosophy (Audible's "Science > History & Philosophy" too): before History
+    (r"^Science & Engineering|Philosophy|^Science & Nature|(?i:naturvetenskap|populärvetenskap|filosofi|^vetenskap)",
+     "Science & Philosophy"),
     (r"^History|> History|(?i:^historia)", "History"),
     (r"Children|Teen & Young Adult|Young Adult|(?i:^barn|ungdom|^kids)", "Children's"),
     (r"Comedy|Humor", "Humor"),
     (r"Literature & Fiction|Romance|Classics|Erotica|(?i:^skönlitteratur|^fiction|roman$)", "Fiction"),
     (r"Business|Health|Science|Politics|Religion|Self|Education|Money|Relationships|Computers|Travel|Arts|Sports|"
-     r"Home|Psychology|Philosophy|Language|(?i:^fakta|facklitteratur|samhälle|hälsa|ekonomi|psykologi|filosofi)",
+     r"Home|Psychology|Language|(?i:^fakta|facklitteratur|samhälle|hälsa|ekonomi|psykologi)",
      "Non-fiction"),
 ]
 LANGUAGES = {"english": "en", "swedish": "sv", "german": "de", "french": "fr", "spanish": "es", "italian": "it",

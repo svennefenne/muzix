@@ -2016,6 +2016,7 @@ button.lyr:hover { color: var(--lyr-now); text-decoration: underline; text-decor
 [data-genre="Non-fiction"] { --g: #93a85a; }
 [data-genre="Biography"] { --g: #cf8f5c; }
 [data-genre="History"] { --g: #b8a06c; }
+[data-genre="Science & Philosophy"] { --g: #7c7cf2; }
 [data-genre="Children's"] { --g: #e27fb5; }
 [data-genre="Humor"] { --g: #d6bb3a; }
 

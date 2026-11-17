@@ -7,7 +7,8 @@
 - Apple Books (the iTunes Search API, about 20 searches a minute): a large cover, a summary, the release.
 - The Warhammer 40k Wiki (Fandom's MediaWiki API) for Black Library's books and audio dramas: first release,
   author, performers, series. Black Library's own site and Lexicanum sit behind a human check, so not those.
-- Open Library: the year a book was first published.
+- Wikidata: the year a book was first published (its publication date); Open Library's, when Wikidata hasn't the
+  book and it's the same author's and a year that can be.
 
 ``identify`` asks them in that order and puts the answers together (``Found``)."""
 
@@ -27,7 +28,7 @@ from .. import enrich
 
 log = logging.getLogger("muzix.audiobook")
 TIMEOUT = 20
-_gap = {"audible": 0.3, "audnexus": 0.3, "bonnier": 0.5, "apple": 3.2, "wiki": 0.4, "openlibrary": 0.5}
+_gap = {"audible": 0.3, "audnexus": 0.3, "bonnier": 0.5, "apple": 3.2, "wiki": 0.4, "openlibrary": 0.5, "wikidata": 1.0}
 _last: dict[str, float] = {}
 _lock = threading.Lock()
 WARHAMMER = re.compile(r"warhammer|horus heresy|black library|siege of terra|space marine|gotrek|eisenhorn|ravenor|"
@@ -451,13 +452,41 @@ def wiki_lookup(title: str, author: str = "", minutes: int = 0) -> dict | None:
             "narrators": w["narrators"], "series": w["series"][0][0] if w["series"] else ""}
 
 
-# ---------------------------------------------------------------- Open Library
+# ---------------------------------------------------------------- the year first published
 
-def first_published(title: str, author: str) -> str:
+WIKIDATA = "https://query.wikidata.org/sparql"
+# the works Wikidata's search finds for a title, with an author and a publication date
+WORKS = """SELECT ?label ?author ?date WHERE {
+  SERVICE wikibase:mwapi { bd:serviceParam wikibase:endpoint "www.wikidata.org"; wikibase:api "EntitySearch";
+                           mwapi:search "%s"; mwapi:language "%s". ?item wikibase:apiOutputItem mwapi:item. }
+  ?item wdt:P50 ?a; wdt:P577 ?date.
+  ?a rdfs:label ?author. FILTER(lang(?author) = "%s")
+  ?item rdfs:label ?label. FILTER(lang(?label) = "%s")
+} LIMIT 30"""
+
+
+def wikidata_year(title: str, author: str, lang: str = "en") -> str:
+    """The year Wikidata says a book (that title, by that author) was first published, or ""."""
+    q = re.sub(r'["\\]', " ", title)
+    d = _get("wikidata", WIKIDATA, {"query": WORKS % (q, lang, lang, lang), "format": "json"}) or {}
+    years = [int(b["date"]["value"][:4]) for b in (d.get("results") or {}).get("bindings", [])
+             if norm(b["label"]["value"]) == norm(title) and sim(b["author"]["value"], author) > 0.8
+             and b["date"]["value"][:4].isdigit()]
+    return str(min(years)) if years else ""
+
+
+def first_published(title: str, author: str, lang: str = "") -> str:
+    """The year a book was first published: Wikidata's, else Open Library's when it's the same author's and from 1800 on
+    (Open Library has Interview with the Vampire from 1672, Blood Canticle from 1998)."""
+    year = wikidata_year(title, author, "sv" if (lang or "")[:2] in ("sv", "sw") else "en")
+    if year:
+        return year
     d = _get("openlibrary", "https://openlibrary.org/search.json",
-             {"title": title, "author": author, "fields": "title,first_publish_year", "limit": 5}) or {}
+             {"title": title, "author": author, "fields": "title,first_publish_year,author_name", "limit": 5}) or {}
     years = [x["first_publish_year"] for x in d.get("docs", [])[:3]
-             if x.get("first_publish_year") and sim(x.get("title", ""), title) > 0.8]
+             if x.get("first_publish_year") and sim(x.get("title", ""), title) > 0.8
+             and any(sim(a, author) > 0.8 for a in x.get("author_name") or [])
+             and 1800 <= x["first_publish_year"] <= time.gmtime().tm_year]   # it's for books Wikidata hasn't
     return str(min(years)) if years else ""
 
 
@@ -588,6 +617,24 @@ def _audible_pick(g: Guess) -> tuple[dict | None, bool]:
     return pick, bool(pick) and ranked[0][0][0] >= 0.8
 
 
+def _words(s: str) -> list[str]:
+    return re.findall(r"[a-z0-9]+", unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode().lower())
+
+
+FILLER = {"the", "a", "an", "book", "vol", "volume", "part", "series", "saga", "cycle", "chronicles", "unabridged", "audiobook"}
+
+
+def around(longer: str, title: str, names: list[str]) -> bool:
+    """Whether ``longer`` is ``title`` with only names (the author's, the series'), numbers and the like around it."""
+    lw, tw = _words(longer), _words(title)
+    known = FILLER | {w for n in names for w in _words(n)}
+    for i in range(len(lw) - len(tw) + 1):
+        if tw and lw[i:i + len(tw)] == tw:
+            rest = lw[:i] + lw[i + len(tw):]
+            return bool(rest) and all(w.isdigit() or w in known for w in rest)
+    return False
+
+
 def _take(f: Found, g: Guess, pick: dict):
     """What a source's book says, into what's found."""
     f.sources.append(pick["source"])
@@ -595,6 +642,8 @@ def _take(f: Found, g: Guess, pick: dict):
     short, who = split_by(g.title)
     if short and norm(short) == norm(title) and any(sim(who, a) > 0.8 for a in pick["authors"]):
         f.title = title                     # "Mordets praktik av Kerstin Ekman" was "Mordets praktik" by her
+    elif g.title and around(g.title, title, pick["authors"] + g.authors + [s[0] for s in pick["series"]] + [g.series]):
+        f.title = title                     # "Anne Rice - Vampire Chronicles 11 - Prince Lestat" is "Prince Lestat"
     # a name already given (a folder like "Vol 5 - 2024 - Wind and Truth") stays, unless it's something else
     elif not g.title or sim(title, g.title) < 0.8:
         f.title = title
@@ -652,7 +701,7 @@ def identify(g: Guess, chosen: dict | None = None) -> Found:
         if a["image"] and a["image"] not in f.images:
             f.images.append(a["image"])
     if not f.year and f.title and author:
-        f.year = first_published(f.title, author)
+        f.year = first_published(f.title, author, f.language)
     if not f.year:
         f.year = ((pick or {}).get("release") or (a or {}).get("release") or "")[:4]
     f.sure = sure or (f.warhammer and "wiki" in f.sources)
