@@ -31,8 +31,9 @@ interface Watched {
   }[];
 }
 
-type Only = "" | "bandcamp";      // the usual watch folder, or the one Bandcamp alone matches and tags
-const KINDS: Only[] = ["", "bandcamp"];
+/** The usual watch folder, the one Bandcamp alone matches and tags, or the one for audiobooks (audiobook/pipeline.py). */
+export type Only = "" | "bandcamp" | "audiobooks";
+const LABEL: Record<Only, string> = { "": "Watch folder", bandcamp: "Watch folder · Bandcamp only", audiobooks: "Watch folder · Audiobooks" };
 
 interface Why {
   songs: number;                          // of how many (0: set aside before this was kept)
@@ -55,7 +56,9 @@ function matched(albums: Watched["recent"][number]["albums"], match: string) {
   return `${albums.length} albums${parts.length ? `: ${parts.join(", ")}` : ""}`;
 }
 
-export function WatchFolder() {
+/** The watch folders of these kinds (the music ones on the upload page's Music side, the audiobook one on its
+ * Audiobooks side), and what lately came in through them. */
+export function WatchFolder({ kinds = ["", "bandcamp"] }: { kinds?: Only[] }) {
   const notify = useUi((s) => s.notify);
   const q = useQuery({ queryKey: ["watch"], queryFn: () => api.get<Watched>("/api/admin/watch"), refetchInterval: 10_000 });
   const [picking, setPicking] = useState<{ only: Only; computer: string } | null>(null);
@@ -73,7 +76,7 @@ export function WatchFolder() {
 
   return (
     <>
-      {KINDS.map((only) => {
+      {kinds.map((only) => {
         const f = w.folders.find((x) => x.only === only) ?? null;
         return (
           <WatchCard key={only || "usual"} f={f} only={only} computers={w.computers} refetch={() => q.refetch()}
@@ -81,7 +84,7 @@ export function WatchFolder() {
                      onOff={() => set(only, "", "")} />
         );
       })}
-      {w.recent.length > 0 && (
+      {!kinds.includes("audiobooks") && w.recent.length > 0 && (
         <section className="panel watch">
           <details className="watch-recent" open>
             <summary className="dim">Lately from the watch folder{w.folders.length > 1 ? "s" : ""}</summary>
@@ -162,13 +165,15 @@ function WatchCard({ f, only, computers, refetch, onPick, onOff }: {
     : f.state.error ? `Couldn't look in it: ${f.state.error}`
     : f.state.checked ? `Looked in ${ago(new Date(f.state.checked * 1000).toISOString())}` : "Looked in every minute";
   const bandcamp = only === "bandcamp";
+  const books = only === "audiobooks";
 
   return (
     <section className="panel watch">
       <div className="panel-head">
         <div>
-          <div className="kicker">Watch folder{bandcamp ? " · Bandcamp only" : ""}</div>
-          <div className="h3">{bandcamp ? "Albums put here are matched and tagged by Bandcamp alone"
+          <div className="kicker">{LABEL[only]}</div>
+          <div className="h3">{books ? (f ? "Audiobooks put here are made and filed by themselves" : "Fill the audiobooks from a folder")
+            : bandcamp ? "Albums put here are matched and tagged by Bandcamp alone"
             : f ? "Albums put here are filed by themselves" : "Fill the library from a folder"}</div>
         </div>
         <div className="row-actions">
@@ -192,7 +197,17 @@ function WatchCard({ f, only, computers, refetch, onPick, onOff }: {
           </div>
         </div>
       )}
-      {bandcamp ? (
+      {books ? (
+        <p className="dim watch-about">
+          Each book put here (a folder, or one file) is looked up on Audible, then Apple Books and, for Warhammer, the Warhammer
+          40k wiki; made one .m4b with its chapters, cover and tags (several files are joined, an .mp3 converted); and filed as
+          Genre/Author/Series/Vol N - Year - Title in the audiobook upload folder, with its cover.jpg and metadata.json beside it.
+          A book none of them was sure of is filed all the same and listed under Needs a look; one the library has already goes to
+          Audiobooks/_Duplicates, and one that couldn't be made to _Failed here. A book is taken two minutes after its last file
+          arrived, or at once with Transfer now.{computer
+            ? ` On ${computer.name}, a book is deleted once it's in the library.` : " Its files are deleted once its .m4b is made."}
+        </p>
+      ) : bandcamp ? (
         <p className="dim watch-about">
           Each album is looked up on Bandcamp alone, where a release counts when its songs are as many and as long. Its names, cover
           and main genre are Bandcamp's: its genre and tags say the genre, not MusicBrainz, Last.fm or the files' own, and it stays so
@@ -225,7 +240,7 @@ function WatchCard({ f, only, computers, refetch, onPick, onOff }: {
           {f.held._Failed.map((name) => (
             <div key={`f-${name}`} className="list-row">
               <span className="status-dot bad" />
-              <div className="grow"><div className="ellipsis">{name}</div><div className="dim">In _Failed: it couldn't be filed</div></div>
+              <div className="grow"><div className="ellipsis">{name}</div><div className="dim">In _Failed: it couldn't be {books ? "made" : "filed"}</div></div>
               <button className="btn small" onClick={() => again(name, "_Failed")}>Try again</button>
             </div>
           ))}
@@ -304,7 +319,7 @@ function WatchPicker({ computers, start, only, onPick, onClose }: {
   const here = q.data?.path ?? path;
   return (
     <Modal onClose={onClose}>
-      <div className="kicker">{only === "bandcamp" ? "Watch folder · Bandcamp only" : "Watch folder"}</div>
+      <div className="kicker">{LABEL[only]}</div>
       {places.length > 1 && <Segmented label="Where" value={on} options={places} onChange={(v) => { setOn(v); setPath(""); }} />}
       <div className="h2" style={{ margin: "12px 0 10px", wordBreak: "break-all" }}>{here || "…"}</div>
       {q.isError ? (

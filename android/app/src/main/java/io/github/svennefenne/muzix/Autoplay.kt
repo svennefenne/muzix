@@ -132,7 +132,7 @@ class Autoplay(
             Items.fromJson(e)
         }
         if (items.isEmpty()) return
-        val ended = p.playbackState == Player.STATE_ENDED
+        val ended = p.playbackState == Player.STATE_ENDED && p.playWhenReady    // not paused there (by Sleep.kt)
         p.addMediaItems(items)
         added = true
         if (ended) {

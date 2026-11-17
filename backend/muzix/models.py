@@ -337,6 +337,11 @@ class Book(Base):
     hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # admin: hidden from everyone
     peer_id: Mapped[int | None] = mapped_column(Integer, nullable=True)   # another server's (network.py)
     shadowed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")   # another library's copy shows
+    series_part: Mapped[str] = mapped_column(String(16), default="", server_default="")   # "5", "2.5" in its series
+    genre: Mapped[str] = mapped_column(String(64), default="", server_default="")
+    language: Mapped[str] = mapped_column(String(8), default="", server_default="")         # "en", "sv" (ISO 639-1)
+    asin: Mapped[str] = mapped_column(String(16), default="", server_default="")            # Audible's id
+    review: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")        # filed unsure: the admin looks
 
 
 class BookPart(Base):

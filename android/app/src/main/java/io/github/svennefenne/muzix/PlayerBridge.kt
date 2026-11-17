@@ -93,6 +93,7 @@ class PlayerBridge(
                 it.addListener(autoplay)
             }
             Progress.onSaved = { key -> send(JSONObject().put("t", "saved").put("key", key)) }
+            Sleep.onSlept = ::slept
             while (waiting.isNotEmpty()) handleSafely(waiting.removeFirst())
             ticking(c.isPlaying)
         }, ContextCompat.getMainExecutor(context))
@@ -104,6 +105,7 @@ class PlayerBridge(
         Downloads.onChange = null
         link.stop()
         Progress.onSaved = null
+        Sleep.onSlept = null
         runCatching { context.unregisterReceiver(volumeSeen) }
         main.removeCallbacks(tick)
         player?.removeListener(this)
@@ -160,12 +162,17 @@ class PlayerBridge(
             "hello" -> send(JSONObject().put("t", "hello").put("version", PlaybackService.USER_AGENT).put("saves", true).put("updates", true)
                 // copies to the clipboard and opens the share sheet itself (MainActivity: "copy", "share")
                 .put("clipboard", true).put("shares", true)
+                // runs the sleep timer itself (Sleep.kt), as the page sleeps with the screen off
+                .put("sleep", true)
                 .put("downloads", Downloads.list()).put("offline", Downloads.offline)
                 .put("device", deviceName()).put("deviceId", deviceId()).put("volume", mediaVolume()).put("library", if (Server.local) "local" else "server")
                 .put("queue", JSONArray((0 until c.mediaItemCount).map { c.getMediaItemAt(it).carried() }))
                 .put("index", c.currentMediaItemIndex).put("state", state(c))
                 // nothing to play: what played last, which the page shows paused (LastPlayed.kt)
-                .apply { if (c.mediaItemCount == 0) LastPlayed.read(context)?.let { put("last", it) } }).also { onHello() }
+                .apply { if (c.mediaItemCount == 0) LastPlayed.read(context)?.let { put("last", it) } }).also {
+                    onHello()
+                    if (Sleep.untold) slept()
+                }
             "load" -> {
                 val items = m.getJSONArray("items").let { a -> (0 until a.length()).map { Items.fromJson(a.getJSONObject(it)) } }
                 c.setMediaItems(items, m.optInt("index"), (m.optDouble("position", 0.0) * 1000).toLong())
@@ -215,6 +222,10 @@ class PlayerBridge(
                     audio.setStreamVolume(AudioManager.STREAM_MUSIC, (m.optDouble("level").coerceIn(0.0, 1.0) * max).roundToInt(), 0)
                 }
             }
+            // the sleep timer (Sleep.kt): at a time (ms), or when an item gets to a place (as in "seek") or its end
+            "sleep" -> PlaybackService.sleep?.set(m.optLong("at").takeIf { it > 0 },
+                m.optString("key").takeIf { !m.isNull("key") && it.isNotEmpty() },
+                m.optDouble("pos").takeIf { !it.isNaN() }, m.optDouble("fade", 0.0))
             "speed" -> c.setPlaybackSpeed(m.optDouble("value", 1.0).toFloat().coerceIn(0.25f, 4f))
             "meta" -> {
                 // a radio station's current song, for the lock screen
@@ -238,6 +249,12 @@ class PlayerBridge(
     /** The phone's media volume, 0 to 1. */
     private fun mediaVolume(): Double =
         audio.getStreamVolume(AudioManager.STREAM_MUSIC).toDouble() / audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+
+    /** The sleep timer paused the player (Sleep.kt): the page hears of it; one not heard from yet, after its hello. */
+    private fun slept() {
+        Sleep.untold = reply == null
+        if (reply != null) send(JSONObject().put("t", "slept"))
+    }
 
     private fun sendVolume() = send(JSONObject().put("t", "volume").put("value", mediaVolume()).put("muted", player?.volume == 0f))
 

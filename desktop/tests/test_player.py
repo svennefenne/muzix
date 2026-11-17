@@ -258,6 +258,70 @@ def test_a_song_that_stands_still_however_its_started_stops_and_says_so(tmp_path
     assert not last["playing"] and last["position"] > 1.0
 
 
+def test_the_sleep_timer_fades_pauses_and_puts_the_volume_back(tmp_path, monkeypatch):
+    # at a time: the volume goes down over the fade, it pauses, and the volume is back for the next play
+    monkeypatch.setenv("MUZIX_AUDIO_SINK", "fakesink sync=true")
+    _song(str(tmp_path / "a.wav"), 12.0)
+    app = QCoreApplication.instance() or QCoreApplication([])
+    p = player.Player(lambda url: {}, speakers=False)
+    got = []
+    p.sent.connect(lambda s: got.append(json.loads(s)))
+    p.handle(json.dumps({"t": "hello"}))
+    assert next(m for m in got if m["t"] == "hello")["sleep"]
+    p.handle(json.dumps({"t": "load", "index": 0, "position": 0, "play": True,
+                         "items": [{"key": "a", "url": f"file://{tmp_path}/a.wav", "title": "A", "duration": 12.0}]}))
+    _until(app, lambda: p.position() > 0.3)
+    p.handle(json.dumps({"t": "volume", "value": 0.8, "level": 0.9}))
+    p.handle(json.dumps({"t": "sleep", "at": int(time.time() * 1000) + 1500, "key": None, "pos": None, "fade": 1}))
+    _until(app, lambda: p.bin.get_property("volume") < 0.5)
+    assert p.want and 0 < p.bin.get_property("volume") < 0.5           # fading, still playing
+    _until(app, lambda: any(m["t"] == "slept" for m in got), most=4)
+    assert not p.want and not p._state_msg()["playing"]
+    assert abs(p.bin.get_property("volume") - 0.8) < 1e-5               # as it was before the fade
+
+    # a new one replaces it, and none at all turns it off: mid-fade, the volume comes back
+    got.clear()
+    p.handle(json.dumps({"t": "play"}))
+    p.handle(json.dumps({"t": "sleep", "at": int(time.time() * 1000) + 20_000, "key": None, "pos": None, "fade": 30}))
+    _until(app, lambda: False, most=0.6)
+    assert p.bin.get_property("volume") < 0.8
+    p.handle(json.dumps({"t": "sleep", "at": None, "key": None, "pos": None, "fade": 0}))
+    assert abs(p.bin.get_property("volume") - 0.8) < 1e-5
+    _until(app, lambda: False, most=0.6)
+    p.release()
+    assert p.sleep_at == 0 and not [m for m in got if m["t"] == "slept"]
+
+
+def test_the_sleep_timer_pauses_at_a_chapters_end_or_the_songs(tmp_path, monkeypatch):
+    monkeypatch.setenv("MUZIX_AUDIO_SINK", "fakesink sync=true")
+    for name in ("a", "b"):
+        _song(str(tmp_path / f"{name}.wav"), 8.0)       # long enough not to be read through at once (gapless)
+    app = QCoreApplication.instance() or QCoreApplication([])
+    p = player.Player(lambda url: {}, speakers=False)
+    got = []
+    p.sent.connect(lambda s: got.append(json.loads(s)))
+    items = [{"key": k, "url": f"file://{tmp_path}/{k}.wav", "title": k.upper(), "duration": 8.0} for k in ("a", "b")]
+    p.handle(json.dumps({"t": "load", "index": 0, "position": 0, "play": True, "items": items}))
+    _until(app, lambda: p.position() > 0.2)
+    p.handle(json.dumps({"t": "seek", "position": 4.0}))
+    _until(app, lambda: p.position() > 4.1)
+    p.handle(json.dumps({"t": "sleep", "at": None, "key": "a", "pos": 5.0, "fade": 0.5}))       # a chapter's end, in it
+    _until(app, lambda: any(m["t"] == "slept" for m in got))
+    st = p._state_msg()
+    assert st["key"] == "a" and not st["playing"] and 4.9 < st["position"] < 5.2
+
+    got.clear()
+    p.handle(json.dumps({"t": "seek", "position": 7.0}))
+    p.handle(json.dumps({"t": "sleep", "at": None, "key": "a", "pos": None, "fade": 0.5}))      # the song's end
+    p.handle(json.dumps({"t": "play"}))
+    _until(app, lambda: any(m["t"] == "slept" for m in got))
+    st = p._state_msg()
+    p.release()
+    # paused at its end, or just as the next one began
+    assert not st["playing"] and (st["key"] == "a" and st["position"] > 7.7 or st["key"] == "b" and st["position"] < 0.3)
+    assert abs(p.bin.get_property("volume") - 1.0) < 1e-5
+
+
 def test_the_builds_check_plays_a_song_over_http_with_the_relays_headers():
     """app.py --check, on each build's own computer: a song from a server on 127.0.0.1, as the relay serves
     the window's songs (0.4.25 for Windows passed its check, and played nothing: curlhttpsrc never started)."""

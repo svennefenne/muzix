@@ -2,7 +2,7 @@
  * and albums, artists and genres shown as a list, a grid or a gallery. */
 
 import { Grid3x3, LayoutGrid, List, Pause, Play } from "lucide-react";
-import type { CSSProperties, ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { fmtLong, fmtNumber, sized } from "../api";
 import { playAlbum, playRandom } from "../actions";
@@ -74,6 +74,22 @@ export const ARTIST_SORTS: [string, string][] = [
   ["name", "Name"], ["albums", "Most albums"], ["added", "Recently added"], ["played", "Most played"],
 ];
 export const GENRE_SORTS: [string, string][] = [["albums", "Most albums"], ["artists", "Most artists"], ["name", "Name"]];
+
+/** Whether the bars right after `edge` are stuck to the top of the frame (the edge scrolled past it). */
+export function useStuck() {
+  const edge = useRef<HTMLDivElement>(null);
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    const el = edge.current;
+    const root = el?.closest(".frame-scroll");
+    if (!el || !root) return;
+    const io = new IntersectionObserver(([e]) => setOn(!e.isIntersecting && e.boundingClientRect.top < (e.rootBounds?.top ?? 0)),
+                                        { root, threshold: 0 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  return { edge, on };
+}
 
 // ---------------------------------------------------------------- list rows
 

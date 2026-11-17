@@ -1,11 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { Activity, Blocks, ChartColumn, Disc3, EyeOff, FileQuestion, FolderOpen, Gamepad2, HardDrive, History, Image as ImageIcon, Library, ListMusic, Network, Plus, RefreshCw, Save, Settings2, Share2, Tags as TagsIcon, Trash2, Upload, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { Link, NavLink, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { create } from "zustand";
 import { ago, api, fmtBytes, fmtNumber } from "../../api";
 import { queryClient } from "../../actions";
 import { refreshAll, useAdminDialogs } from "../../components/AdminMode";
+import { Segmented } from "../../components/Browse";
 import { SharedLinks } from "../../components/Share";
 import { Art, Display, Empty, Kicker, Loading, Modal, Switch } from "../../components/ui";
 import { useUi } from "../../store/ui";
@@ -18,6 +19,7 @@ import { Modules } from "./Modules";
 import { LibraryNetwork } from "./Network";
 import { Tags } from "./Tags";
 import { AdminUsers } from "./Users";
+import { BookPanels } from "./BookUploads";
 import { WatchFolder } from "./Watch";
 
 interface Root { id: number; path: string; kind: string; name: string; enabled: boolean; upload_target: boolean; excludes: string[]; items: number; exists: boolean; writable: boolean; last_scan: string | null }
@@ -228,6 +230,8 @@ interface UploadAlbum {
 }
 interface Batch {
   batch: string; files: { path: string; size: number; kind: string }[]; created: string; albums: UploadAlbum[];
+  kind?: UploadKind;            // what it is (the server's word since audiobooks came in; music before)
+  books?: { name: string; files: number; size: number; formats: string[] }[];   // an audiobook batch's, by top folder
   compilations?: string[];      // its folders marked own compilations
   job: { id: number; status: string; progress: number; message: string } | null;
 }
@@ -411,9 +415,13 @@ async function entriesToFiles(entries: FileSystemEntry[]): Promise<Pending[]> {
   return out;
 }
 
-/** An upload in progress, shared so a drop on any admin page can start one. */
-const useUpload = create<{ progress: { done: number; total: number; files: number } | null; checking: boolean; review: Review | null }>(
-  () => ({ progress: null, checking: false, review: null }));
+type UploadKind = "music" | "audiobooks";
+
+/** An upload in progress, shared so a drop on any admin page can start one; `kind`: the upload page's side, what a
+ * drop is uploaded as. */
+const useUpload = create<{ progress: { done: number; total: number; files: number } | null; checking: boolean; review: Review | null;
+                          kind: UploadKind }>(
+  () => ({ progress: null, checking: false, review: null, kind: "music" }));
 
 /** Before anything goes up: files that look like duplicates (sent before, or songs the library
  * seems to have) are shown, and the uploader picks what to send. null: cancelled. */
@@ -437,10 +445,12 @@ async function startUpload(files: Pending[]) {
   const setProgress = (progress: { done: number; total: number; files: number } | null) => useUpload.setState({ progress });
   const picked = files.filter((f) => !f.path.split("/").some((p) => p.startsWith(".")));
   if (!picked.length) return;
-  const audioish = await checkDuplicates(picked);
+  // audiobooks are looked for in the library as they're filed (their duplicates go to Audiobooks/_Duplicates)
+  const kind = useUpload.getState().kind;
+  const audioish = kind === "audiobooks" ? picked : await checkDuplicates(picked);
   if (!audioish) return;
   if (!audioish.length) return notify("Nothing to upload: every file was skipped");
-  const { batch } = await api.post<{ batch: string }>("/api/upload/batch");
+  const { batch } = await api.post<{ batch: string }>("/api/upload/batch", { kind });
   const total = audioish.reduce((s, f) => s + f.file.size, 0);
   let done = 0;
   setProgress({ done: 0, total, files: audioish.length });
@@ -463,7 +473,11 @@ async function startUpload(files: Pending[]) {
       await sendChunk(batch, chunk, report);
       done = base + size;
     }
-    notify(`Uploaded ${audioish.length} files. Press Import to tag and file them.`);
+    if (kind === "audiobooks") {        // made and filed at once: there's nothing to choose first
+      await api.post(`/api/upload/batch/${batch}/import`);
+      notify(`Uploaded ${audioish.length} files: the books are being made and filed`);
+      queryClient.invalidateQueries({ queryKey: ["book-imports"] });
+    } else notify(`Uploaded ${audioish.length} files. Press Import to tag and file them.`);
   } catch (e) {
     notify((e as Error).message, "error");
   } finally {
@@ -568,31 +582,58 @@ function UploadArea() {
   const fileInput = useRef<HTMLInputElement>(null);
   const dirInput = useRef<HTMLInputElement>(null);
   const upload = startUpload;
+  const modules = useUi((s) => s.modules);
+  const [params, setParams] = useSearchParams();
+  const asked = params.get("kind");
+  const kind = useUpload((s) => s.kind);
+  useEffect(() => {
+    if (asked === "audiobooks" || asked === "music") useUpload.setState({ kind: asked });
+  }, [asked]);
+  const setKind = (k: UploadKind) => {
+    useUpload.setState({ kind: k });
+    setParams(k === "music" ? {} : { kind: k }, { replace: true });
+  };
+  const books = kind === "audiobooks" && modules.audiobooks !== false;
+  const waiting = (batches.data || []).filter((b) => (b.kind === "audiobooks") === books);
 
 
   return (
     <>
+      {modules.audiobooks !== false && (
+        <div className="upload-kind">
+          <Segmented label="What to upload" value={books ? "audiobooks" : "music"} onChange={setKind}
+                     options={[{ value: "music", label: "Music" }, { value: "audiobooks", label: "Audiobooks" }]} />
+        </div>
+      )}
       <section className="panel">
         <div className="panel-head">
-          <div><div className="kicker">Upload</div><div className="h3">Add music to the library</div></div>
-          <label className="row-actions dim" style={{ gap: 8 }}
+          <div><div className="kicker">Upload</div><div className="h3">{books ? "Add audiobooks to the library" : "Add music to the library"}</div></div>
+          {!books && <label className="row-actions dim" style={{ gap: 8 }}
                  data-tip="Before files go up, look for ones uploaded before or still waiting to be imported, and for songs the library seems to have already (same title, with the artist or album in the file or folder names). You choose what to skip.">
             <Switch checked={checkOn} onChange={async (v) => {
               await api.put("/api/admin/settings", { upload_check_duplicates: v });
               settings.refetch();
             }} />
             Check for duplicates
-          </label>
+          </label>}
         </div>
         {/* drops are caught by the whole admin page (Admin below) */}
         <div className="dropzone" onClick={() => fileInput.current?.click()}>
           <Upload size={34} />
           <div className="h3">Drop files or whole folders here</div>
-          <div className="dim" style={{ maxWidth: 520 }}>
-            Music is matched with MusicBrainz, gets cover art and a main genre, and is filed as Genre/Artist/Artist - Year - Album
-            in the music upload folder. Lyrics (.lrc files beside their songs) go along with them. Chiptunes and tracker
-            modules go to the VGM upload folder.
-          </div>
+          {books ? (
+            <div className="dim" style={{ maxWidth: 560 }}>
+              A folder per book, or one file. Each is looked up on Audible, Apple Books and (Warhammer) the Warhammer 40k wiki,
+              made one .m4b with chapters, cover and tags (a book in many files is joined, an .mp3 converted), and filed as
+              Genre/Author/Series/Vol N - Year - Title in the audiobook upload folder. It starts as soon as the files are up.
+            </div>
+          ) : (
+            <div className="dim" style={{ maxWidth: 520 }}>
+              Music is matched with MusicBrainz, gets cover art and a main genre, and is filed as Genre/Artist/Artist - Year - Album
+              in the music upload folder. Lyrics (.lrc files beside their songs) go along with them. Chiptunes and tracker
+              modules go to the VGM upload folder.
+            </div>
+          )}
           <div className="row-actions" onClick={(e) => e.stopPropagation()}>
             <button className="btn" onClick={() => fileInput.current?.click()}>Choose files</button>
             <button className="btn" onClick={() => dirInput.current?.click()}>Choose a folder</button>
@@ -616,12 +657,13 @@ function UploadArea() {
           e.target.value = "";
         }} />
       </section>
-      <WatchFolder />
-      <section className="panel">
-        <div className="panel-head"><div className="h3">Waiting to be imported</div></div>
-        {batches.data?.length ? (
+      <WatchFolder kinds={books ? ["audiobooks"] : ["", "bandcamp"]} />
+      {books && <BookPanels />}
+      {(!books || waiting.length > 0) && <section className="panel">
+        <div className="panel-head"><div className="h3">{books ? "Uploaded, not filed yet" : "Waiting to be imported"}</div></div>
+        {waiting.length ? (
           <div className="list">
-            {batches.data.map((b) => {
+            {waiting.map((b) => {
               const running = b.job && (b.job.status === "running" || b.job.status === "queued");
               const state = batchState(b);
               const size = b.files.reduce((n, f) => n + f.size, 0);
@@ -642,7 +684,14 @@ function UploadArea() {
                       batches.refetch();
                     }}><X size={15} /></button>
                   </div>
-                  <BatchContents b={b} onChange={() => void batches.refetch()} />
+                  {b.kind === "audiobooks" ? (
+                    <ul className="upload-contents">
+                      {(b.books || []).map((x) => (
+                        <li key={x.name}><span className="grow ellipsis"><b>{x.name}</b>
+                          <span className="dim"> · {x.files} {x.files === 1 ? "file" : "files"} · {x.formats.join(", ")} · {fmtBytes(x.size)}</span></span></li>
+                      ))}
+                    </ul>
+                  ) : <BatchContents b={b} onChange={() => void batches.refetch()} />}
                   <details style={{ marginTop: 8 }}>
                     <summary className="dim" style={{ cursor: "pointer", fontSize: 12.5 }}>All {b.files.length} files</summary>
                     <pre className="log">{b.files.map((f) => `${f.path}  (${fmtBytes(f.size)})`).join("\n")}</pre>
@@ -653,8 +702,8 @@ function UploadArea() {
             })}
           </div>
         ) : <Empty title="Nothing waiting">Uploaded files show up here until you import them.</Empty>}
-      </section>
-      <RecentImports />
+      </section>}
+      {!books && <RecentImports />}
     </>
   );
 }
@@ -870,7 +919,7 @@ export default function Admin() {
            go("/admin/upload");
            picked.then(startUpload);
          }}>
-      {dragging && <div className="drop-overlay" aria-hidden><Upload size={40} /><span>Drop to upload music</span></div>}
+      {dragging && <div className="drop-overlay" aria-hidden><Upload size={40} /><span>Drop to upload {useUpload.getState().kind === "audiobooks" ? "audiobooks" : "music"}</span></div>}
       <Kicker parts={["Admin", "Muzix control room"]} />
       <Display l1="Control" l2="room" small />
       <div className="split">

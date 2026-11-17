@@ -36,6 +36,8 @@ import type { AuthState, ModuleKey, Track } from "./types";
 const Vgm = lazy(() => import("./pages/Vgm"));
 const Books = lazy(() => import("./pages/Books"));
 const BookPage = lazy(() => import("./pages/Books").then((m) => ({ default: m.BookPage })));
+const BookSeries = lazy(() => import("./pages/Books").then((m) => ({ default: m.SeriesPage })));
+const BookAuthor = lazy(() => import("./pages/Books").then((m) => ({ default: m.AuthorPage })));
 const Podcasts = lazy(() => import("./pages/Podcasts"));
 const PodcastPage = lazy(() => import("./pages/Podcasts").then((m) => ({ default: m.PodcastPage })));
 const EpisodePage = lazy(() => import("./pages/Podcasts").then((m) => ({ default: m.EpisodePage })));
@@ -242,6 +244,8 @@ function Shell() {
               <Route path="/search" element={<SearchPage />} />
               <Route path="/vgm/*" element={<Gate module="vgm"><Vgm /></Gate>} />
               <Route path="/audiobooks" element={<Gate module="audiobooks"><Books /></Gate>} />
+              <Route path="/audiobooks/series/:name" element={<Gate module="audiobooks"><BookSeries /></Gate>} />
+              <Route path="/audiobooks/author/:name" element={<Gate module="audiobooks"><BookAuthor /></Gate>} />
               <Route path="/audiobooks/:id" element={<Gate module="audiobooks"><BookPage /></Gate>} />
               <Route path="/podcasts" element={<Gate module="podcasts"><Podcasts /></Gate>} />
               <Route path="/podcasts/:id" element={<Gate module="podcasts"><PodcastPage /></Gate>} />

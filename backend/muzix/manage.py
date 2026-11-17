@@ -473,7 +473,8 @@ def _details(s, kind: str, id_: int) -> dict:
                 "art": serial.art_url("artist", id_)}
     if kind == "book":
         return {"kind": kind, "id": id_, "title": row.title, "author": row.author, "narrator": row.narrator,
-                "series": row.series, "year": row.year, "description": row.description, "hidden": row.hidden,
+                "series": row.series, "series_part": row.series_part or "", "year": row.year, "genre": row.genre or "",
+                "language": row.language or "", "description": row.description, "hidden": row.hidden,
                 "art": serial.art_url("book", id_) if row.art else None}
     if kind == "podcast":
         return {"kind": kind, "id": id_, "title": row.title, "author": row.author, "description": row.description,
@@ -1447,7 +1448,7 @@ def edit_simple(kind: str, id_: int, fields: dict, picture: str = "") -> dict:
         return {"picture": bool(picture)}
     with db.session() as s:
         row = _row(s, kind, id_)
-        allowed = {"book": ("title", "author", "narrator", "series", "year", "description"),
+        allowed = {"book": ("title", "author", "narrator", "series", "series_part", "year", "genre", "language", "description"),
                    "podcast": ("title", "author", "description", "image"),
                    "playlist": ("name", "description"), "fileplaylist": ("name",),
                    "station": ("name", "favicon")}[kind]

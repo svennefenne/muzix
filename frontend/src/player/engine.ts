@@ -1155,7 +1155,21 @@ class Engine {
     const s = usePlayer.getState();
     if (this.remote === connect) return;       // its own volume, which this device's doesn't change
     if (this.remote) return this.remote.setVolume(s.muted ? 0 : s.volume, s.muted);
-    for (const el of [this.el, this.spare]) el.volume = s.muted ? 0 : s.volume ** 1.6;   // perceptual curve
+    for (const el of [this.el, this.spare]) el.volume = s.muted ? 0 : s.volume ** 1.6 * this.fade;   // perceptual curve
+  }
+
+  /** The sleep timer's fade (player/sleep.ts): 1 is the volume as set, 0 silence. Here only: a speaker or the app
+   * keeps its own. */
+  private fade = 1;
+  setFade(f: number) {
+    if (f === this.fade) return;
+    this.fade = f;
+    this.applyVolume();
+  }
+
+  /** Pauses what plays (nothing when it doesn't). */
+  pause() {
+    if (usePlayer.getState().playing) this.toggle();
   }
 
   // ------------------------------------------------------------ media keys

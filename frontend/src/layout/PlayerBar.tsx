@@ -5,6 +5,7 @@ import { fmtTime } from "../api";
 import { toggleQueuedLike } from "../actions";
 import { CastButton, CastNote } from "../components/CastButton";
 import { MicButton } from "../components/Lyrics";
+import { SleepButton } from "../components/SleepTimer";
 import { Art, Skip15 } from "../components/ui";
 import { engine } from "../player/engine";
 import { usePlayer, type PlayItem, type Repeat as RepeatMode } from "../store/player";
@@ -175,6 +176,7 @@ export function PlayerBar() {
             {[0.75, 1, 1.15, 1.25, 1.5, 1.75, 2].map((v) => <option key={v} value={v}>{v}×</option>)}
           </select>
         )}
+        {cur && <SleepButton />}
         <MicButton item={cur} />
         <CastButton />
         <button className={`ctl np-toggle ${npPanel ? "on" : ""}`} aria-label="Now playing panel" aria-pressed={npPanel}

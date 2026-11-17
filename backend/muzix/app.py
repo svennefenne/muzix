@@ -47,18 +47,20 @@ def create_app() -> FastAPI:
     from . import releases
     releases.catch_up()         # album, EP or single for the albums scanned before, once, in the background
     from .organize import importer  # noqa: F401
+    from .audiobook import pipeline  # noqa: F401
     from .api import admin, android, auth, books as books_api, chat as chat_api, library, me, podcasts as podcasts_api
     from .api import connect, manage as manage_api, network as network_api, online, radio, setup
     from .api import schemes, shares, stream, tags, upload, watch as watch_api
+    from .api import bookadmin
 
     app = FastAPI(title="Muzix", version=__version__, docs_url="/api/docs", openapi_url="/api/openapi.json")
     app.add_middleware(NoProxyBuffering)
     app.add_middleware(traffic.Counted)        # the outermost: what goes out, counted (the admin's Data page)
     # the requests of a module answer only while it's on
     module_of = {books_api: "audiobooks", podcasts_api: "podcasts", radio: "radio", online: "vgm", network_api: "network",
-                 chat_api: "network"}
+                 chat_api: "network", bookadmin: "audiobooks"}
     for mod in (auth, setup, library, stream, me, admin, books_api, podcasts_api, radio, upload,
-                online, manage_api, connect, android, network_api, chat_api, tags, schemes, watch_api, shares):
+                online, manage_api, connect, android, network_api, chat_api, tags, schemes, watch_api, shares, bookadmin):
         needs = [Depends(modules.needed(module_of[mod]))] if mod in module_of else []
         app.include_router(mod.router, dependencies=needs)
         if hasattr(mod, "art_router"):

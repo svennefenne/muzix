@@ -37,13 +37,22 @@ type Pairing = { song: Song; how: "length" | "number" | "order" } | undefined;
 interface Picked { url: string; thumb: string; source: string }
 type Form = Record<string, string | number>;
 
-const FIELDS: Record<ItemKind, [string, string, "text" | "number" | "area"][]> = {
+/** A field picked from a list: an audiobook's genre (the server's, audiobook/place.py) and language (ISO codes). */
+const CHOICES: Record<string, [string, string][]> = {
+  genre: [["", "Uncategorized"], ...["Fantasy", "Science Fiction", "Warhammer", "Horror", "Thriller & Crime", "Fiction", "Non-fiction",
+    "Biography", "History", "Children's", "Humor"].map((g): [string, string] => [g, g])],
+  language: [["", "Unknown"], ["en", "English"], ["sv", "Svenska"], ["no", "Norsk"], ["da", "Dansk"], ["fi", "Suomi"], ["de", "Deutsch"],
+    ["nl", "Nederlands"], ["fr", "Français"], ["es", "Español"], ["it", "Italiano"], ["pl", "Polski"], ["ja", "日本語"]],
+};
+
+const FIELDS: Record<ItemKind, [string, string, "text" | "number" | "area" | "choice"][]> = {
   album: [["title", "Title", "text"], ["artist", "Album artist", "text"], ["year", "Year", "number"], ["genre", "Genre", "text"]],
   track: [["title", "Title", "text"], ["artist", "Artist", "text"], ["albumartist", "Album artist", "text"], ["album", "Album", "text"],
     ["track_no", "Track", "number"], ["disc_no", "Disc", "number"], ["year", "Year", "number"], ["genre", "Genre", "text"]],
   artist: [["name", "Name", "text"]],
   book: [["title", "Title", "text"], ["author", "Author", "text"], ["narrator", "Narrator", "text"], ["series", "Series", "text"],
-    ["year", "Year", "number"], ["description", "Description", "area"]],
+    ["series_part", "Book in series", "text"], ["year", "Year", "number"], ["genre", "Genre", "choice"], ["language", "Language", "choice"],
+    ["description", "Description", "area"]],
   podcast: [["title", "Title", "text"], ["author", "Author", "text"], ["description", "Description", "area"]],
   playlist: [["name", "Name", "text"], ["description", "Description", "area"]],
   fileplaylist: [["name", "Name", "text"]],
@@ -319,7 +328,12 @@ export function EditDialog({ kind, id, onClose }: { kind: ItemKind; id: number; 
                 {FIELDS[kind].map(([k, label, type]) => (
                   <div key={k} className={`field ${type === "area" ? "wide" : ""} ${type === "number" ? "num" : ""}`}>
                     <label htmlFor={`edit-${k}`}>{label}</label>
-                    {type === "area"
+                    {type === "choice" ? (
+                      <select id={`edit-${k}`} className="select" value={String(form[k] ?? "")} onChange={(e) => setForm({ ...form, [k]: e.target.value })}>
+                        {[...CHOICES[k], ...(CHOICES[k].some(([v]) => v === String(form[k] ?? "")) ? [] : [[String(form[k]), String(form[k])]])]
+                          .map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                      </select>
+                    ) : type === "area"
                       ? <textarea id={`edit-${k}`} className="input" rows={4} value={String(form[k] ?? "")}
                                   onChange={(e) => setForm({ ...form, [k]: e.target.value })} />
                       : <input id={`edit-${k}`} className="input" type={type} value={String(form[k] ?? "")}

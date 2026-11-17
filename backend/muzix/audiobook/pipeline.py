@@ -1,0 +1,126 @@
+"""Audiobooks in, the way music comes in: uploaded on the admin page (import_books) or put in the audiobook watch
+folder (import_books_watched). Each book found (group.py) is looked up (sources.py), made one .m4b (make.py) and
+filed (place.py) in the audiobook upload folder; one the library has already goes to its _Duplicates. A book the
+sources weren't sure of is filed all the same and marked for review. Once a book's .m4b is made and as long as
+its files, those files are deleted; a book that fails keeps them."""
+
+import logging
+import os
+import shutil
+from pathlib import Path
+
+from .. import env, jobs, watch
+from ..organize import importer
+from . import group, make, place, sources
+
+log = logging.getLogger("muzix.audiobook")
+
+
+def file_books(ctx: jobs.JobContext, source: Path, label: str) -> dict:
+    """Every book under ``source`` into the library. {"books": [...], "failed": [...]}."""
+    root = importer.upload_root("audiobooks")
+    if not root or not os.access(root, os.W_OK):
+        raise RuntimeError("there's no audiobook folder Muzix may write to: Admin → Library, an audiobook folder "
+                           "as the upload target, mounted read-write")
+    ctx.log(f"looking for books in {label}")
+    found = group.scan(str(source))
+    if not found:
+        raise RuntimeError("there are no audiobooks in it")
+    ctx.log(f"{len(found)} book{'s' if len(found) != 1 else ''}")
+    out: dict = {"books": [], "failed": [], "root": root}
+    for i, b in enumerate(found):
+        ctx.check()
+        name = b.guess.title or os.path.basename(b.home or b.files[0].path)
+        ctx.update(0.05 + 0.9 * i / len(found), f"{i + 1} of {len(found)}: {name}")
+        try:
+            f = sources.identify(b.guess)
+            language = place.language_code(f.language)
+            author = f.authors[0] if f.authors else ""
+            genre = "Warhammer" if f.warhammer else place.author_genre(root, author) or place.genre_of(f)
+            dup = place.duplicate_of(f, b.guess.duration)
+            folder = place.aside(root, f) if dup else place.target(root, f, genre)
+            ctx.log(f"{name}: {', '.join(f.sources) or 'no source knew it'}"
+                    f"{' (not sure)' if not f.sure else ''} → {os.path.relpath(folder, root)}")
+            made = make.make([p.path for p in b.files], f, genre, language, folder, home=b.home,
+                             muzix={"review": not f.sure, "sources": f.sources, "uploaded": label,
+                                    "duplicate_of": dup.id if dup else None})
+            for p in b.files:
+                try:
+                    os.remove(p.path)
+                except OSError:
+                    pass
+            if b.home and os.path.isdir(b.home):
+                shutil.rmtree(b.home, ignore_errors=True)
+            out["books"].append({"title": f.title, "author": author, "folder": os.path.relpath(folder, root),
+                                 "genre": genre, "language": language, "sure": f.sure, "sources": f.sources,
+                                 "duplicate_of": dup.id if dup else None, "seconds": made["seconds"],
+                                 "chapters": made["chapters"], "cover": made["cover"]})
+        except make.Failed as e:
+            ctx.log(f"{name}: couldn't be made: {e}")
+            out["failed"].append({"title": name, "error": str(e), "files": len(b.files)})
+    _prune(source)
+    jobs.submit("scan_books", "Scan the audiobooks")
+    return out
+
+
+def _prune(folder: Path):
+    """What the books were in, once it holds nothing but leftovers from them (empty folders)."""
+    if not folder.is_dir():
+        return
+    for r, _dirs, _files in os.walk(folder, topdown=False):
+        try:
+            if not os.listdir(r):
+                os.rmdir(r)
+        except OSError:
+            pass
+
+
+@jobs.job("import_books")
+def import_books(ctx: jobs.JobContext, batch: str):
+    """An upload batch of audiobooks (api/upload.py)."""
+    source = env.UPLOAD_DIR / batch
+    if not source.is_dir():
+        raise RuntimeError("the upload is gone")
+    out = file_books(ctx, source, f"upload {batch}")
+    if source.exists() and not any(os.path.isfile(os.path.join(r, f)) for r, _, fs in os.walk(source) for f in fs
+                                   if not f.startswith(".")):
+        shutil.rmtree(source, ignore_errors=True)
+    kind = env.UPLOAD_DIR / f".{batch}.audiobooks"
+    if kind.exists() and not source.exists():
+        kind.unlink()
+    return out
+
+
+@jobs.job("import_books_watched")
+def import_books_watched(ctx: jobs.JobContext, name: str, key: str, held: str = ""):
+    """One book (or a folder of them) from the audiobook watch folder. From a computer, it is deleted there once
+    every book in it is in the library; what's left goes to _Done, and to _Failed when a book couldn't be made."""
+    where = watch.place(key)
+    if where is None or where.key != key:
+        raise RuntimeError("the watch folder changed or can't be reached")
+    work = env.UPLOAD_DIR / watch._batch()
+    try:
+        folder = where.fetch(name, held, work)
+        if folder.is_file():
+            (work / folder.stem).mkdir(parents=True, exist_ok=True)
+            folder = Path(shutil.move(str(folder), str(work / folder.stem / folder.name))).parent
+        out = {"name": name, **file_books(ctx, folder, f"the watch folder: {name}")}
+        if out["failed"]:
+            where.move(name, held, "_Failed")
+            ctx.log(f"{len(out['failed'])} couldn't be made: set aside in _Failed")
+        elif isinstance(where, watch.ComputerPlace):
+            where.remove(name, held)
+            out["removed"] = True
+            ctx.log("every book in it is in the library: deleted from the computer's watch folder")
+        elif folder.exists():
+            where.move(name, held, "_Done")
+        return out
+    except Exception:
+        try:
+            where.move(name, held, "_Failed")
+        except Exception:
+            log.exception("audiobook watch folder: couldn't set %s aside", name)
+        raise
+    finally:
+        if work.exists():
+            shutil.rmtree(work, ignore_errors=True)

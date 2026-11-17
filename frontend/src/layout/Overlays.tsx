@@ -7,6 +7,7 @@ import { useAppVersion } from "../appUpdate";
 import { useBackCloses } from "../backCloses";
 import { playTracks, queryClient, toggleQueuedLike, usePlaylistPicker } from "../actions";
 import { CastButton, CastNote } from "../components/CastButton";
+import { SleepButton } from "../components/SleepTimer";
 import { hasLyrics, LyricsCard, LyricsLines, LyricsSource, noLyrics, tinted, useLyrics } from "../components/Lyrics";
 import { useStationHistory } from "../components/StationHistory";
 import { playingTarget, ShareButton } from "../components/Share";
@@ -163,6 +164,7 @@ function PhoneTransport() {
             <History size={22} />
           </button>
         ) : <span />}
+        <SleepButton size={22} />
         <CastButton size={22} />
         <button className="ctl" aria-label="Queue" data-tip="Queue: what plays next" onClick={() => setQueueOpen(true)}><ListMusic size={22} /></button>
       </div>
@@ -335,6 +337,7 @@ export function NowPlaying() {
                   <button className="btn" onClick={() => showHistory(String(cur.id), cur.title)}><History size={15} /> Played here</button>
                 )}
                 <LyricsButton />
+                <SleepButton className="btn" size={15} label />
                 <CastButton className="btn" size={15} label />
                 {playingTarget(cur) && <ShareButton className="btn" target={playingTarget(cur)!} />}
               </div>

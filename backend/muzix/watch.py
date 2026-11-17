@@ -251,7 +251,8 @@ class ComputerPlace(Place):
         return "trash"
 
 
-ONLY = ("", "bandcamp")      # a folder's albums matched with MusicBrainz then Bandcamp, or with Bandcamp alone
+ONLY = ("", "bandcamp", "audiobooks")      # a folder's albums matched with MusicBrainz then Bandcamp, or with Bandcamp
+                                            # alone; or audiobooks (audiobook/pipeline.py)
 
 
 def folders() -> list[dict]:
@@ -672,7 +673,7 @@ def _busy(key: str) -> set[str]:
     """What's being filed from the folder: names, and _Compilations/<name> for its compilations."""
     with db.session() as s:
         return {_seen_as((j.params or {}).get("held", ""), (j.params or {}).get("name", "")) for j in s.scalars(
-            select(Job).where(Job.type == "import_watched", Job.status.in_(("queued", "running"))))
+            select(Job).where(Job.type.in_(("import_watched", "import_books_watched")), Job.status.in_(("queued", "running"))))
             if (j.params or {}).get("key") == key}
 
 
@@ -731,10 +732,11 @@ def _check_one(key: str, now: bool) -> dict:
             raise RuntimeError(st["error"])
         return {"taken": [], "waiting": []}
     try:
-        found = where.entries() | {f"{OWN}/{n}": fs for n, fs in _own(where).items()}
+        books = where.only == "audiobooks"
+        found = where.entries() | ({} if books else {f"{OWN}/{n}": fs for n, fs in _own(where).items()})
         if now:
             time.sleep(NOW_LOOK)
-            again = where.entries() | {f"{OWN}/{n}": fs for n, fs in _own(where).items()}
+            again = where.entries() | ({} if books else {f"{OWN}/{n}": fs for n, fs in _own(where).items()})
     except Exception as e:      # a computer gone meanwhile, a share away: next time
         st.update(error=str(e) or e.__class__.__name__, checked=time.time())
         if now:
@@ -752,7 +754,9 @@ def _check_one(key: str, now: bool) -> dict:
         if before is None or before[0] != look:
             seen[name] = (look, t)
         if (bool(again.get(name)) and _look(again[name]) == look) if now else t - seen[name][1] >= SETTLE:
-            if name.startswith(OWN + "/"):
+            if books:
+                jobs.submit("import_books_watched", f"Audiobook watch folder: {name}", name=name, key=key)
+            elif name.startswith(OWN + "/"):
                 own = name[len(OWN) + 1:]
                 jobs.submit("import_watched", f"Watch folder: {own} (own compilation)", name=own, key=key, held=OWN)
             else:

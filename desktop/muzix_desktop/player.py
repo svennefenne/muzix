@@ -287,6 +287,13 @@ class Player(QObject):
         self.revived = 0
         # what's downloaded, told to the page once things settle (a song done, two more begun)
         self._telling = QTimer(self, singleShot=True, interval=500, timeout=self.send_downloads)
+        # the sleep timer (_on_sleep): pause at a time (s since 1970), or when the song `sleep_key` gets to
+        # `sleep_pos` (the page's seconds) or to its end; the volume before its fade, and what the fade made it
+        self.sleep_at, self.sleep_key, self.sleep_pos, self.sleep_fade = 0.0, None, None, 0.0
+        self.unfaded: float | None = None
+        self.faded = 0.0
+        self.rate = 1.0                     # the page's speed (a book's, an episode's)
+        self._sleeping = QTimer(self, singleShot=True, timeout=self._sleep_check)
         if downloads:
             downloads.changed.connect(self._downloads_changed)
 
@@ -316,9 +323,10 @@ class Player(QObject):
             self.queue, self.index, self.failures = resume["queue"], resume["index"], 0
         # nothing to play: what played last, which the page shows paused (frontend/src/player/last.ts)
         last = self._kept() if not self.queue else None
-        # clipboard: it copies the links the page shares itself (window.py "copy"; Qt's page may not be allowed to)
+        # clipboard: it copies the links the page shares itself (window.py "copy"; Qt's page may not be allowed to);
+        # sleep: it runs the sleep timer itself (_on_sleep)
         self._send(t="hello", version=f"MuzixDesktop/{__version__}", saves=False, updates=True, opens=True, clipboard=True,
-                   desktop={"version": __version__, "platform": system},
+                   sleep=True, desktop={"version": __version__, "platform": system},
                    device=platform.node() or "Computer", deviceId=self.device_id,
                    volume=self.caster.level if self.casting else self.level, library=self.library(),
                    queue=[it.get("muzix", "") for it in self.queue], index=self.index, state=self._state_msg(),
@@ -348,6 +356,8 @@ class Player(QObject):
         self.lined_up = None
 
     def _on_play(self, m):
+        if self.sleep_at and time.time() >= self.sleep_at:      # the time went by while paused (the computer asleep)
+            self._slept(pause=False)
         if self.index < 0 and self.queue:
             return self._start(0, 0, True)
         if self.ended:
@@ -430,6 +440,7 @@ class Player(QObject):
             self._forget_seek()
         self.bin.seek(rate, Gst.Format.TIME, Gst.SeekFlags.FLUSH | Gst.SeekFlags.ACCURATE,
                       Gst.SeekType.SET, pos if ok else 0, Gst.SeekType.NONE, 0)
+        self.rate = rate
 
     def _on_meta(self, m):
         self.meta = {"title": m.get("title") or "", "artist": m.get("artist") or ""}
@@ -555,6 +566,81 @@ class Player(QObject):
             self.ended, self.want = True, False
             return self._state()
         self._start(nxt, 0, True)
+
+    # ------------------------------------------------------------ the sleep timer
+
+    def _on_sleep(self, m):
+        """The sleep timer (frontend/src/player/sleep.ts), run here as on Android (Sleep.kt): at a time (`at`, ms),
+        or when the song `key` gets to `pos` (the page's seconds, as a seek's) or to its end, the volume goes down
+        over the last `fade` seconds and it pauses; then the volume is put back, for the next play. A speaker is
+        only paused. A new one replaces it, one with neither turns it off; pausing or playing by hand leaves it."""
+        self._sleeping.stop()
+        self._unfade()
+        self.sleep_at = max(0.0, float(m.get("at") or 0) / 1000)
+        self.sleep_key = None if self.sleep_at else m.get("key") or None
+        self.sleep_pos = None if m.get("pos") is None else float(m["pos"])
+        self.sleep_fade = max(0.0, float(m.get("fade") or 0))
+        self._sleep_check()
+
+    def _sleep_left(self) -> float | None:
+        """Seconds (real ones) until it pauses, 0 or less: now; None with no timer, or an end not known (the next
+        song tells)."""
+        if self.sleep_at:
+            return self.sleep_at - time.time()
+        if not self.sleep_key:
+            return None
+        cur = self._current()
+        if cur is None or cur.get("key") != self.sleep_key or self.ended:
+            return 0.0                      # it ended, or was left: nothing after it plays
+        # the page's seconds, as position() has them (a seek takes the stream's start off both)
+        end = self.sleep_pos if self.sleep_pos is not None else float(cur.get("duration") or 0)
+        if not end and not self.casting:
+            okd, dur = self.bin.query_duration(Gst.Format.TIME)
+            end = float(cur.get("offset") or 0) + dur / Gst.SECOND if okd and dur > 0 else 0.0
+        if not end:
+            return None
+        return (end - self.position()) / (1.0 if self.casting else self.rate)
+
+    def _sleep_check(self):
+        """Paused once the time comes, the volume going down on the way. Looked at again every 250 ms while it
+        fades, else when the fade is due (a minute ahead at most, by the clock: the computer may sleep); at a
+        song's place only while it plays (_state looks again when that changes)."""
+        left = self._sleep_left()
+        if left is None:
+            return
+        if left <= 0:
+            return self._slept()
+        fading = left < self.sleep_fade
+        if fading:
+            self._fade_to(left / self.sleep_fade)
+        else:
+            self._unfade()                  # moved back, out of the fade
+        if self.sleep_at or (self.want and not self.ended):
+            self._sleeping.start(int(1000 * (max(0.02, min(left, 0.25)) if fading else min(left - self.sleep_fade, 60))))
+
+    def _fade_to(self, share: float):
+        """The volume at `share` (1 down to 0) of the fade: squared, as the ear hears it go. Changed meanwhile
+        (muted, say), it's that volume that fades, and comes back."""
+        now = self.bin.get_property("volume")
+        if self.unfaded is None or abs(now - self.faded) > 1e-5:
+            self.unfaded = now
+        self.faded = self.unfaded * share * share
+        self.bin.set_property("volume", self.faded)
+
+    def _unfade(self):
+        """The volume as it was before the fade (unless it was changed meanwhile)."""
+        was, self.unfaded = self.unfaded, None
+        if was is not None and abs(self.bin.get_property("volume") - self.faded) <= 1e-5:
+            self.bin.set_property("volume", was)
+
+    def _slept(self, pause: bool = True):
+        """Done: paused (unless it was played again after the time went by), the volume back, and the page told."""
+        self._sleeping.stop()
+        self.sleep_at, self.sleep_key = 0.0, None
+        if pause and self.want:
+            self._on_pause({})
+        self._unfade()
+        self._send(t="slept")
 
     # ------------------------------------------------------------ the keys (the system's player)
 
@@ -789,12 +875,15 @@ class Player(QObject):
         self.sent.emit(json.dumps(self._state_msg()))
         self.changed.emit()
         self.keep()
+        if self.sleep_key:          # the sleep timer at a song's place: played on, moved, or left (which pauses at once)
+            self._sleep_check()
 
     def release(self):
         self.keep(now=True)
         if self.caster:
             self.caster.stop()
         self.ticking.stop()                     # nothing more to look after (_watch would start it again)
+        self._sleeping.stop()
         self._forget_seek()
         self.want = False
         self.bin.set_state(Gst.State.NULL)

@@ -6,7 +6,7 @@ import { api, fmtLong, fmtNumber, sized } from "../api";
 import { playAlbum, playRandom, playTracks, queryClient, toggleLike, usePlaylistPicker } from "../actions";
 import {
   ALBUM_SORTS, AlbumItems, ARTIST_SORTS, ArtistItems, DisplaySwitch, GENRE_SORTS, GenreItems, Segmented, SortMenu,
-  useBrowse, type Choice,
+  useBrowse, useStuck, type Choice,
 } from "../components/Browse";
 import { linkData, useChatOn } from "../chat/store";
 import { AdminCog } from "../components/AdminMode";
@@ -256,22 +256,6 @@ function Crumbs({ items }: { items: [string, string?][] }) {
       ))}
     </nav>
   );
-}
-
-/** Whether the bars right after `edge` are stuck to the top of the frame (the edge scrolled past it). */
-function useStuck() {
-  const edge = useRef<HTMLDivElement>(null);
-  const [on, setOn] = useState(false);
-  useEffect(() => {
-    const el = edge.current;
-    const root = el?.closest(".frame-scroll");
-    if (!el || !root) return;
-    const io = new IntersectionObserver(([e]) => setOn(!e.isIntersecting && e.boundingClientRect.top < (e.rootBounds?.top ?? 0)),
-                                        { root, threshold: 0 });
-    io.observe(el);
-    return () => io.disconnect();
-  }, []);
-  return { edge, on };
 }
 
 function BrowseShell({ view, title, kicker, crumbs, browse, sorts, actions, letters, children }: {

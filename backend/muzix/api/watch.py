@@ -198,6 +198,11 @@ def again(body: AgainBody):
     if body.how and (body.held != "_Duplicates" or body.how not in watch.HOW):
         raise HTTPException(400, "Not a way to file it")
     where = _place(body.key)
+    if next((f["only"] for f in watch.folders() if watch.key_of(f) == where.key), "") == "audiobooks":
+        if body.held != "_Failed":           # the audiobook one sets its duplicates aside in the library's _Duplicates
+            raise HTTPException(400, "Only a book that couldn't be made can be tried again")
+        return {"job_id": jobs.submit("import_books_watched", f"Audiobook watch folder: {body.name}", name=body.name,
+                                      key=where.key, held=body.held)}
     how = {"how": body.how} if body.how else {}
     return {"job_id": jobs.submit("import_watched", f"Watch folder: {body.name}", name=body.name, key=where.key,
                                   held=body.held, **how)}

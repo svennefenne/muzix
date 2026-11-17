@@ -223,6 +223,10 @@ export interface Book {
   author: string;
   narrator: string;
   series: string;
+  series_part: string;        // its number in the series: "5", "2.5" ("" when it has none)
+  genre: string;              // one of the server's (audiobook/place.py GENRES), "" for none
+  language: string;           // ISO code: "en", "sv" ("" unknown)
+  review: boolean;            // filed without a source sure of it: the admin's "Needs a look"
   year: number;
   duration: number;
   art: string | null;
@@ -233,6 +237,14 @@ export interface Book {
   chapters?: { title: string; start: number }[];
   parts?: { position: number; title: string; duration: number; offset: number; format: string; stream: string }[];
   peer?: string | null;       // the server in the Library Network it's from (null: this one's)
+  in_series?: Book[];         // its page: the series it's in, in order (this one too)
+  next?: Book | null;         // and the book after it there
+}
+
+/** The Audiobooks page's filters: the genres and languages the books have, with how many of each. */
+export interface BookFacets {
+  genres: { name: string; value: string; count: number }[];
+  languages: { code: string; name: string; count: number }[];
 }
 
 export interface Feed {

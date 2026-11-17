@@ -37,8 +37,8 @@ import com.google.common.util.concurrent.ListenableFuture
  * and carry the login cookie; requests elsewhere
  * (a radio station's logo) don't, and a speaker gets signed links instead. Away from wifi the
  * next songs are downloaded ahead, and a dropped connection is waited out (Buffering.kt).
- * Episodes and audiobooks have their places saved from here (Progress.kt), and what played last is
- * kept for the next start (LastPlayed.kt).
+ * Episodes and audiobooks have their places saved from here (Progress.kt), what played last is
+ * kept for the next start (LastPlayed.kt), and the sleep timer runs here (Sleep.kt).
  */
 class PlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
@@ -92,6 +92,7 @@ class PlaybackService : MediaSessionService() {
         progress = Progress(player).also { it.start() }
         lastPlayed = LastPlayed(this, player).also { it.start() }
         Companion.player = player
+        sleep = Sleep(this, player, local).also { it.start() }
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         session = MediaSession.Builder(this, player)
@@ -126,6 +127,8 @@ class PlaybackService : MediaSessionService() {
         progress = null
         lastPlayed?.stop()
         lastPlayed = null
+        sleep?.stop()
+        sleep = null
         session?.run {
             player.release()
             release()
@@ -139,5 +142,8 @@ class PlaybackService : MediaSessionService() {
 
         /** The session's player, while the service runs: PlayerBridge, in this same process, works it directly. */
         @Volatile var player: Player? = null
+
+        /** The sleep timer, while the service runs: PlayerBridge sets it as the page asks. */
+        @Volatile var sleep: Sleep? = null
     }
 }

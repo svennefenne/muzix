@@ -9,7 +9,7 @@ import shutil
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -42,11 +42,26 @@ def safe_rel(rel: str, fallback: str) -> str:
     return os.path.join(*parts) if parts else os.path.basename(fallback) or "file"
 
 
+class NewBatch(BaseModel):
+    kind: str = Field("music", pattern="^(music|audiobooks)$")
+
+
+def kind_file(batch: str):
+    """Beside a batch of audiobooks: that it is one (its books go through audiobook/pipeline.py, not beets)."""
+    return env.UPLOAD_DIR / f".{batch}.audiobooks"
+
+
+def kind_of(batch: str) -> str:
+    return "audiobooks" if kind_file(batch).exists() else "music"
+
+
 @router.post("/batch")
-def new_batch():
+def new_batch(body: NewBatch | None = None):
     name = datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + os.urandom(2).hex()
     batch_dir(name).mkdir(parents=True)
-    return {"batch": name}
+    if body is not None and body.kind == "audiobooks":
+        kind_file(name).touch()
+    return {"batch": name, "kind": body.kind if body else "music"}
 
 
 class Pending(BaseModel):
@@ -133,12 +148,32 @@ def batch_json(d, db: Session):
             except FileNotFoundError:
                 continue
             files.append({"path": os.path.relpath(p, d), "size": size, "kind": formats.family(f) or "other"})
-    job = db.scalar(select(Job).where(Job.type == "import_upload",
+    kind = kind_of(d.name)
+    job = db.scalar(select(Job).where(Job.type == ("import_books" if kind == "audiobooks" else "import_upload"),
                                       Job.params["batch"].as_string() == d.name).order_by(Job.id.desc()).limit(1))
     own = compilations(d.name)
-    return {"batch": d.name, "files": files, "created": created, "albums": albums_of(d.name, files, db, own),
-            "compilations": own,
+    return {"batch": d.name, "kind": kind, "files": files, "created": created,
+            "albums": albums_of(d.name, files, db, own) if kind == "music" else [],
+            "books": books_of(files) if kind == "audiobooks" else [], "compilations": own,
             "job": {"id": job.id, "status": job.status, "progress": job.progress, "message": job.message} if job else None}
+
+
+def books_of(files: list[dict]) -> list[dict]:
+    """An audiobook batch's books as they look before they're looked at: each top folder (or loose file) with its
+    sound files and size. (Which of them are one book is worked out when they're filed: audiobook/group.py.)"""
+    out: dict[str, dict] = {}
+    for f in files:
+        if f["kind"] not in duplicates.MUSIC:
+            continue
+        top = f["path"].split("/", 1)[0]
+        b = out.setdefault(top, {"name": os.path.splitext(top)[0] if "/" not in f["path"] else top, "files": 0, "size": 0,
+                                 "formats": []})
+        b["files"] += 1
+        b["size"] += f["size"]
+        ext = formats.ext_of(f["path"])
+        if ext not in b["formats"]:
+            b["formats"].append(ext)
+    return sorted(out.values(), key=lambda b: b["name"].casefold())
 
 
 def albums_of(batch: str, files: list[dict], db: Session, own: list[str] = ()) -> list[dict]:
@@ -240,6 +275,8 @@ def set_compilation(batch: str, body: Own, db: Session = Depends(get_db, scope="
 def start_import(batch: str):
     if not batch_dir(batch).is_dir():
         raise HTTPException(404, "No such upload batch")
+    if kind_of(batch) == "audiobooks":
+        return {"job_id": jobs.submit("import_books", f"Import audiobooks {batch}", batch=batch)}
     return {"job_id": jobs.submit("import_upload", f"Import upload {batch}", batch=batch, _allow_parallel=True)}
 
 
@@ -247,5 +284,6 @@ def start_import(batch: str):
 def discard(batch: str, db: Session = Depends(get_db, scope="function")):
     shutil.rmtree(batch_dir(batch), ignore_errors=True)
     own_file(batch).unlink(missing_ok=True)
+    kind_file(batch).unlink(missing_ok=True)
     duplicates.forget(db, batch)
     return {"ok": True}

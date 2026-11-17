@@ -69,6 +69,8 @@ class AppPlayer {
   standby = false;
   /** The app downloads and installs a newer version of itself (since 0.8.0). */
   updates = false;
+  /** The app runs the sleep timer itself (player/sleep.ts), so it fades and pauses with the page asleep. */
+  sleeps = false;
 
   get active() {
     return this.connected;
@@ -292,6 +294,12 @@ class AppPlayer {
     this.send({ t: "upcoming", items: want.map((it) => this.item(it, token)) });
   }
 
+  /** The sleep timer (player/sleep.ts), for the app to run: pause at `at` (ms), or when `key` gets to `pos` seconds
+   * (or to its end), the volume going down over the last `fade` seconds; all null turns it off. */
+  sleep(timer: { at: number | null; key: string | null; pos: number | null; fade: number }) {
+    if (this.sleeps) this.send({ t: "sleep", ...timer });
+  }
+
   /** The app's speaker picker (while casting: the speaker's volume and Stop casting). */
   chooseSpeaker() {
     this.send({ t: "cast" });
@@ -374,6 +382,7 @@ class AppPlayer {
     else if (m.t === "item") this.onItem(m.key as string, (m.offset as number) || 0, m.muzix as string);
     else if (m.t === "state") this.onState(m as unknown as AppState);
     else if (m.t === "saved") this.hooks?.onSaved(m.key as string);
+    else if (m.t === "slept") window.dispatchEvent(new Event("muzix:slept"));     // the app's sleep timer paused it
     else if (m.t === "volume") usePlayer.getState().set({ volume: m.value as number, muted: !!m.muted });
     else if (m.t === "queue") this.onQueue(m.queue as string[], m.index as number);
     else if (m.t === "downloads") this.onDownloads(m.list as Downloaded[], !!m.offline);
@@ -392,7 +401,7 @@ class AppPlayer {
   private onHello(m: { queue: string[]; index: number; state: AppState; saves?: boolean; device?: string; volume?: number; updates?: boolean;
                        downloads?: Downloaded[]; offline?: boolean; opens?: boolean; desktop?: { version: string; platform: string };
                        library?: Library; last?: { queue: string[]; index: number; position: number; at: number };
-                       deviceId?: string; shares?: boolean; clipboard?: boolean }) {
+                       deviceId?: string; shares?: boolean; clipboard?: boolean; sleep?: boolean }) {
     // an app that opens the web version's admin pages in the browser (Android 0.9 on, Muzix Desktop) has none of its own;
     // Muzix Desktop says its version and system, for its updates (appUpdate.ts); an app with a library of its
     // own (Android 0.10.1, Muzix Desktop 0.3.1 on) says which one shows
@@ -406,6 +415,7 @@ class AppPlayer {
     this.connected = true;
     this.saves = !!m.saves;
     this.updates = !!m.updates;
+    this.sleeps = !!m.sleep;
     // copies to the clipboard (both apps) and opens the share sheet (Android) itself
     this.clipboard = !!m.clipboard;
     this.sharesNative = !!m.shares;

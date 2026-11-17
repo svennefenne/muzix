@@ -35,9 +35,12 @@ def natural_key(s: str):
     return [int(x) if x.isdigit() else x.casefold() for x in re.split(r"(\d+)", s)]
 
 
-def find_books(root: str):
-    """Yield (book path, [part file paths]) for every book under root."""
+def find_books(root: str, skip: tuple = ()):
+    """Yield (book path, [part file paths]) for every book under root. Folders starting with _ or . (_Duplicates,
+    _Other files) and those in ``skip`` (the root's excludes, a watch folder) are passed over."""
     for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if not d.startswith(("_", ".")) and os.path.join(dirpath, d) not in skip
+                       and os.path.relpath(os.path.join(dirpath, d), root) not in skip]
         dirnames.sort(key=natural_key)
         if DISC_DIR.match(os.path.basename(dirpath)) and dirpath != root:
             continue   # read together with its parent folder
@@ -110,9 +113,65 @@ def read_book(path: str, parts: list[str]) -> dict:
     cover = find_cover(folder)
     if not cover and first.embedded_art:
         cover = f"embedded-file:{parts[0]}"
-    return dict(title=title, author=author, narrator=first.extra.get("narrator", ""),
-                series=os.path.basename(os.path.dirname(folder)) if os.path.isdir(path) else "",
-                year=first.year, art=cover, duration=offset, chapters=chapters), part_rows
+    meta = dict(title=title, author=author, narrator=first.extra.get("narrator", ""), series="", series_part="",
+                year=first.year, art=cover, duration=offset, chapters=chapters, genre=real_tag(first.genre), language="",
+                asin="", description="", review=False)
+    # a folder named the Muzix way: Genre/Author/Series/Vol 5 - 2024 - Title (audiobook/place.py)
+    named = re.match(r"^(?:Vol|Book)\s*([\d.]+)\s*-\s*(?:(\d{4})\s*-\s*)?(.+?)(\s*\{[^}]*\})?$", os.path.basename(folder), re.I)
+    if named:
+        meta.update(series=os.path.basename(os.path.dirname(folder)), series_part=named.group(1))
+        if named.group(2):
+            meta["year"] = int(named.group(2))
+    meta.update({k: v for k, v in book_tags(parts[0]).items() if v} if len(parts) == 1 else {})
+    meta.update({k: v for k, v in sidecar(folder).items() if v not in ("", None, [])})
+    return meta, part_rows
+
+
+def book_tags(path: str) -> dict:
+    """What an .m4b made by Muzix (audiobook/make.py), or tagged the same way, says beyond the usual tags."""
+    try:
+        from mutagen.mp4 import MP4
+        t = MP4(path).tags or {}
+    except Exception:  # noqa: BLE001  not an MP4, or unreadable
+        return {}
+
+    def free(name):
+        v = t.get(f"----:com.apple.iTunes:{name}")
+        return bytes(v[0]).decode("utf-8", "replace").strip() if v else ""
+
+    def text(key):
+        v = t.get(key)
+        return str(v[0]).strip() if v else ""
+
+    out = {"series": free("SERIES") or text("\xa9mvn"), "series_part": free("SERIES-PART") or text("\xa9mvi"),
+           "language": _language(free("LANGUAGE")), "asin": free("ASIN"), "description": text("ldes") or text("desc"),
+           "narrator": free("NARRATOR")}
+    return out
+
+
+def sidecar(folder: str) -> dict:
+    """metadata.json beside a book (Audiobookshelf's format; Muzix writes one with every book it makes)."""
+    try:
+        with open(os.path.join(folder, "metadata.json")) as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(d, dict):
+        return {}
+    series = (d.get("series") or [""])[0] or ""
+    m = re.match(r"^(.*?)\s*#\s*([\d.]+)$", series)
+    year = str(d.get("publishedYear") or "")
+    return {"title": d.get("title") or "", "author": ", ".join(d.get("authors") or []),
+            "narrator": ", ".join(d.get("narrators") or []), "series": m.group(1) if m else series,
+            "series_part": m.group(2) if m else "", "genre": (d.get("genres") or [""])[0] or "",
+            "language": _language(d.get("language") or ""), "asin": d.get("asin") or "",
+            "description": d.get("description") or "", "year": int(year) if year.isdigit() else 0,
+            "review": bool((d.get("muzix") or {}).get("review"))}
+
+
+def _language(v: str) -> str:
+    from .audiobook.place import language_code
+    return language_code(v)
 
 
 @jobs.job("scan_books")
@@ -122,14 +181,17 @@ def scan_books(ctx: jobs.JobContext, full: bool = False):
         return {"added": 0, "updated": 0}
     gen = int(time.time())
     with db.session() as s:
-        roots = [(r.id, r.path) for r in s.scalars(select(Root).where(Root.kind == "audiobooks", Root.enabled.is_(True)))]
+        roots = [(r.id, r.path, tuple(os.path.join(r.path, e.strip("/")) for e in (r.excludes or [])))
+                 for r in s.scalars(select(Root).where(Root.kind == "audiobooks", Root.enabled.is_(True)))]
+    from . import watch
+    watched = tuple(f["folder"].rstrip("/") for f in watch.folders() if not f["computer"])
     added = updated = 0
-    for rid, root in roots:
+    for rid, root, excludes in roots:
         if not os.path.isdir(root):
             ctx.log(f"{root} is not mounted, skipped")
             continue
         ctx.log(f"scanning {root}")
-        found = list(find_books(root))
+        found = list(find_books(root, excludes + watched))
         ctx.log(f"  {len(found)} books")
         for i, (path, parts) in enumerate(found):
             ctx.check()
