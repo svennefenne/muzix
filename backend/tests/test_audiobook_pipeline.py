@@ -80,6 +80,7 @@ def test_one_m4b_with_a_chapter_a_file_and_the_tags(upload, tmp_path):
     assert bytes(t["----:com.apple.iTunes:SERIES"][0]) == b"The Expanse" and bytes(t["----:com.apple.iTunes:LANGUAGE"][0]) == b"en"
     meta = json.load(open(tmp_path / "book" / "metadata.json"))
     assert [c["title"] for c in meta["chapters"]] == ["Chapter 1", "Chapter 2", "Epilogue"]
+    assert [c["title"] for c in books.ffprobe_chapters(out["file"])] == ["Chapter 1", "Chapter 2", "Epilogue"]   # in the file too
     assert meta["series"] == ["The Expanse #1"] and meta["description"] == "Two ships."
     assert os.path.exists(lw.files[0].path)          # make() leaves the originals; the pipeline deletes them
 
@@ -172,8 +173,9 @@ def test_an_upload_filed_and_scanned(upload, library, monkeypatch):
         lw = got["Leviathan Wakes"]
         assert (lw.author, lw.series, lw.series_part, lw.genre, lw.language, lw.year, lw.review) == \
             ("James S.A. Corey", "The Expanse", "1", "Science Fiction", "en", 2011, False)
-        assert len(lw.chapters) == 3
+        assert len(lw.chapters) == 3 and lw.chapters[0]["title"] == "Chapter 1"
         assert got["Wind and Truth"].review is True          # no source knew it: the admin looks
+        assert s.scalar(select(Root.last_scan).where(Root.kind == "audiobooks")) is not None   # not "scanned never"
 
 
 def test_a_book_the_library_has_goes_to_duplicates(upload, library, monkeypatch):

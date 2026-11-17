@@ -13,7 +13,7 @@ import re
 import subprocess
 import time
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select, update
 
 from . import db, formats, jobs, modules
 from .meta import tags
@@ -223,5 +223,6 @@ def scan_books(ctx: jobs.JobContext, full: bool = False):
                 ctx.update(i / max(1, len(found)), f"{root}: {i}/{len(found)} books")
         with db.session() as s:
             gone = s.execute(delete(Book).where(Book.root_id == rid, Book.seen_scan != gen)).rowcount
+            s.execute(update(Root).where(Root.id == rid).values(last_scan=func.now()))   # Library folders: "scanned 2 min ago"
         ctx.log(f"  +{added} ~{updated} -{gone}")
     return {"added": added, "updated": updated}

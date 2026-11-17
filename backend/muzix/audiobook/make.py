@@ -246,7 +246,7 @@ def make(paths: list[str], f: Found, genre: str, language: str, folder: str, hom
         if same:            # one stream of packets, the files one after another
             cmd = ["nice", "-n", "15", "ffmpeg", "-nostdin", "-v", "error", "-y", "-f", "concat", "-safe", "0",
                    "-i", os.path.join(tmp, "list.txt"), "-i", os.path.join(tmp, "meta.txt"),
-                   "-map", "0:a:0", "-map_metadata", "-1", "-map_chapters", "1"]
+                   "-map", "0:a:0", "-map_metadata", "1", "-map_chapters", "1"]   # meta.txt's: -1 drops the chapters' titles too
         else:               # files of different kinds (an AAC profile, a rate): each decoded by itself, then joined
             n = len(files)
             graph = "".join(f"[{i}:a:0]aresample={rate},aformat=channel_layouts={'mono' if ch == 1 else 'stereo'}[a{i}];"
@@ -255,7 +255,7 @@ def make(paths: list[str], f: Found, genre: str, language: str, folder: str, hom
             for x in files:
                 cmd += ["-i", x["path"]]
             cmd += ["-i", os.path.join(tmp, "meta.txt"), "-filter_complex", graph, "-map", "[out]",
-                    "-map_metadata", "-1", "-map_chapters", str(n)]
+                    "-map_metadata", str(n), "-map_chapters", str(n)]
         src = sum(x["bitrate"] * x["duration"] for x in files) / total / 1000
         if copy:
             cmd += ["-c:a", "copy"]
