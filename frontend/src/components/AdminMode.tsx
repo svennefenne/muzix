@@ -1,8 +1,9 @@
 /** Admin mode: a cog on every library item (albums, songs, artists, books, podcasts, playlists,
- * stations) with Edit metadata, Hide from library and Delete (and an artist's or album's Edit tags, an album's Merge, type and genre). Deleted files go to a trash on
+ * stations) with Edit metadata, Hide from library and Delete (and an artist's or album's Edit tags, an album's Merge, type and genre,
+ * a book's Mark as not started). Deleted files go to a trash on
  * their share; hidden things and the trash are on the admin page. */
 
-import { Check, Combine, Disc3, EyeOff, Guitar, ListMusic, Pencil, Settings, Tags, Trash2 } from "lucide-react";
+import { Check, Combine, Disc3, EyeOff, Guitar, ListMusic, Pencil, RotateCcw, Settings, Tags, Trash2 } from "lucide-react";
 import { create } from "zustand";
 import { queryClient } from "../actions";
 import { api } from "../api";
@@ -128,8 +129,11 @@ export function AdminCog({ kind, id, title, className = "", peer }: {
               e.preventDefault();
               e.stopPropagation();
               const at = { clientX: e.clientX, clientY: e.clientY, target: e.currentTarget };
+              // your own listening, for a book of any library's
+              const listening = kind === "book" ? [{ label: "Mark as not started", icon: <RotateCcw size={16} />, onClick: () => void notStarted(t) }] : [];
               showMenu(e, peer ? [
                 { heading: title },
+                ...listening,
                 { label: "Hide from library", icon: <EyeOff size={16} />, onClick: () => hide(t) },
                 { sep: true },
                 { heading: `In ${peer}'s library: its admin edits it` },
@@ -148,6 +152,7 @@ export function AdminCog({ kind, id, title, className = "", peer }: {
                 ]) }] : []),
                 ...(kind === "album" ? [{ label: "Change genre", icon: <Guitar size={16} />, onClick: () => void pickGenre(at, t, () => setEdit(t)) }] : []),
                 ...(kind === "album" ? [{ label: "Make compilation", icon: <ListMusic size={16} />, onClick: () => void makeCompilation(id) }] : []),
+                ...listening,
                 { label: "Hide from library", icon: <EyeOff size={16} />, onClick: () => hide(t) },
                 { label: "Delete", icon: <Trash2 size={16} />, onClick: () => setConfirm(t) },
               ]);
@@ -155,6 +160,19 @@ export function AdminCog({ kind, id, title, className = "", peer }: {
       <Settings size={15} />
     </button>
   );
+}
+
+/** A book back to not started for you: where you were and that you'd finished it are forgotten (backend api/books.py). */
+async function notStarted(t: Target) {
+  const notify = useUi.getState().notify;
+  try {
+    await api.del(`/api/books/${t.id}/progress`);
+    queryClient.invalidateQueries({ queryKey: ["book", t.id] });
+    queryClient.invalidateQueries({ queryKey: ["books"] });
+    notify(`${t.title}: not started`);
+  } catch (e) {
+    notify((e as Error).message, "error");
+  }
 }
 
 /** An admin's choice of an album's type, over its tags' and the guess (backend/muzix/releases.py); "": theirs again. */

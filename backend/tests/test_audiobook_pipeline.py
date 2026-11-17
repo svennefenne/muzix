@@ -283,6 +283,27 @@ def test_a_series_across_its_authors(library, api):
     assert detail["next"]["title"] == "Galaxy in Flames"
 
 
+def test_a_book_marked_as_not_started(library, api):
+    with db.session() as s:
+        b = Book(root_id=s.scalar(select(Root.id).where(Root.kind == "audiobooks")), path="/x/Mordets praktik.m4b",
+                 title="Mordets praktik", author="Kerstin Ekman", duration=24060)
+        s.add(b)
+        s.flush()
+        bid = b.id
+
+    def under(status):
+        return [x["id"] for x in api.get("/api/books", params={"status": status}).json()["items"]]
+
+    assert under("new") == [bid]
+    api.put(f"/api/books/{bid}/progress", json={"position": 24060, "finished": True})
+    assert under("finished") == [bid] and under("new") == []
+    api.put(f"/api/books/{bid}/progress", json={"position": 0, "finished": False})      # Mark unfinished
+    assert under("new") == [] and under("listening") == []                               # ... isn't "not started"
+    assert api.delete(f"/api/books/{bid}/progress").json() == {"ok": True}
+    assert under("new") == [bid] and under("finished") == [] and api.get(f"/api/books/{bid}").json()["position"] == 0
+    assert api.delete(f"/api/books/{bid}/progress").json() == {"ok": True}                 # twice is no harm
+
+
 def test_duplicates_kept_or_thrown_away(upload, library, monkeypatch, api):
     with db.session() as s:
         s.add(Book(root_id=s.scalar(select(Root.id).where(Root.kind == "audiobooks")), path="/x/Veritas Ferrum.m4b",

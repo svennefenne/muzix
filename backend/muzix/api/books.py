@@ -141,6 +141,16 @@ def progress(book_id: int, body: Progress, db: Session = Depends(get_db_with_cop
     return {"ok": True}
 
 
+@router.delete("/{book_id}/progress")
+def not_started(book_id: int, db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
+    """Marked as not started: where you were, and that you finished it, forgotten (it's under Not started again)."""
+    row = db.get(BookProgress, (user.id, book_id))
+    if row is not None:
+        db.delete(row)
+        db.commit()
+    return {"ok": True}
+
+
 art_router = APIRouter(prefix="/api/art", tags=["art"])
 
 
