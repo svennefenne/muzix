@@ -2,6 +2,7 @@
 filed as Genre/Author/Series/Vol N - Year - Title, and read back by the scanner; the sources are stood in for."""
 import json
 import os
+import shutil
 import subprocess
 
 import pytest
@@ -15,6 +16,8 @@ from muzix.models import Book, Root
 
 
 def tone(path, seconds=3, title="", album="", artist="", albumartist="", track=0, codec="mp3"):
+    if not shutil.which("ffmpeg"):
+        pytest.skip("needs ffmpeg")       # the CI's runner has none; the image and a dev machine do
     os.makedirs(os.path.dirname(path), exist_ok=True)
     args = ["-c:a", "libmp3lame", "-b:a", "64k"] if codec == "mp3" else ["-c:a", "aac", "-b:a", "64k"]
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", f"sine=frequency=440:duration={seconds}", "-ac", "1",
