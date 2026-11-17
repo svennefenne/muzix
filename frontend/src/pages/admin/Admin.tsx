@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Blocks, Disc3, EyeOff, FileQuestion, FolderOpen, Gamepad2, HardDrive, History, Image as ImageIcon, Library, ListMusic, Network, Plus, RefreshCw, Save, Settings2, Share2, Tags as TagsIcon, Trash2, Upload, Users, X } from "lucide-react";
+import { Activity, Blocks, ChartColumn, Disc3, EyeOff, FileQuestion, FolderOpen, Gamepad2, HardDrive, History, Image as ImageIcon, Library, ListMusic, Network, Plus, RefreshCw, Save, Settings2, Share2, Tags as TagsIcon, Trash2, Upload, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { create } from "zustand";
@@ -10,6 +10,7 @@ import { SharedLinks } from "../../components/Share";
 import { Art, Display, Empty, Kicker, Loading, Modal, Switch } from "../../components/ui";
 import { useUi } from "../../store/ui";
 import type { Album, Job } from "../../types";
+import { Data } from "./Data";
 import { Edits } from "./Edits";
 import { HiddenAndTrash } from "./HiddenTrash";
 import { FolderBrowser, SettingField, type SettingSpec } from "./fields";
@@ -853,7 +854,7 @@ export default function Admin() {
   if (!user?.is_admin) return <div className="page"><Empty title="Admins only" /></div>;
   // files dragged over any admin page can be dropped to upload them
   const files = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
-  const nav = [["", "Overview", Activity], ["library", "Library folders", Library], ["modules", "Modules", Blocks],
+  const nav = [["", "Overview", Activity], ["data", "Data", ChartColumn], ["library", "Library folders", Library], ["modules", "Modules", Blocks],
     ...(modules.network ? [["network", "Library Network", Network] as const] : []), ["upload", "Upload", Upload],
     ["tags", "Tags", TagsIcon], ["edits", "Edits", History], ["hidden", "Hidden & trash", EyeOff], ["jobs", "Jobs", RefreshCw], ["settings", "Settings", Settings2], ["users", "Users", Users],
     ["shares", "Shared links", Share2]] as const;
@@ -881,6 +882,7 @@ export default function Admin() {
         <div style={{ minWidth: 0 }}>
           <Routes>
             <Route index element={<Overview />} />
+            <Route path="data" element={<Data />} />
             <Route path="library" element={<LibraryFolders />} />
             <Route path="modules" element={<Modules />} />
             <Route path="network" element={<LibraryNetwork />} />

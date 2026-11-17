@@ -3,20 +3,38 @@ import shutil
 import threading
 import time
 from collections import Counter
+from datetime import date
 from types import SimpleNamespace
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import __version__, env, jobs, limits, modules, network, render, serial, settings
+from .. import __version__, env, jobs, limits, modules, network, render, serial, settings, traffic
 from ..db import get_db, get_db_all, get_db_with_copies
 from ..meta import gme, openmpt
 from ..models import Album, Artist, Book, Feed, Job, Root, Track, User
 from ..security import admin_user, hash_password
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(admin_user)])
+
+
+# ---------------------------------------------------------------- data sent out (traffic.py)
+
+@router.get("/data")
+def data(by: str = Query("day", pattern="^(day|week|month)$")):
+    """What went out today so far, yesterday, this and last week and month; and day by day, week by week or
+    month by month."""
+    return traffic.summary(by)
+
+
+@router.get("/data/devices")
+def data_devices(start: date, end: date):
+    """Who it went to between two days (both included)."""
+    if end < start:
+        raise HTTPException(400, "The end comes before the start")
+    return traffic.devices(start, end)
 
 
 # ---------------------------------------------------------------- settings
@@ -102,14 +120,14 @@ def root_json(r: Root, db: Session):
 
 
 @router.get("/roots")
-def roots(db: Session = Depends(get_db_with_copies)):
+def roots(db: Session = Depends(get_db_with_copies, scope="function")):
     # not the ones holding what other servers share (mirror.py)
     mine = select(Root).where(Root.kind != "peer").order_by(Root.kind, Root.path)
     return [root_json(r, db) for r in db.scalars(mine)]
 
 
 @router.post("/roots")
-def add_root(body: RootBody, db: Session = Depends(get_db)):
+def add_root(body: RootBody, db: Session = Depends(get_db, scope="function")):
     path = os.path.normpath(body.path)
     if not os.path.isdir(path):
         raise HTTPException(400, f"{path} is not a folder inside the container")
@@ -130,7 +148,7 @@ def _clear_upload_target(db, kind):
 
 
 @router.put("/roots/{root_id}")
-def edit_root(root_id: int, body: RootBody, db: Session = Depends(get_db)):
+def edit_root(root_id: int, body: RootBody, db: Session = Depends(get_db, scope="function")):
     r = db.get(Root, root_id)
     if r is None:
         raise HTTPException(404, "No such folder")
@@ -143,7 +161,7 @@ def edit_root(root_id: int, body: RootBody, db: Session = Depends(get_db)):
 
 
 @router.delete("/roots/{root_id}")
-def delete_root(root_id: int, db: Session = Depends(get_db)):
+def delete_root(root_id: int, db: Session = Depends(get_db, scope="function")):
     r = db.get(Root, root_id)
     if r is None:
         raise HTTPException(404, "No such folder")
@@ -197,12 +215,12 @@ def job_json(j: Job, with_log=False):
 
 
 @router.get("/jobs")
-def list_jobs(limit: int = 50, db: Session = Depends(get_db)):
+def list_jobs(limit: int = 50, db: Session = Depends(get_db, scope="function")):
     return [job_json(j) for j in db.scalars(select(Job).order_by(Job.id.desc()).limit(limit))]
 
 
 @router.get("/jobs/{job_id}")
-def get_job(job_id: int, db: Session = Depends(get_db)):
+def get_job(job_id: int, db: Session = Depends(get_db, scope="function")):
     j = db.get(Job, job_id)
     if j is None:
         raise HTTPException(404, "No such job")
@@ -247,14 +265,14 @@ def _limits_json(db: Session, raw: dict | None) -> dict:
 
 
 @router.get("/users")
-def users(db: Session = Depends(get_db_all)):
+def users(db: Session = Depends(get_db_all, scope="function")):
     return [{"id": u.id, "username": u.username, "is_admin": u.is_admin, "avatar": serial.avatar(u),
              "can_share": u.can_share, "limits": _limits_json(db, u.limits), "created_at": serial.iso(u.created_at)}
             for u in db.scalars(select(User).order_by(User.id))]
 
 
 @router.post("/users")
-def add_user(body: UserBody, db: Session = Depends(get_db)):
+def add_user(body: UserBody, db: Session = Depends(get_db, scope="function")):
     if not body.password:
         raise HTTPException(400, "A new user needs a password")
     if db.scalar(select(User.id).where(func.casefold(User.username) == body.username.casefold())):
@@ -267,7 +285,7 @@ def add_user(body: UserBody, db: Session = Depends(get_db)):
 
 
 @router.put("/users/{user_id}")
-def edit_user(user_id: int, body: UserBody, db: Session = Depends(get_db), me: User = Depends(admin_user)):
+def edit_user(user_id: int, body: UserBody, db: Session = Depends(get_db, scope="function"), me: User = Depends(admin_user)):
     u = db.get(User, user_id)
     if u is None:
         raise HTTPException(404, "No such user")
@@ -283,7 +301,7 @@ def edit_user(user_id: int, body: UserBody, db: Session = Depends(get_db), me: U
 
 
 @router.delete("/users/{user_id}")
-def delete_user(user_id: int, db: Session = Depends(get_db), me: User = Depends(admin_user)):
+def delete_user(user_id: int, db: Session = Depends(get_db, scope="function"), me: User = Depends(admin_user)):
     if user_id == me.id:
         raise HTTPException(400, "You can't delete yourself")
     u = db.get(User, user_id)
@@ -294,7 +312,7 @@ def delete_user(user_id: int, db: Session = Depends(get_db), me: User = Depends(
 
 
 @router.put("/users/{user_id}/limits")
-def set_limits(user_id: int, body: LimitsBody, db: Session = Depends(get_db_all)):
+def set_limits(user_id: int, body: LimitsBody, db: Session = Depends(get_db_all, scope="function")):
     """What the account doesn't see: nothing of it shows for them, anywhere, and nothing says so."""
     u = db.get(User, user_id)
     if u is None:
@@ -312,7 +330,7 @@ def limits_preview(body: LimitsBody):
 
 
 @router.get("/limits/choices")
-def limits_choices(db: Session = Depends(get_db_all)):
+def limits_choices(db: Session = Depends(get_db_all, scope="function")):
     """What limits can be made of: the genre folders (with music without one as ""), and the genre tags
     the artists carry, most carried first."""
     genres = db.execute(select(Album.genre, func.count(), func.count(Album.artist_id.distinct()))
@@ -326,7 +344,7 @@ def limits_choices(db: Session = Depends(get_db_all)):
 
 
 @router.get("/limits/artists")
-def limits_artists(q: str = "", db: Session = Depends(get_db_all)):
+def limits_artists(q: str = "", db: Session = Depends(get_db_all, scope="function")):
     """Artists by name, to leave out or let through."""
     q = q.strip()
     if not q:
@@ -372,7 +390,7 @@ def _folder_sizes(force=False):
 
 
 @router.get("/status")
-def status(db: Session = Depends(get_db_with_copies)):
+def status(db: Session = Depends(get_db_with_copies, scope="function")):
     tools = {name: render.have(name) for name in ("ffmpeg", "ffprobe", "sidplayfp", "fluidsynth", "ymtool", "furnace", "zxtune123", "uade123", "beet")}
     tools["libgme"] = gme.available()
     tools["libgme-sgc"] = gme.available("x.sgc")
@@ -404,7 +422,7 @@ def _without_art():
 
 
 @router.get("/without-art")
-def without_art(limit: int = 100, offset: int = 0, db: Session = Depends(get_db_with_copies)):
+def without_art(limit: int = 100, offset: int = 0, db: Session = Depends(get_db_with_copies, scope="function")):
     """The albums without a cover, by artist and title, with their folder (to find them), a page at a time."""
     q = select(Album).where(*_without_art())
     total = db.scalar(select(func.count()).select_from(q.subquery()))

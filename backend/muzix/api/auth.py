@@ -29,7 +29,7 @@ def user_json(db: Session, u: User | None, token: str | None):
 
 
 @router.get("/state")
-def state(request: Request, db: Session = Depends(get_db), user: User | None = Depends(optional_user)):
+def state(request: Request, db: Session = Depends(get_db, scope="function"), user: User | None = Depends(optional_user)):
     return {
         "needs_setup": not has_users(db),
         # the admin account is there; the rest of the setup isn't done (api/setup.py)
@@ -45,7 +45,7 @@ def state(request: Request, db: Session = Depends(get_db), user: User | None = D
 
 
 @router.post("/setup")
-def setup(body: Credentials, request: Request, response: Response, db: Session = Depends(get_db)):
+def setup(body: Credentials, request: Request, response: Response, db: Session = Depends(get_db, scope="function")):
     if has_users(db):
         raise HTTPException(409, "Muzix is already set up")
     if len(body.password) < 6:
@@ -66,14 +66,14 @@ def _signing_in(db: Session, body: Credentials) -> User:
 
 
 @router.post("/login")
-def login(body: Credentials, request: Request, response: Response, db: Session = Depends(get_db)):
+def login(body: Credentials, request: Request, response: Response, db: Session = Depends(get_db, scope="function")):
     user = _signing_in(db, body)
     token = start_session(db, user, request, response, body.device.strip())
     return {"user": user_json(db, user, token)}
 
 
 @router.post("/token")
-def app_login(body: Credentials, request: Request, db: Session = Depends(get_db)):
+def app_login(body: Credentials, request: Request, db: Session = Depends(get_db, scope="function")):
     """An app signs in: a token of the device's own, sent as `Authorization: Bearer <token>` from then on
     (the API, streams, Connect). Signed out from the account's list of devices, or by /logout with it."""
     user = _signing_in(db, body)
@@ -82,13 +82,13 @@ def app_login(body: Credentials, request: Request, db: Session = Depends(get_db)
 
 
 @router.post("/logout")
-def logout(request: Request, response: Response, db: Session = Depends(get_db)):
+def logout(request: Request, response: Response, db: Session = Depends(get_db, scope="function")):
     end_session(db, request, response)
     return {"ok": True}
 
 
 @router.post("/signup")
-def signup(body: Credentials, request: Request, response: Response, db: Session = Depends(get_db)):
+def signup(body: Credentials, request: Request, response: Response, db: Session = Depends(get_db, scope="function")):
     if not settings.get("allow_signup"):
         raise HTTPException(403, "Sign-up is turned off")
     if db.scalar(select(User.id).where(func.casefold(User.username) == body.username.strip().casefold())):

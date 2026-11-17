@@ -73,7 +73,7 @@ def add_default_roots(db: Session):
 
 
 @router.get("")
-def setup_info(db: Session = Depends(get_db)):
+def setup_info(db: Session = Depends(get_db, scope="function")):
     """What the setup asks, with what it suggests: the mounted folders, and the modules whose
     folders are there (and those that need nothing set up elsewhere)."""
     folders = mounted()
@@ -105,7 +105,7 @@ class Finish(BaseModel):
 
 
 @router.post("/finish")
-def finish(body: Finish, db: Session = Depends(get_db)):
+def finish(body: Finish, db: Session = Depends(get_db, scope="function")):
     if not pending():
         raise HTTPException(409, "Muzix is already set up")
     allowed = {*GENERAL, *METADATA, *modules.OWNER}
@@ -132,7 +132,7 @@ def finish(body: Finish, db: Session = Depends(get_db)):
 
 
 @router.post("/skip")
-def skip(db: Session = Depends(get_db)):
+def skip(db: Session = Depends(get_db, scope="function")):
     """Everything as it comes: the mounted folders, every module on."""
     if not pending():
         raise HTTPException(409, "Muzix is already set up")

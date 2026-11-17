@@ -40,7 +40,7 @@ def book_json(b: Book, prog: BookProgress | None, full=False, parts=None):
 
 
 @router.get("")
-def books(db: Session = Depends(get_db), user: User = Depends(current_user), q: str = "",
+def books(db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user), q: str = "",
           sort: str = "title", status: str = "all", limit: int = Query(200, le=1000), offset: int = 0):
     query = select(Book, BookProgress).outerjoin(
         BookProgress, (BookProgress.book_id == Book.id) & (BookProgress.user_id == user.id))
@@ -60,7 +60,7 @@ def books(db: Session = Depends(get_db), user: User = Depends(current_user), q: 
 
 
 @router.get("/{book_id}")
-def book(book_id: int, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def book(book_id: int, db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     b = db.get(Book, book_id)
     if b is None:
         raise HTTPException(404, "No such book")
@@ -70,7 +70,7 @@ def book(book_id: int, db: Session = Depends(get_db_with_copies), user: User = D
 
 @router.get("/{book_id}/parts/{position}/stream")
 def part_stream(book_id: int, position: int, request: Request, q: str = "original", t: float = 0.0,
-                db: Session = Depends(get_db_with_copies), user: User = Depends(stream_user)):
+                db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(stream_user)):
     p = db.scalar(select(BookPart).where(BookPart.book_id == book_id, BookPart.position == position))
     if p is None:
         raise HTTPException(404, "No such part")
@@ -87,7 +87,7 @@ class Progress(BaseModel):
 
 
 @router.put("/{book_id}/progress")
-def progress(book_id: int, body: Progress, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def progress(book_id: int, body: Progress, db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     if db.get(Book, book_id) is None:
         raise HTTPException(404, "No such book")
     row = db.get(BookProgress, (user.id, book_id)) or BookProgress(user_id=user.id, book_id=book_id)
@@ -102,7 +102,7 @@ art_router = APIRouter(prefix="/api/art", tags=["art"])
 
 
 @art_router.get("/book/{book_id}")
-def book_art(book_id: int, s: int = 300, db: Session = Depends(get_db_with_copies)):
+def book_art(book_id: int, s: int = 300, db: Session = Depends(get_db_with_copies, scope="function")):
     b = db.get(Book, book_id)
     if b is None or not b.art:
         return Response(status_code=404)

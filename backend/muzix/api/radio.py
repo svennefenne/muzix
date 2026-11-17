@@ -112,12 +112,12 @@ def saved_json(s: Station):
 
 
 @router.get("/stations")
-def saved(db: Session = Depends(get_db), user: User = Depends(current_user)):
+def saved(db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user)):
     return [saved_json(s) for s in db.scalars(select(Station).where(Station.user_id == user.id).order_by(Station.name))]
 
 
 @router.post("/stations")
-def save(body: StationBody, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def save(body: StationBody, db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user)):
     check_url(body.url)
     s = Station(user_id=user.id, **body.model_dump())
     db.add(s)
@@ -131,7 +131,7 @@ def save(body: StationBody, db: Session = Depends(get_db), user: User = Depends(
 
 
 @router.delete("/stations/{station_id}")
-def remove(station_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def remove(station_id: int, db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user)):
     s = db.get(Station, station_id)
     if s is None or s.user_id != user.id:
         raise HTTPException(404, "No such station")
@@ -173,7 +173,7 @@ def remember(user_id: int, station: str, title: str):
 
 
 @router.get("/history")
-def history(station: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def history(station: str, db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user)):
     """What a station played while this user listened, newest first."""
     rows = db.execute(select(RadioPlay.title, RadioPlay.played_at)
                       .where(RadioPlay.user_id == user.id, RadioPlay.station == station)

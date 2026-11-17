@@ -87,7 +87,7 @@ def album_order():
 # ---------------------------------------------------------------- home & browsing
 
 @router.get("/home")
-def home(db: Session = Depends(get_db), user: User = Depends(current_user)):
+def home(db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user)):
     lk = liked(db, user, "album")
     recent = db.scalars(select(Album).where(Album.kind == "music").order_by(Album.added_at.desc()).limit(14))
     played_ids = [r[0] for r in db.execute(text(
@@ -118,7 +118,7 @@ def home(db: Session = Depends(get_db), user: User = Depends(current_user)):
 
 
 @router.get("/genres")
-def genres(db: Session = Depends(get_db), user: User = Depends(current_user), limit: int = 100,
+def genres(db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user), limit: int = 100,
            sort: str = "albums"):
     n, t, a = func.count().label("n"), func.sum(Album.track_count).label("t"), func.count(Album.artist_id.distinct()).label("a")
     order = {"n": n.desc(), "a": a.desc(), "name": func.lower(Album.genre)}
@@ -151,7 +151,7 @@ def _albums_query(user: User, kind: str, genre: str | None, artist_id: int | Non
 
 
 @router.get("/albums")
-def albums(db: Session = Depends(get_db), user: User = Depends(current_user),
+def albums(db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user),
            kind: str = "music", genre: str | None = None, artist_id: int | None = None,
            system: str | None = None, liked_only: bool = False, sort: str = "added",
            limit: int = Query(60, le=500), offset: int = 0):
@@ -169,7 +169,7 @@ def albums(db: Session = Depends(get_db), user: User = Depends(current_user),
 
 
 @router.get("/albums/{album_id}")
-def album(album_id: int, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user),
+def album(album_id: int, db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user),
           limit: int = Query(1000, le=5000), offset: int = 0):
     """An album with its tracks (paged: VGM collections can hold thousands of files)."""
     a = db.get(Album, album_id)
@@ -206,7 +206,7 @@ def _artists_query(user: User, genre: str | None, liked_only: bool):
 
 
 @router.get("/artists")
-def artists(db: Session = Depends(get_db), user: User = Depends(current_user),
+def artists(db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user),
             genre: str | None = None, liked_only: bool = False, sort: str = "name",
             limit: int = Query(100, le=500), offset: int = 0):
     q, counts = _artists_query(user, genre, liked_only)
@@ -231,7 +231,7 @@ def initial(name: str) -> str:
 
 
 @router.get("/letters")
-def letters(db: Session = Depends(get_db), user: User = Depends(current_user), of: str = "albums",
+def letters(db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user), of: str = "albums",
             kind: str = "music", genre: str | None = None, artist_id: int | None = None, liked_only: bool = False,
             sort: str = "name"):
     """Where the names under each first letter run in a list sorted by name (/api/albums or
@@ -253,7 +253,7 @@ def letters(db: Session = Depends(get_db), user: User = Depends(current_user), o
 
 
 @router.get("/artists/{artist_id}")
-def artist(artist_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def artist(artist_id: int, db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user)):
     a = db.get(Artist, artist_id)
     if a is None:
         raise HTTPException(404, "No such artist")
@@ -283,14 +283,14 @@ def artist(artist_id: int, db: Session = Depends(get_db), user: User = Depends(c
 
 
 @router.get("/tracks")
-def tracks(ids: str, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def tracks(ids: str, db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     want = [int(x) for x in ids.split(",") if x.strip().isdigit()][:1000]
     rows = {t.id: t for t in db.scalars(select(Track).where(Track.id.in_(want)))}
     return tracks_json(db, user, [rows[i] for i in want if i in rows])
 
 
 @router.get("/random")
-def random_tracks(db: Session = Depends(get_db), user: User = Depends(current_user),
+def random_tracks(db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user),
                   kind: str = "music", genre: str | None = None, artist_id: int | None = None,
                   album_id: int | None = None, system: str | None = None, tag: str | None = None,
                   n: int = Query(50, le=500)):
@@ -313,7 +313,7 @@ def random_tracks(db: Session = Depends(get_db), user: User = Depends(current_us
 # ---------------------------------------------------------------- lyrics
 
 @router.get("/tracks/{track_id}/lyrics")
-def track_lyrics(track_id: int, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def track_lyrics(track_id: int, db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     """The song's lyrics, synced when there are times: {source, synced, lines: [{t, text}],
     instrumental, colors} (colors: the cover's, for the lyrics' background)."""
     t = db.get(Track, track_id)
@@ -355,7 +355,7 @@ def pick_weighted(scored: list[tuple[float, int]], n: int, rnd: random.Random) -
 
 
 @router.post("/similar")
-def similar(body: Seeds, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def similar(body: Seeds, db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user)):
     """Autoplay: songs like the seeds, to keep the music going once the queue runs out. For music,
     songs by the artists whose genre tags are most like the seeds' artists' (now and then the
     seeds' artists themselves); for game music, more from the same chips. Never anything queued,
@@ -426,12 +426,12 @@ def file_playlists(db: Session) -> list[dict]:
 
 
 @router.get("/file-playlists")
-def list_file_playlists(db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def list_file_playlists(db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     return file_playlists(db)
 
 
 @router.get("/file-playlists/{playlist_id}")
-def file_playlist(playlist_id: int, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def file_playlist(playlist_id: int, db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     pl = db.get(FilePlaylist, playlist_id)
     if pl is None:
         raise HTTPException(404, "No such playlist")
@@ -468,7 +468,7 @@ def tagged(db: Session, tag: str):
 
 
 @router.get("/tags/{tag}")
-def tag_page(tag: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def tag_page(tag: str, db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user)):
     """What a tag gathers: its artists (most albums first), albums and a song count."""
     album_ids = select(Track.album_id).where(tagged(db, tag), Track.album_id.is_not(None)).distinct()
     counts = select(Album.artist_id, func.count().label("n")).where(Album.id.in_(album_ids)) \
@@ -486,7 +486,7 @@ def tag_page(tag: str, db: Session = Depends(get_db), user: User = Depends(curre
 
 
 @router.get("/tags/{tag}/tracks")
-def tag_tracks(tag: str, db: Session = Depends(get_db), user: User = Depends(current_user),
+def tag_tracks(tag: str, db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user),
                limit: int = Query(100, le=500), offset: int = 0):
     """A tag's songs, artist by artist and album by album."""
     q = select(Track).where(tagged(db, tag))
@@ -517,7 +517,7 @@ SCOPES = {
 
 
 @router.get("/search")
-def search(q: str, request: Request, db: Session = Depends(get_db), user: User = Depends(current_user),
+def search(q: str, request: Request, db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user),
            limit: int = Query(20, le=100), scope: str = ""):
     """What the search field finds in a section (scope): music, vgm, audiobooks, podcasts (the user's own and
     their episodes), radio (the user's saved stations), or all of them. Without a scope, music, games and
@@ -590,7 +590,7 @@ class Picked(BaseModel):
 
 
 @router.get("/search/recent")
-def recent_searches(db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def recent_searches(db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     """What the user picked from search results lately, newest first, each as search gives it
     now: one that has since gone (or been hidden) drops out."""
     rows = db.execute(select(RecentSearch.kind, RecentSearch.item_id).where(RecentSearch.user_id == user.id)
@@ -607,7 +607,7 @@ def recent_searches(db: Session = Depends(get_db_with_copies), user: User = Depe
 
 
 @router.post("/search/recent")
-def remember_search(body: Picked, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def remember_search(body: Picked, db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     if body.kind not in RECENT_KINDS:
         raise HTTPException(400, "Not something search finds")
     db.merge(RecentSearch(user_id=user.id, kind=body.kind, item_id=body.id, at=datetime.now(timezone.utc)))
@@ -621,7 +621,7 @@ def remember_search(body: Picked, db: Session = Depends(get_db_with_copies), use
 
 
 @router.delete("/search/recent/{kind}/{item_id}")
-def forget_search(kind: str, item_id: int, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def forget_search(kind: str, item_id: int, db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     db.execute(delete(RecentSearch).where(RecentSearch.user_id == user.id, RecentSearch.kind == kind,
                                           RecentSearch.item_id == item_id))
     db.commit()
@@ -629,7 +629,7 @@ def forget_search(kind: str, item_id: int, db: Session = Depends(get_db_with_cop
 
 
 @router.delete("/search/recent")
-def clear_searches(db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def clear_searches(db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     db.execute(delete(RecentSearch).where(RecentSearch.user_id == user.id))
     db.commit()
     return {"ok": True}
@@ -638,7 +638,7 @@ def clear_searches(db: Session = Depends(get_db_with_copies), user: User = Depen
 # ---------------------------------------------------------------- VGM
 
 @router.get("/vgm/systems")
-def vgm_systems(db: Session = Depends(get_db), user: User = Depends(current_user)):
+def vgm_systems(db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user)):
     system, n = func.coalesce(func.json_extract(Track.extra, "$.system"), ""), func.count()
     rows = db.execute(select(system, n, func.count(Track.album_id.distinct())).where(Track.kind == "vgm")
                       .group_by(system).order_by(n.desc())).all()
@@ -671,7 +671,7 @@ def _resolved(ref: str, db: Session):
 
 
 @router.get("/art/album/{album_id}")
-def album_art(album_id: int, s: int = 300, db: Session = Depends(get_db_with_copies),
+def album_art(album_id: int, s: int = 300, db: Session = Depends(get_db_with_copies, scope="function"),
               user: User | None = Depends(optional_user)):
     a = db.get(Album, album_id)
     if a is None or not a.art:
@@ -686,7 +686,7 @@ def album_art(album_id: int, s: int = 300, db: Session = Depends(get_db_with_cop
 
 
 @router.get("/art/artist/{artist_id}")
-def artist_art(artist_id: int, s: int = 300, db: Session = Depends(get_db_with_copies),
+def artist_art(artist_id: int, s: int = 300, db: Session = Depends(get_db_with_copies, scope="function"),
                user: User | None = Depends(optional_user)):
     a = db.get(Artist, artist_id)
     if a is None:

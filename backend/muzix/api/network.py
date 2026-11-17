@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import __version__, art, chat, db, lyrics, mirror, network, settings, tunnel
+from ..asking import asked_by
 from ..db import get_db_with_copies
 from ..models import Album, Artist, Book, BookPart, Peer, Track
 from ..security import admin_user, current_user
@@ -162,6 +163,7 @@ def linked_server(authorization: str = Header("")) -> Peer:
     p = network.caller(authorization)
     if p is None:
         raise HTTPException(401, "Not a server in this one's network")
+    asked_by(0, f"Library Network: {p.name or 'a linked server'}")
     return p
 
 
@@ -184,7 +186,7 @@ def _own(db: Session, model, id_: int):
 
 @router.get("/stream/{track_id}", dependencies=[Depends(linked_server)])
 def stream_track(track_id: int, q: str = "original", t: float = 0.0, prefetch: bool = False,
-                 db: Session = Depends(get_db_with_copies)):
+                 db: Session = Depends(get_db_with_copies, scope="function")):
     tr = _own(db, Track, track_id)
     return stream.audio(tr.path, tr.format, tr.codec, tr.sample_rate, tr.bit_depth, tr.subsong, tr.duration,
                         tr.extra, q, t, prefetch)
@@ -192,7 +194,7 @@ def stream_track(track_id: int, q: str = "original", t: float = 0.0, prefetch: b
 
 @router.get("/books/{book_id}/parts/{position}/stream", dependencies=[Depends(linked_server)])
 def stream_part(book_id: int, position: int, q: str = "original", t: float = 0.0,
-                db: Session = Depends(get_db_with_copies)):
+                db: Session = Depends(get_db_with_copies, scope="function")):
     _own(db, Book, book_id)
     p = db.scalar(select(BookPart).where(BookPart.book_id == book_id, BookPart.position == position))
     if p is None:
@@ -201,7 +203,7 @@ def stream_part(book_id: int, position: int, q: str = "original", t: float = 0.0
 
 
 @router.get("/art/{kind}/{item_id}", dependencies=[Depends(linked_server)])
-def picture(kind: str, item_id: int, s: int = 300, db: Session = Depends(get_db_with_copies)):
+def picture(kind: str, item_id: int, s: int = 300, db: Session = Depends(get_db_with_copies, scope="function")):
     if kind == "album":
         _own(db, Album, item_id)
         return library.album_art(item_id, s, db)
@@ -217,7 +219,7 @@ def picture(kind: str, item_id: int, s: int = 300, db: Session = Depends(get_db_
 
 
 @router.get("/lyrics/{track_id}", dependencies=[Depends(linked_server)])
-def track_lyrics(track_id: int, db: Session = Depends(get_db_with_copies)):
+def track_lyrics(track_id: int, db: Session = Depends(get_db_with_copies, scope="function")):
     out = lyrics.for_track(db, _own(db, Track, track_id))
     db.commit()
     return out

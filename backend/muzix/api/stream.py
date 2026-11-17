@@ -106,7 +106,7 @@ def audio(path: str, fmt: str, codec: str, sample_rate: int, bit_depth: int, sub
 
 @router.get("/stream/{track_id}")
 def stream(track_id: int, request: Request, q: str = "original", t: float = 0.0, prefetch: bool = False,
-           db: Session = Depends(get_db_with_copies), user: User = Depends(stream_user)):
+           db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(stream_user)):
     """Audio for a track. With t > 0 the response starts at that offset."""
     tr = db.get(Track, track_id)
     if tr is None:
@@ -178,7 +178,7 @@ def cast_link(user: User = Depends(current_user)):
 
 
 @router.post("/plays")
-def played(body: Played, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def played(body: Played, db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     t = db.get(Track, body.track_id)
     if t is None:
         raise HTTPException(404, "No such track")

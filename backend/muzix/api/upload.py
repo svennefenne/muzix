@@ -59,7 +59,7 @@ class CheckBody(BaseModel):
 
 
 @router.post("/check")
-def check(body: CheckBody, db: Session = Depends(get_db)):
+def check(body: CheckBody, db: Session = Depends(get_db, scope="function")):
     """Before files go up: which look like duplicates (organize/duplicates.py)."""
     if not settings.get("upload_check_duplicates"):
         return {"found": [], "skip": [], "off": True}
@@ -68,7 +68,7 @@ def check(body: CheckBody, db: Session = Depends(get_db)):
 
 @router.post("/batch/{batch}/files")
 async def upload_files(batch: str, files: list[UploadFile], paths: list[str] = Form(default=[]),
-                       db: Session = Depends(get_db)):
+                       db: Session = Depends(get_db, scope="function")):
     d = batch_dir(batch)
     if not d.is_dir():
         raise HTTPException(404, "No such upload batch")
@@ -87,7 +87,7 @@ async def upload_files(batch: str, files: list[UploadFile], paths: list[str] = F
 
 @router.post("/batch/{batch}/part")
 async def upload_part(batch: str, data: UploadFile, path: str = Form(...), offset: int = Form(..., ge=0),
-                      total: int = Form(..., ge=0), db: Session = Depends(get_db)):
+                      total: int = Form(..., ge=0), db: Session = Depends(get_db, scope="function")):
     """One piece of a big file. Proxies such as Cloudflare refuse request bodies
     over 100 MiB, so the browser sends large files in pieces, in order."""
     d = batch_dir(batch)
@@ -190,7 +190,7 @@ def filed(r: dict, db: Session) -> list[dict]:
 
 
 @router.get("/imports")
-def imports(limit: int = 8, db: Session = Depends(get_db)):
+def imports(limit: int = 8, db: Session = Depends(get_db, scope="function")):
     """The latest imports, uploaded or from the watch folder (watch.py), with where their albums were filed."""
     out = []
     for job in db.scalars(select(Job).where(Job.type.in_(("import_upload", "import_watched"))).order_by(Job.id.desc()).limit(limit)):
@@ -206,7 +206,7 @@ def imports(limit: int = 8, db: Session = Depends(get_db)):
 
 
 @router.get("/batches")
-def batches(db: Session = Depends(get_db)):
+def batches(db: Session = Depends(get_db, scope="function")):
     if not env.UPLOAD_DIR.is_dir():
         return []
     dirs = sorted((d for d in env.UPLOAD_DIR.iterdir() if d.is_dir() and BATCH_RE.match(d.name)), reverse=True)
@@ -219,7 +219,7 @@ class Own(BaseModel):
 
 
 @router.put("/batch/{batch}/compilation")
-def set_compilation(batch: str, body: Own, db: Session = Depends(get_db)):
+def set_compilation(batch: str, body: Own, db: Session = Depends(get_db, scope="function")):
     """A folder of the batch marked an own compilation (`on`), or not any more. One in it, or one it's in, marked
     before isn't: the folder marked last is the compilation."""
     d = batch_dir(batch)
@@ -244,7 +244,7 @@ def start_import(batch: str):
 
 
 @router.delete("/batch/{batch}")
-def discard(batch: str, db: Session = Depends(get_db)):
+def discard(batch: str, db: Session = Depends(get_db, scope="function")):
     shutil.rmtree(batch_dir(batch), ignore_errors=True)
     own_file(batch).unlink(missing_ok=True)
     duplicates.forget(db, batch)

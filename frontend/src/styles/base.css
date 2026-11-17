@@ -810,7 +810,7 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
 .np-artist-link:hover { color: var(--text); text-decoration-color: currentColor; }
 
 /* the big cover turns over to the album's songs */
-.np-flip { position: relative; aspect-ratio: 1; perspective: 1800px; touch-action: pan-y; }   /* sideways is a swipe to another song */
+.np-flip { position: relative; aspect-ratio: 1; perspective: 1800px; touch-action: pan-y; user-select: none; -webkit-user-select: none; }   /* sideways is a swipe to another song */
 .np-flip-inner { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform .6s cubic-bezier(.2, .75, .25, 1); }
 .np-flip.flipped .np-flip-inner { transform: rotateY(180deg); }
 .np-face { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; border-radius: calc(var(--radius) * .7); }
@@ -860,6 +860,54 @@ a.tag:hover { color: var(--text); border-color: var(--primary); }
 a.stat-link { color: inherit; text-decoration: none; transition: border-color .15s, background .15s; }
 a.stat-link:hover { border-color: var(--border-strong); background: color-mix(in srgb, var(--surface) 95%, transparent); }
 a.stat-link.warn .v { color: var(--warning); }
+
+/* Admin → Data (pages/admin/Data.tsx): what the server sent out */
+button.stat { text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.data-now .stat.on { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+.data-chart { display: grid; grid-template-columns: auto 1fr; gap: 10px; height: 240px; padding: 8px 0 34px; }
+.data-scale { position: relative; width: 56px; }
+.data-scale span {
+  position: absolute; right: 0; transform: translateY(50%); white-space: nowrap;
+  font: 500 10.5px/1 var(--font-mono); color: var(--text-faint);
+}
+.data-bars {
+  position: relative; display: flex; align-items: stretch; gap: 6px;
+  background: linear-gradient(var(--border), var(--border)) 0 0 / 100% 1px no-repeat,
+              linear-gradient(var(--border), var(--border)) 0 50% / 100% 1px no-repeat,
+              linear-gradient(var(--border-strong), var(--border-strong)) 0 100% / 100% 1px no-repeat;
+}
+.data-bar {
+  position: relative; flex: 1 1 0; min-width: 0; display: flex; align-items: flex-end; justify-content: center;
+  padding: 0; border: 0; background: transparent; cursor: pointer; border-radius: 6px 6px 0 0;
+}
+.data-bar:hover { background: color-mix(in srgb, var(--text) 5%, transparent); }
+.data-bar:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.data-fill {
+  width: min(100%, 34px); min-height: 0; border-radius: 4px 4px 0 0;
+  background: color-mix(in srgb, var(--primary) 58%, var(--surface)); transition: background .15s, height .3s;
+}
+.data-bar:hover .data-fill, .data-bar.on .data-fill { background: var(--primary); }
+.data-label {
+  position: absolute; top: calc(100% + 7px); left: 50%; transform: translateX(-50%); display: flex; flex-direction: column;
+  align-items: center; gap: 2px; white-space: nowrap; font: 600 11px/1 var(--font-mono); color: var(--text-dim);
+}
+.data-label small { font: 500 9.5px/1 var(--font-mono); letter-spacing: .04em; color: var(--text-faint); }
+.data-bar.on .data-label { color: var(--text); }
+.data-kinds, .data-devices { display: grid; gap: 10px; }
+.data-row { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(60px, 1fr) auto; align-items: center; gap: 14px; }
+.data-what { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.data-what .faint { font-size: 12px; }
+.data-meter { height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--text) 8%, transparent); overflow: hidden; }
+.data-meter span { display: block; height: 100%; border-radius: 3px; background: var(--primary); }
+.data-amount { font: 600 13px/1 var(--font-mono); color: var(--text); min-width: 72px; text-align: right; }
+@media (max-width: 640px) {
+  .data-bars { gap: 3px; }
+  .data-scale { width: 44px; }
+  .data-label { font-size: 9.5px; }
+  .data-label small { display: none; }       /* the days' numbers alone: the weekdays don't fit */
+  .data-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .data-meter { grid-column: 1 / -1; grid-row: 2; }
+}
 .bare-albums .list-row { gap: 12px; }
 .bare-albums .bare-thumb { width: 44px; height: 44px; flex: none; border-radius: 6px; font-size: 13px; }
 .bare-albums .bare-meta { flex: none; font-size: 12.5px; }

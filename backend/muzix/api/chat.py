@@ -35,7 +35,7 @@ def people(user: User = Depends(current_user)):
 
 @router.get("/with/{server}/{other}")
 def thread(server: str, other: int, before: int | None = None, user: User = Depends(current_user),
-           db: Session = Depends(get_db_with_copies)):
+           db: Session = Depends(get_db_with_copies, scope="function")):
     try:
         return chat.thread(user, server, other, db, before)
     except chat.ChatError as e:
@@ -55,7 +55,7 @@ class Write(BaseModel):
 
 @router.post("/with/{server}/{other}")
 def write(server: str, other: int, body: Write, user: User = Depends(current_user),
-          db: Session = Depends(get_db_with_copies)):
+          db: Session = Depends(get_db_with_copies, scope="function")):
     try:
         return chat.send(user, server, other, body.text, [link.model_dump() for link in body.links], db, body.name)
     except chat.ChatError as e:
@@ -68,7 +68,7 @@ def read(server: str, other: int, user: User = Depends(current_user)):
 
 
 @router.get("/messages/{message_id}/links/{index}")
-def link(message_id: int, index: int, user: User = Depends(current_user), db: Session = Depends(get_db_with_copies)):
+def link(message_id: int, index: int, user: User = Depends(current_user), db: Session = Depends(get_db_with_copies, scope="function")):
     """A linked album or song with its songs, for "More info"."""
     m = db.scalar(select(ChatMessage).where(ChatMessage.id == message_id, chat.of_user(user.id)))
     if m is None:

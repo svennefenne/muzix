@@ -52,7 +52,7 @@ android {
         minSdk = 29
         targetSdk = 35
         versionCode = commits.get()
-        versionName = "0.10.32"
+        versionName = "0.10.33"
     }
 
     buildFeatures {

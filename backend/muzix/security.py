@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from starlette.requests import HTTPConnection
 
 from . import env, limits
+from .asking import asked_by
 from .db import get_db
 from .models import AuthSession, User
 
@@ -90,10 +91,13 @@ def device_name(agent: str) -> str:
     return f"{browser} on {system}" if system else browser
 
 
-def optional_user(request: Request, db: Session = Depends(get_db)) -> User | None:
-    user = session_user(db, login_token(request))
+def optional_user(request: Request, db: Session = Depends(get_db, scope="function")) -> User | None:
+    token = login_token(request)
+    user = session_user(db, token)
     if user is not None:
         viewing(request, user)
+        sess = db.get(AuthSession, token)       # the one session_user found: no second look-up
+        asked_by(user.id, (sess.name or device_name(sess.user_agent)) if sess else "")
     return user
 
 
@@ -146,7 +150,7 @@ def cast_token(user: User) -> tuple[str, int]:
     return f"{user.id}.{exp}.{_cast_mac(user.id, exp)}", exp
 
 
-def stream_user(request: Request, db: Session = Depends(get_db),
+def stream_user(request: Request, db: Session = Depends(get_db, scope="function"),
                 user: User | None = Depends(optional_user)) -> User:
     """The signed-in user, or for an audio stream, the user a valid cast link was made for."""
     if user is not None:
@@ -162,6 +166,7 @@ def stream_user(request: Request, db: Session = Depends(get_db),
     if owner is None:
         raise HTTPException(401, "Not signed in")
     viewing(request, owner)
+    asked_by(owner.id, "Cast speaker")
     return owner
 
 

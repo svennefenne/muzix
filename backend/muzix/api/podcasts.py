@@ -77,7 +77,7 @@ def whats_new(db: Session, user: User, limit: int = 12) -> dict:
 
 
 @router.get("")
-def subscriptions(db: Session = Depends(get_db), user: User = Depends(current_user)):
+def subscriptions(db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user)):
     rows = db.execute(select(Feed, Subscription).join(Subscription, Subscription.feed_id == Feed.id)
                       .where(Subscription.user_id == user.id).order_by(func.lower(Feed.title))).all()
     fresh = fresh_feeds(db, user.id)
@@ -91,7 +91,7 @@ def subscriptions(db: Session = Depends(get_db), user: User = Depends(current_us
 
 
 @router.get("/latest")
-def latest(db: Session = Depends(get_db), user: User = Depends(current_user), limit: int = 40):
+def latest(db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user), limit: int = 40):
     rows = db.execute(select(Episode, Feed, EpisodeProgress, Subscription)
                       .join(Feed, Feed.id == Episode.feed_id)
                       .join(Subscription, (Subscription.feed_id == Feed.id) & (Subscription.user_id == user.id))
@@ -102,7 +102,7 @@ def latest(db: Session = Depends(get_db), user: User = Depends(current_user), li
 
 
 @router.get("/continue")
-def continue_listening(db: Session = Depends(get_db), user: User = Depends(current_user), limit: int = 10):
+def continue_listening(db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user), limit: int = 10):
     """Continue listening: the episodes started and not heard to the end, the latest listened to
     first. One left in its last 15 seconds counts as heard, as the player has it. Each says whether its
     podcast is subscribed to (one opened without subscribing can be started too)."""
@@ -188,7 +188,7 @@ def top(genre: int | None = None, user: User = Depends(current_user)):
 
 @router.get("/{feed_id}")
 def feed(feed_id: int, order: str = "newest", hide_finished: bool = False, limit: int = 200,
-         db: Session = Depends(get_db), user: User = Depends(current_user)):
+         db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user)):
     """A podcast and its episodes, newest or oldest first: the first `limit` of them."""
     f = db.get(Feed, feed_id)
     if f is None:
@@ -217,7 +217,7 @@ class SubSettings(BaseModel):
 
 
 @router.put("/{feed_id}/subscription")
-def sub_settings(feed_id: int, body: SubSettings, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def sub_settings(feed_id: int, body: SubSettings, db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user)):
     sub = db.get(Subscription, (user.id, feed_id))
     if sub is None:
         raise HTTPException(404, "Not subscribed")
@@ -228,7 +228,7 @@ def sub_settings(feed_id: int, body: SubSettings, db: Session = Depends(get_db),
 
 
 @router.delete("/{feed_id}")
-def unsubscribe(feed_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def unsubscribe(feed_id: int, db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user)):
     sub = db.get(Subscription, (user.id, feed_id))
     if sub is not None:
         db.delete(sub)
@@ -242,7 +242,7 @@ def refresh(user: User = Depends(current_user)):
 
 
 @router.get("/episodes/{episode_id}")
-def episode(episode_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def episode(episode_id: int, db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user)):
     """One episode for its page: with its podcast and its show notes."""
     e = db.get(Episode, episode_id)
     f = db.get(Feed, e.feed_id) if e else None
@@ -263,7 +263,7 @@ def episode(episode_id: int, db: Session = Depends(get_db), user: User = Depends
 
 
 @router.get("/episodes/{episode_id}/stream")
-async def episode_stream(episode_id: int, request: Request, db: Session = Depends(get_db),
+async def episode_stream(episode_id: int, request: Request, db: Session = Depends(get_db, scope="function"),
                          user: User = Depends(stream_user)):
     e = db.get(Episode, episode_id)
     if e is None:
@@ -285,7 +285,7 @@ class Progress(BaseModel):
 
 
 @router.put("/episodes/{episode_id}/progress")
-def progress(episode_id: int, body: Progress, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def progress(episode_id: int, body: Progress, db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user)):
     if db.get(Episode, episode_id) is None:
         raise HTTPException(404, "No such episode")
     row = db.get(EpisodeProgress, (user.id, episode_id)) or EpisodeProgress(user_id=user.id, episode_id=episode_id)
@@ -296,7 +296,7 @@ def progress(episode_id: int, body: Progress, db: Session = Depends(get_db), use
 
 
 @router.get("/episodes/{episode_id}/next")
-def next_episode(episode_id: int, order: str = "newest", db: Session = Depends(get_db), user: User = Depends(current_user)):
+def next_episode(episode_id: int, order: str = "newest", db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user)):
     """Autoplay: the episode after this one on the podcast's page, in its order, skipping the
     finished ones. With none left that way (heard from the oldest on, with the page newest first),
     the nearest one the other way. None when the podcast's autoplay is off or all are finished."""
@@ -332,7 +332,7 @@ def _unheard_after(db: Session, user_id: int, e: Episode, oldest: bool) -> Episo
 
 
 @router.post("/episodes/{episode_id}/finish-older")
-def finish_older(episode_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def finish_older(episode_id: int, db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user)):
     """Marks the podcast's episodes that came out before this one as finished: everything under it
     on the podcast's page, newest first. Says how they were, so it can be undone."""
     e = db.get(Episode, episode_id)
@@ -366,7 +366,7 @@ class Restore(BaseModel):
 
 
 @router.post("/episodes/restore")
-def restore(body: Restore, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def restore(body: Restore, db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user)):
     """Undoes "mark older as finished": each episode as it was, started or not."""
     for b in body.episodes:
         row = db.get(EpisodeProgress, (user.id, b.id))
@@ -383,7 +383,7 @@ def restore(body: Restore, db: Session = Depends(get_db), user: User = Depends(c
 # ---------------------------------------------------------------- OPML
 
 @router.get("/opml/export")
-def opml_export(db: Session = Depends(get_db), user: User = Depends(current_user)):
+def opml_export(db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user)):
     feeds = db.scalars(select(Feed).join(Subscription, Subscription.feed_id == Feed.id)
                        .where(Subscription.user_id == user.id)).all()
     body = "\n".join(f'    <outline type="rss" text="{escape(f.title, {chr(34): "&quot;"})}" '

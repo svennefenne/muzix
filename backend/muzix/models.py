@@ -570,6 +570,17 @@ class BandcampTags(Base):
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class Traffic(Base):
+    """What Muzix sent out on a day (the server's own), to a device, of a kind: music, audiobooks, podcasts,
+    radio, pictures or other (the app's pages and lists). traffic.py counts it; the admin's Data page shows it."""
+    __tablename__ = "traffic"
+    day: Mapped[str] = mapped_column(String(10), primary_key=True)          # 2026-11-17
+    user_id: Mapped[int] = mapped_column(Integer, primary_key=True)         # 0: no account; kept when one is removed
+    device: Mapped[str] = mapped_column(String(160), primary_key=True)      # "" when no one signed in asked
+    kind: Mapped[str] = mapped_column(String(16), primary_key=True)
+    bytes: Mapped[int] = mapped_column(Integer, default=0)
+
+
 # what an admin can hide: hidden rows stay out of every page and list (db.py)
 HIDEABLE = (Artist, Album, Track, Playlist, FilePlaylist, Book, Feed, Station)
 # what's in more than one library of the Library Network: only one library's copy is listed (mirror.dedupe)

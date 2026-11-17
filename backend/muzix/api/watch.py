@@ -52,7 +52,7 @@ def _folder(db: Session, f: dict) -> dict:
 
 
 @router.get("")
-def get_watch(db: Session = Depends(get_db)):
+def get_watch(db: Session = Depends(get_db, scope="function")):
     """The watch folders ("folders": the usual one and the one for Bandcamp alone), the usual one's fields at the
     top too (as older apps' admin pages read them), and the latest filed from them."""
     computers = [{"id": p.server_id, "name": p.name, "online": tunnel.connected(p.id)}
@@ -131,7 +131,7 @@ def _let(db: Session, computer: str, path: str, was: str = "", alone: bool = Tru
 
 
 @router.put("")
-def set_watch(body: WatchBody, db: Session = Depends(get_db)):
+def set_watch(body: WatchBody, db: Session = Depends(get_db, scope="function")):
     """The usual watch folder, or (`only`) the one for Bandcamp alone, set in place of the one there was, or (no
     folder) no longer watched."""
     if body.only not in watch.ONLY:
@@ -168,7 +168,7 @@ def set_watch(body: WatchBody, db: Session = Depends(get_db)):
 
 
 @router.get("/browse")
-def browse(computer: str = "", path: str = "", db: Session = Depends(get_db)):
+def browse(computer: str = "", path: str = "", db: Session = Depends(get_db, scope="function")):
     """The folders in a folder, to pick the watch folder: on this server, or on a computer that allows it."""
     if not computer:
         return browse_server(path or "/")

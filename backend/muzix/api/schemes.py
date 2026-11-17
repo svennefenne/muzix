@@ -110,7 +110,7 @@ def _tidy_pictures(db: Session):
 
 
 @router.get("")
-def schemes(db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def schemes(db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     """Your own, and the ones others share."""
     uses = _uses(db)
     rows = db.scalars(select(Scheme).where((Scheme.user_id == user.id) | Scheme.shared).order_by(Scheme.name)).all()
@@ -119,7 +119,7 @@ def schemes(db: Session = Depends(get_db_with_copies), user: User = Depends(curr
 
 
 @router.get("/{sid}")
-def scheme(sid: int, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def scheme(sid: int, db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     s = db.get(Scheme, sid)
     if s is None or (s.user_id != user.id and not s.shared):
         raise HTTPException(404, "No such scheme")
@@ -127,7 +127,7 @@ def scheme(sid: int, db: Session = Depends(get_db_with_copies), user: User = Dep
 
 
 @router.post("")
-def create(body: SchemeBody, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def create(body: SchemeBody, db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     s = Scheme(user_id=user.id, name=body.name.strip(), data=body.data.model_dump(), shared=body.shared)
     db.add(s)
     db.commit()
@@ -135,7 +135,7 @@ def create(body: SchemeBody, db: Session = Depends(get_db_with_copies), user: Us
 
 
 @router.put("/{sid}")
-def update(sid: int, body: SchemeBody, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def update(sid: int, body: SchemeBody, db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     s = _mine(db, user, sid)
     s.name, s.data, s.shared, s.updated_at = body.name.strip(), body.data.model_dump(), body.shared, now()
     db.commit()
@@ -144,7 +144,7 @@ def update(sid: int, body: SchemeBody, db: Session = Depends(get_db_with_copies)
 
 
 @router.delete("/{sid}")
-def delete(sid: int, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def delete(sid: int, db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     db.delete(_mine(db, user, sid))
     db.commit()
     _tidy_pictures(db)

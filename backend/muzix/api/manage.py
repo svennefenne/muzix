@@ -85,7 +85,7 @@ def lookup_details(source: str, kind: str, id_: str, user: User = Depends(admin_
 
 @router.get("/covers")
 def covers(kind: str, artist: str = "", title: str = "", web: str = "", item: int = 0,
-           db: Session = Depends(get_db), user: User = Depends(admin_user)):
+           db: Session = Depends(get_db, scope="function"), user: User = Depends(admin_user)):
     """`item` is the album or artist the cover is for: its MusicBrainz id finds it on fanart.tv."""
     row = db.get(Album if kind == "album" else Artist, item, execution_options={"include_hidden": True}) \
         if item and kind in ("album", "artist") else None
@@ -168,7 +168,7 @@ class Release(BaseModel):
 
 
 @router.put("/album/{id_}/release")
-def set_release(id_: int, body: Release, db: Session = Depends(get_db)):
+def set_release(id_: int, body: Release, db: Session = Depends(get_db, scope="function")):
     """An admin's choice of the album's type (album, EP or single), over its tags' and the guess; none: theirs again."""
     from .. import releases, serial
     if body.type and body.type not in releases.TYPES:

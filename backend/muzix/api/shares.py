@@ -151,7 +151,7 @@ def _tidy(db: Session):
 # ---------------------------------------------------------------- making and keeping links
 
 @router.post("/shares")
-def make(body: ShareBody, request: Request, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def make(body: ShareBody, request: Request, db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user)):
     if not may_share(user):
         raise HTTPException(403, "An admin has turned links off for your account")
     if body.days is not None and body.days not in DAYS:
@@ -171,14 +171,14 @@ def make(body: ShareBody, request: Request, db: Session = Depends(get_db), user:
 
 
 @router.get("/shares")
-def mine(request: Request, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def mine(request: Request, db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user)):
     _tidy(db)
     rows = db.scalars(select(Share).where(Share.user_id == user.id).order_by(Share.created_at.desc())).all()
     return [share_json(db, sh, base_url(request)) for sh in rows]
 
 
 @router.delete("/shares/{token}")
-def take_away(token: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def take_away(token: str, db: Session = Depends(get_db, scope="function"), user: User = Depends(current_user)):
     sh = db.get(Share, token)
     if sh is not None and (sh.user_id == user.id or user.is_admin):
         db.delete(sh)
@@ -187,7 +187,7 @@ def take_away(token: str, db: Session = Depends(get_db), user: User = Depends(cu
 
 
 @router.get("/admin/shares", dependencies=[Depends(admin_user)])
-def everyones(request: Request, db: Session = Depends(get_db)):
+def everyones(request: Request, db: Session = Depends(get_db, scope="function")):
     _tidy(db)
     rows = db.scalars(select(Share).order_by(Share.created_at.desc())).all()
     return [share_json(db, sh, base_url(request), by=True) for sh in rows]
@@ -217,7 +217,7 @@ def _songs(db: Session, tracks: list[Track]) -> list[dict]:
 
 
 @router.get("/s/{token}")
-def shared(token: str, request: Request, db: Session = Depends(get_db)):
+def shared(token: str, request: Request, db: Session = Depends(get_db, scope="function")):
     """What a public link shows: its songs, an artist's albums, or a podcast's episodes."""
     sh, obj = _open(db, token, request)
     title, sub = _names(db, sh.kind, obj)
@@ -268,7 +268,7 @@ def _holds(db: Session, sh: Share, obj, t: Track) -> bool:
 
 
 @router.get("/s/{token}/track/{track_id}")
-def shared_song(token: str, track_id: int, request: Request, t: float = 0.0, db: Session = Depends(get_db)):
+def shared_song(token: str, track_id: int, request: Request, t: float = 0.0, db: Session = Depends(get_db, scope="function")):
     """A song of a public link: as it is, converted when a browser can't play it, or rendered (chiptunes)."""
     sh, obj = _open(db, token, request)
     tr = db.get(Track, track_id)
@@ -280,7 +280,7 @@ def shared_song(token: str, track_id: int, request: Request, t: float = 0.0, db:
 
 
 @router.get("/s/{token}/episode/{episode_id}")
-async def shared_episode(token: str, episode_id: int, request: Request, db: Session = Depends(get_db)):
+async def shared_episode(token: str, episode_id: int, request: Request, db: Session = Depends(get_db, scope="function")):
     sh, obj = _open(db, token, request)
     e = db.get(Episode, episode_id)
     if e is None or (sh.kind == "episode" and e.id != obj.id) or (sh.kind == "podcast" and e.feed_id != obj.id) \

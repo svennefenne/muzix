@@ -173,11 +173,11 @@ function PhoneTransport() {
 
 /** The big cover. With a song from an album playing, a tap turns it over to that album's
  * songs (tap one to play it); a tap anywhere outside turns it back. A swipe changes the song
- * (useSwipeSongs). */
+ * (useSwipeSongs): a finger, the mouse dragging it, or two fingers on a touchpad. */
 function FlipCover({ cur }: { cur: PlayItem | null }) {
   const [flipped, setFlipped] = useState(false);
   const box = useRef<HTMLDivElement>(null);
-  const swiped = useSwipeSongs(box, !flipped && !!cur && cur.kind !== "book" && cur.kind !== "episode");
+  const swiped = useSwipeSongs(box, !flipped && !!cur && cur.kind !== "book" && cur.kind !== "episode", undefined, true);
   const albumId = cur?.albumId ?? null;
   const album = useQuery({
     queryKey: ["album", albumId], enabled: flipped && !!albumId,

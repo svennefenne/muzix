@@ -1,12 +1,22 @@
 """SQLite database (WAL mode) shared by the web app and background jobs."""
 
+import logging
+import threading
+import time
+from collections import Counter
 from contextlib import contextmanager
 
 from sqlalchemy import and_, create_engine, event, or_, select, text
 from sqlalchemy.orm import DeclarativeBase, ORMExecuteState, Session, sessionmaker, with_loader_criteria
 from starlette.requests import HTTPConnection
 
-from . import env
+from . import asking, env
+
+log = logging.getLogger(__name__)
+POOL, OVERFLOW = 10, 30
+WARN_AT = 30                # connections out: say who holds them (at most once a minute)
+holders: dict[int, tuple[str, float]] = {}      # a connection out: the request (or thread) that has it, since when
+_warned = 0.0
 
 
 class Base(DeclarativeBase):
@@ -22,8 +32,20 @@ def init(url: str | None = None):
     global engine, SessionLocal
     env.ensure_dirs()
     # covers and streams can hold a connection for a moment; leave room for page loads
-    engine = create_engine(url or f"sqlite:///{env.DB_PATH}", pool_size=10, max_overflow=30,
+    engine = create_engine(url or f"sqlite:///{env.DB_PATH}", pool_size=POOL, max_overflow=OVERFLOW,
                            connect_args={"check_same_thread": False, "timeout": 30})
+    holders.clear()
+
+    @event.listens_for(engine, "checkout")
+    def _out(dbapi_conn, record, proxy):
+        a = asking.current.get()
+        holders[id(record)] = (a.route() if a else f"thread {threading.current_thread().name}", time.monotonic())
+        if len(holders) >= WARN_AT:
+            _say_who_holds()
+
+    @event.listens_for(engine, "checkin")
+    def _in(dbapi_conn, record):
+        holders.pop(id(record), None)
 
     @event.listens_for(engine, "connect")
     def _pragmas(conn, _):
@@ -164,8 +186,28 @@ def _without_hidden(state: ORMExecuteState):
             state.statement = state.statement.options(with_loader_criteria(model, crit, include_aliases=True))
 
 
+def _say_who_holds():
+    """When the connections run low, the log tells which requests have them and for how long: when they
+    ran out on 2026-11-17 nothing said what held them."""
+    global _warned
+    now = time.monotonic()
+    if now - _warned < 60:
+        return
+    _warned = now
+    out = list(holders.values())
+    count = Counter(what for what, _ in out)
+    oldest: dict[str, float] = {}
+    for what, since in out:
+        oldest[what] = max(oldest.get(what, 0.0), now - since)
+    log.warning("database connections: %d of %d in use: %s", len(out), POOL + OVERFLOW,
+                "; ".join(f"{n} × {what} (oldest {oldest[what]:.0f} s)" for what, n in count.most_common(10)))
+
+
 def get_db(conn: HTTPConnection):
-    """FastAPI dependency: a session that leaves out hidden items, and other libraries' copies."""
+    """FastAPI dependency: a session that leaves out hidden items, and other libraries' copies.
+    Each get_db* is used as Depends(..., scope="function"): closed once the request has answered, not
+    once the answer has been sent, or a song or a radio station holds a connection for as long as it
+    plays and a few stalled streams use up the pool (tests/test_connections.py)."""
     db = SessionLocal()
     db.info["hide"] = True
     db.info["viewer"] = conn.state

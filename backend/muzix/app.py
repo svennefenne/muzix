@@ -7,7 +7,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import API_VERSION, __version__, chat, db, env, jobs, modules, network, settings, tunnel, watch
+from . import API_VERSION, __version__, chat, db, env, jobs, modules, network, settings, traffic, tunnel, watch
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -53,6 +53,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="Muzix", version=__version__, docs_url="/api/docs", openapi_url="/api/openapi.json")
     app.add_middleware(NoProxyBuffering)
+    app.add_middleware(traffic.Counted)        # the outermost: what goes out, counted (the admin's Data page)
     # the requests of a module answer only while it's on
     module_of = {books_api: "audiobooks", podcasts_api: "podcasts", radio: "radio", online: "vgm", network_api: "network",
                  chat_api: "network"}
@@ -138,6 +139,7 @@ def create_app() -> FastAPI:
         jobs.start_scheduler()
         chat.start()
         watch.start()
+        traffic.start()
     return app
 
 

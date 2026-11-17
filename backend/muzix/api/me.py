@@ -67,13 +67,13 @@ def device_prefs(db: Session, user: User, token: str | None) -> dict:
 
 
 @router.get("/me")
-def me(request: Request, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def me(request: Request, db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     return {"id": user.id, "username": user.username, "is_admin": user.is_admin, "avatar": serial.avatar(user),
             "prefs": device_prefs(db, user, login_token(request))}
 
 
 @router.patch("/me/prefs")
-def set_prefs(prefs: dict, request: Request, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def set_prefs(prefs: dict, request: Request, db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     u = db.get(User, user.id)
     token = login_token(request)
     device_prefs(db, u, token)
@@ -92,7 +92,7 @@ class PasswordChange(BaseModel):
 
 
 @router.post("/me/password")
-def change_password(body: PasswordChange, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def change_password(body: PasswordChange, db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     u = db.get(User, user.id)
     if not check_password(u, body.current):
         raise HTTPException(400, "The current password is wrong")
@@ -153,7 +153,7 @@ def get_avatar(user: User = Depends(current_user)):
 
 
 @router.put("/me/avatar")
-def set_avatar(body: AvatarLook, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def set_avatar(body: AvatarLook, db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     u = db.get(User, user.id)
     if body.picture:
         if not (env.AVATAR_DIR / body.picture).is_file():
@@ -169,7 +169,7 @@ def set_avatar(body: AvatarLook, db: Session = Depends(get_db_with_copies), user
 
 
 @router.delete("/me/avatar")
-def reset_avatar(db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def reset_avatar(db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     """Back to the first letter of the name, on the scheme's colours."""
     u = db.get(User, user.id)
     u.avatar = None
@@ -203,7 +203,7 @@ def _logins(db: Session, user: User) -> list[AuthSession]:
 
 
 @router.get("/me/devices")
-def devices(request: Request, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def devices(request: Request, db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     """Where the account is signed in: each browser and app, newest seen first, this one marked."""
     mine = login_token(request)
     return [{"id": login_id(r.token), "name": r.name or device_name(r.user_agent), "app": bool(r.name),
@@ -212,7 +212,7 @@ def devices(request: Request, db: Session = Depends(get_db_with_copies), user: U
 
 
 @router.delete("/me/devices/{device_id}")
-def sign_out_device(device_id: str, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def sign_out_device(device_id: str, db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     row = next((r for r in _logins(db, user) if login_id(r.token) == device_id), None)
     if row is None:
         raise HTTPException(404, "No such device")
@@ -224,7 +224,7 @@ def sign_out_device(device_id: str, db: Session = Depends(get_db_with_copies), u
 # ---------------------------------------------------------------- likes
 
 @router.put("/likes/{kind}/{item_id}")
-def like(kind: str, item_id: int, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def like(kind: str, item_id: int, db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     if kind not in LIKE_TYPES or db.get(LIKE_TYPES[kind], item_id) is None:
         raise HTTPException(404, "Nothing to like")
     if db.get(Like, (user.id, kind, item_id)) is None:
@@ -234,14 +234,14 @@ def like(kind: str, item_id: int, db: Session = Depends(get_db_with_copies), use
 
 
 @router.delete("/likes/{kind}/{item_id}")
-def unlike(kind: str, item_id: int, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def unlike(kind: str, item_id: int, db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     db.execute(delete(Like).where(Like.user_id == user.id, Like.item_type == kind, Like.item_id == item_id))
     db.commit()
     return {"liked": False}
 
 
 @router.get("/likes/tracks")
-def liked_tracks(db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def liked_tracks(db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     rows = db.execute(select(Track, Like.created_at).join(Like, (Like.item_id == Track.id) & (Like.item_type == "track"))
                       .where(Like.user_id == user.id).order_by(Like.created_at.desc())).all()
     return tracks_json(db, user, [t for t, _ in rows])
@@ -282,14 +282,14 @@ def playlist_json(db: Session, p: Playlist, with_tracks=False, user: User | None
 
 
 @router.get("/playlists")
-def playlists(db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def playlists(db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     rows = db.scalars(select(Playlist).where((Playlist.user_id == user.id) | Playlist.public)
                       .order_by(Playlist.updated_at.desc()))
     return [playlist_json(db, p) for p in rows]
 
 
 @router.post("/playlists")
-def create_playlist(body: PlaylistBody, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def create_playlist(body: PlaylistBody, db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     p = Playlist(user_id=user.id, **body.model_dump())
     db.add(p)
     db.commit()
@@ -297,12 +297,12 @@ def create_playlist(body: PlaylistBody, db: Session = Depends(get_db_with_copies
 
 
 @router.get("/playlists/{pid}")
-def get_playlist(pid: int, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def get_playlist(pid: int, db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     return playlist_json(db, _playlist(db, user, pid), True, user)
 
 
 @router.patch("/playlists/{pid}")
-def edit_playlist(pid: int, body: PlaylistBody, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def edit_playlist(pid: int, body: PlaylistBody, db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     p = _playlist(db, user, pid, write=True)
     for k, v in body.model_dump().items():
         setattr(p, k, v)
@@ -312,7 +312,7 @@ def edit_playlist(pid: int, body: PlaylistBody, db: Session = Depends(get_db_wit
 
 
 @router.delete("/playlists/{pid}")
-def delete_playlist(pid: int, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def delete_playlist(pid: int, db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     db.delete(_playlist(db, user, pid, write=True))
     db.commit()
     return {"ok": True}
@@ -323,7 +323,7 @@ class AddTracks(BaseModel):
 
 
 @router.post("/playlists/{pid}/tracks")
-def add_tracks(pid: int, body: AddTracks, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def add_tracks(pid: int, body: AddTracks, db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     p = _playlist(db, user, pid, write=True)
     pos = db.scalar(select(func.coalesce(func.max(PlaylistItem.position), -1))
                     .where(PlaylistItem.playlist_id == pid))
@@ -338,7 +338,7 @@ def add_tracks(pid: int, body: AddTracks, db: Session = Depends(get_db_with_copi
 
 
 @router.delete("/playlists/{pid}/items/{item_id}")
-def remove_item(pid: int, item_id: int, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def remove_item(pid: int, item_id: int, db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     p = _playlist(db, user, pid, write=True)
     db.execute(delete(PlaylistItem).where(PlaylistItem.playlist_id == pid, PlaylistItem.id == item_id))
     p.updated_at = datetime.now(timezone.utc)
@@ -351,7 +351,7 @@ class Reorder(BaseModel):
 
 
 @router.put("/playlists/{pid}/order")
-def reorder(pid: int, body: Reorder, db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def reorder(pid: int, body: Reorder, db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     _playlist(db, user, pid, write=True)
     for pos, iid in enumerate(body.item_ids):
         db.execute(update(PlaylistItem).where(PlaylistItem.playlist_id == pid, PlaylistItem.id == iid)
@@ -410,7 +410,7 @@ def _album_item(a: Album, liked: set[int]) -> dict:
 
 
 @router.get("/sidebar")
-def sidebar(db: Session = Depends(get_db_with_copies), user: User = Depends(current_user)):
+def sidebar(db: Session = Depends(get_db_with_copies, scope="function"), user: User = Depends(current_user)):
     """Everything the library panel lists, in one request: what you saved, follow,
     listen to or played lately, and its Latest."""
     liked_albums = set(db.scalars(select(Like.item_id).where(Like.user_id == user.id, Like.item_type == "album")))
