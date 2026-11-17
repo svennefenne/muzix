@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 POOL, OVERFLOW = 10, 30
 WARN_AT = 30                # connections out: say who holds them (at most once a minute)
 holders: dict[int, tuple[str, float]] = {}      # a connection out: the request (or thread) that has it, since when
-_warned = 0.0
+_warned = float("-inf")    # when the log last said who holds the connections (monotonic: a machine just started is near 0)
 
 
 class Base(DeclarativeBase):

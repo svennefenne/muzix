@@ -90,7 +90,7 @@ def test_days_weeks_and_months():
 
 def test_the_log_names_who_holds_the_connections(monkeypatch, caplog):
     monkeypatch.setattr(db, "WARN_AT", 1)
-    monkeypatch.setattr(db, "_warned", 0.0)
+    monkeypatch.setattr(db, "_warned", float("-inf"))   # never: a runner booted under a minute ago has a monotonic clock under 60
     token = current.set(Asker("GET", "/api/stream/159135"))
     try:
         with caplog.at_level(logging.WARNING, logger="muzix.db"), db.session() as s:
