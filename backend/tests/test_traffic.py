@@ -1,5 +1,6 @@
 """The admin's Data page: what Muzix sends out, by day, week and month, by device and kind (traffic.py);
 and the log naming who holds the database's connections when they run low (db.py)."""
+import gc
 import logging
 from datetime import date
 
@@ -91,6 +92,8 @@ def test_days_weeks_and_months():
 def test_the_log_names_who_holds_the_connections(monkeypatch, caplog):
     monkeypatch.setattr(db, "WARN_AT", 1)
     monkeypatch.setattr(db, "_warned", float("-inf"))   # never: a runner booted under a minute ago has a monotonic clock under 60
+    gc.collect()            # sessions earlier tests left for the collector give theirs back now, not in the middle of this
+    before = set(db.holders)
     token = current.set(Asker("GET", "/api/stream/159135"))
     try:
         with caplog.at_level(logging.WARNING, logger="muzix.db"), db.session() as s:
@@ -98,4 +101,4 @@ def test_the_log_names_who_holds_the_connections(monkeypatch, caplog):
     finally:
         current.reset(token)
     assert "1 × GET /api/stream/N" in caplog.text
-    assert not db.holders                                 # given back
+    assert set(db.holders) <= before                      # given back
