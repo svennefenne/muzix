@@ -79,14 +79,19 @@ def order(files: list[dict]) -> list[dict]:
 
 
 def chapter_name(f: dict, i: int, book: str) -> str:
+    """A file's chapter name: its one chapter's (a part of a book made before), its title tag, its name; not the
+    book's own title ("Philosopher’s" and "Philosopher's" alike)."""
     stem = os.path.splitext(os.path.basename(f["path"]))[0]
-    for cand in ((f["title"] or "").strip(), stem):
+    own = [c["title"] for c in f.get("chapters") or [] if c.get("title")]
+    book = (book or "").replace("’", "'")
+    whole = re.escape(book).replace("'", "['’]")
+    for cand in ((own[0] if len(own) == 1 else ""), (f["title"] or "").strip(), stem):
         cand = cand.replace("_", " ") if " " not in cand else cand      # "Mordets_praktik_01"
-        c = re.sub(re.escape(book), "", cand, flags=re.I) if book and len(book) > 3 else cand
+        c = re.sub(whole, "", cand, flags=re.I) if book and len(book) > 3 else cand
         c = re.sub(r"^[\s\d._\-–:]+", "", c).strip(" -_.,;:")
         if re.match(r"^(chapter|part|kapitel|book)\s*\d+$", c, re.I):
             return c.title()
-        if c and len(c) > 1 and not GENERIC.match(c) and c.lower() != book.lower():
+        if c and len(c) > 1 and not GENERIC.match(c) and c.replace("’", "'").lower() != book.lower():
             return c
     return f"Part {i}"
 

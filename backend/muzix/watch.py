@@ -42,6 +42,7 @@ from sqlalchemy import select
 from . import db, enrich, env, formats, jobs, providers, settings, tunnel
 from .meta import tags, tagwrite
 from .models import Job, Peer, Root
+from .audiobook.group import book_of
 from .organize import compilation, duplicates, importer
 
 log = logging.getLogger(__name__)
@@ -185,6 +186,16 @@ class ServerPlace(Place):
     def trash(self, name, held):
         self.remove(name, held)
         return "deleted"
+
+    def gather(self, name: str, parts: list[str]) -> str:
+        """Loose files (a book's, loose_books) into a folder of their own in the watch folder: its name."""
+        dest = _unique(self.root, name)
+        dest.mkdir()
+        for p in parts:
+            src = self._at(p, "")
+            if src.is_file():
+                shutil.move(str(src), str(dest / p))
+        return dest.name
 
 
 class ComputerPlace(Place):
@@ -670,11 +681,35 @@ NOW_LOOK = 3.0      # seconds between Transfer now's two looks: an album that ch
 
 
 def _busy(key: str) -> set[str]:
-    """What's being filed from the folder: names, and _Compilations/<name> for its compilations."""
+    """What's being filed from the folder: names, and _Compilations/<name> for its compilations; a book's loose files
+    (loose_books) by their own names too."""
+    out = set()
     with db.session() as s:
-        return {_seen_as((j.params or {}).get("held", ""), (j.params or {}).get("name", "")) for j in s.scalars(
-            select(Job).where(Job.type.in_(("import_watched", "import_books_watched")), Job.status.in_(("queued", "running"))))
-            if (j.params or {}).get("key") == key}
+        for j in s.scalars(select(Job).where(Job.type.in_(("import_watched", "import_books_watched")),
+                                             Job.status.in_(("queued", "running")))):
+            p = j.params or {}
+            if p.get("key") == key:
+                out.add(_seen_as(p.get("held", ""), p.get("name", "")))
+                out.update(p.get("parts") or [])
+    return out
+
+
+def loose_books(found: dict) -> tuple[dict, dict]:
+    """The audiobook watch folder's entries with each book lying loose in it (two or more sound files whose names
+    differ only in their number) as one entry, named for the book: (entries, {book: [its files]}). A file's
+    album tag isn't asked (the folder may be on a computer); a book's files that are different books after all are
+    told apart when it's filed (audiobook/group.py)."""
+    parts: dict[str, list[str]] = {}
+    for name, files in found.items():
+        if len(files) == 1 and files[0][0] == name and formats.is_audio(name):
+            b = book_of(name)
+            if b:
+                parts.setdefault(b, []).append(name)
+    groups = {b: sorted(ns) for b, ns in parts.items() if len(ns) > 1 and b not in found}
+    out = {n: fs for n, fs in found.items() if not any(n in ns for ns in groups.values())}
+    for b, ns in groups.items():
+        out[b] = [f for n in ns for f in found[n]]
+    return out, groups
 
 
 def _seen_as(held: str, name: str) -> str:
@@ -737,6 +772,11 @@ def _check_one(key: str, now: bool) -> dict:
         if now:
             time.sleep(NOW_LOOK)
             again = where.entries() | ({} if books else {f"{OWN}/{n}": fs for n, fs in _own(where).items()})
+        groups = {}
+        if books:
+            found, groups = loose_books(found)
+            if now:
+                again = loose_books(again)[0]
     except Exception as e:      # a computer gone meanwhile, a share away: next time
         st.update(error=str(e) or e.__class__.__name__, checked=time.time())
         if now:
@@ -747,14 +787,17 @@ def _check_one(key: str, now: bool) -> dict:
         if name not in found:
             del seen[name]
     for name, files in found.items():
-        if name in busy or not files:
+        if name in busy or not files or any(n in busy for n in groups.get(name, ())):
             continue
         look = _look(files)
         before = seen.get(name)
         if before is None or before[0] != look:
             seen[name] = (look, t)
         if (bool(again.get(name)) and _look(again[name]) == look) if now else t - seen[name][1] >= SETTLE:
-            if books:
+            if books and name in groups:
+                jobs.submit("import_books_watched", f"Audiobook watch folder: {name}", name=name, key=key,
+                            parts=groups[name])
+            elif books:
                 jobs.submit("import_books_watched", f"Audiobook watch folder: {name}", name=name, key=key)
             elif name.startswith(OWN + "/"):
                 own = name[len(OWN) + 1:]

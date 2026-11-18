@@ -93,34 +93,48 @@ def import_books(ctx: jobs.JobContext, batch: str):
 
 
 @jobs.job("import_books_watched")
-def import_books_watched(ctx: jobs.JobContext, name: str, key: str, held: str = ""):
-    """One book (or a folder of them) from the audiobook watch folder. From a computer, it is deleted there once
-    every book in it is in the library; what's left goes to _Done, and to _Failed when a book couldn't be made."""
+def import_books_watched(ctx: jobs.JobContext, name: str, key: str, held: str = "", parts: list | None = None):
+    """One book (or a folder of them) from the audiobook watch folder; ``parts``: a book's files lying loose in it
+    (watch.loose_books), ``name`` the book. From a computer, it is deleted there once every book in it is in the
+    library; what's left goes to _Done, and to _Failed when a book couldn't be made."""
     where = watch.place(key)
     if where is None or where.key != key:
         raise RuntimeError("the watch folder changed or can't be reached")
+    if parts and isinstance(where, watch.ServerPlace):
+        name, parts = where.gather(name, parts), None       # into a folder of their own there, filed as one
+    names = list(parts or [name])
     work = env.UPLOAD_DIR / watch._batch()
     try:
-        folder = where.fetch(name, held, work)
-        if folder.is_file():
-            (work / folder.stem).mkdir(parents=True, exist_ok=True)
-            folder = Path(shutil.move(str(folder), str(work / folder.stem / folder.name))).parent
+        if parts:
+            folder = work / name
+            for p in parts:
+                got = where.fetch(p, held, work / ".parts")
+                folder.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(got), str(folder / p))
+        else:
+            folder = where.fetch(name, held, work)
+            if folder.is_file():
+                (work / folder.stem).mkdir(parents=True, exist_ok=True)
+                folder = Path(shutil.move(str(folder), str(work / folder.stem / folder.name))).parent
         out = {"name": name, **file_books(ctx, folder, f"the watch folder: {name}", named=True)}
         if out["failed"]:
-            where.move(name, held, "_Failed")
+            for n in names:
+                where.move(n, held, "_Failed")
             ctx.log(f"{len(out['failed'])} couldn't be made: set aside in _Failed")
         elif isinstance(where, watch.ComputerPlace):
-            where.remove(name, held)
+            for n in names:
+                where.remove(n, held)
             out["removed"] = True
             ctx.log("every book in it is in the library: deleted from the computer's watch folder")
         elif folder.exists():
             where.move(name, held, "_Done")
         return out
     except Exception:
-        try:
-            where.move(name, held, "_Failed")
-        except Exception:
-            log.exception("audiobook watch folder: couldn't set %s aside", name)
+        for n in names:
+            try:
+                where.move(n, held, "_Failed")
+            except Exception:
+                log.exception("audiobook watch folder: couldn't set %s aside", n)
         raise
     finally:
         if work.exists():

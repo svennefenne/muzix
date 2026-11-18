@@ -180,3 +180,98 @@ def test_science_and_philosophy():
     assert genre(["Science & Nature"]) == "Science & Philosophy"           # Apple's
     assert genre(["Science Fiction & Fantasy", "Science Fiction"]) == "Science Fiction"
     assert genre(["History", "World"]) == "History" and genre(["Politics & Social Sciences", "Sociology"]) == "Non-fiction"
+
+
+FRY = dict(title="Harry Potter and the Philosopher's Stone (Narrated by Stephen Fry)", authors=["J.K. Rowling"],
+           narrators=["Stephen Fry"], runtime=505 * 60, series=[("Harry Potter (Narrated by Stephen Fry)", "1")], language="english")
+FULL_CAST = dict(title="Harry Potter and the Philosopher's Stone (Full-Cast Edition)", authors=["J.K. Rowling"],
+                 narrators=["Hugh Laurie", "Matthew Macfadyen"], runtime=521 * 60,
+                 series=[("Harry Potter (Full-Cast Editions)", "1")], language="english")
+
+
+def test_an_edition_the_us_store_has_by_another_title_is_found_in_the_uk_one(offline):
+    """Audible's US store has the Full-Cast Edition as "Sorcerer's Stone": when none of its books is as long as ours,
+    the UK store is asked too, and the one as long as ours is it (its chapters from the UK store's)."""
+    asked, chapters = [], []
+
+    def search(title, author="", keywords="", store="us"):
+        asked.append(store)
+        if store == "us":
+            return [sources.book("audible", "B0D1CSXB3Z", asin="B0D1CSXB3Z", store="us", **FRY)]
+        return [sources.book("audible", "uk:B017V568SY", asin="B017V568SY", store="uk", **FRY),
+                sources.book("audible", "uk:B0F14RFHS6", asin="B0F14RFHS6", store="uk", **FULL_CAST)]
+    offline.setattr(sources, "audible_search", search)
+    offline.setattr(sources, "audible_chapters", lambda asin, store="us": chapters.append((asin, store)))
+    title = "Harry Potter and the Philosopher’s Stone"
+    f = sources.identify(sources.Guess(title=title, authors=["J.K. Rowling"], duration=521 * 60 + 25))
+    assert (f.asin, f.narrators, f.series, f.vol, f.title, f.sure) == \
+        ("B0F14RFHS6", ["Hugh Laurie", "Matthew Macfadyen"], "Harry Potter (Full-Cast Editions)", "1", title, True)
+    assert chapters == [("B0F14RFHS6", "uk")] and "uk" in asked
+    # Stephen Fry's, as long as his: the US store's, and the UK store isn't asked
+    asked.clear()
+    f = sources.identify(sources.Guess(title=title, authors=["J.K. Rowling"], duration=505 * 60 + 10))
+    assert (f.asin, f.narrators, f.title) == ("B0D1CSXB3Z", ["Stephen Fry"], title) and set(asked) == {"us"}
+    # a book in another language isn't looked for there
+    asked.clear()
+    sources.identify(sources.Guess(title=title, authors=["J.K. Rowling"], duration=521 * 60, language="swedish"))
+    assert "uk" not in asked
+
+
+def test_an_audible_link_or_asin_from_any_store(offline):
+    got = []
+    offline.setattr(sources, "audible_get", lambda asin, store="us": got.append((asin, store)))
+    for id in ("https://www.audible.co.uk/pd/Harry-Potter-Audiobook/B0F14RFHS6", "https://www.audible.com/pd/B0F14RPXHR?ref=x",
+               "uk:B0F14RFHS6", "B0D1CSXB3Z", "1234567890", "https://www.audible.de/pd/B0F14XXXXX", "not one"):
+        sources.get("audible", id)
+    assert got == [("B0F14RFHS6", "uk"), ("B0F14RPXHR", "us"), ("B0F14RFHS6", "uk"), ("B0D1CSXB3Z", "us"),
+                   ("1234567890", "us"), ("B0F14XXXXX", "de")]
+    p = sources._audible_slim({"asin": "B0F14RFHS6", "title": "X"}, "uk")
+    assert (p["id"], p["url"], p["store"]) == ("uk:B0F14RFHS6", "https://www.audible.co.uk/pd/B0F14RFHS6", "uk")
+
+
+def test_which_edition_it_is_isnt_part_of_the_title():
+    assert sources.bare_title("Harry Potter and the Philosopher's Stone (Narrated by Stephen Fry)") == \
+        "Harry Potter and the Philosopher's Stone"
+    assert sources.bare_title("Harry Potter and the Sorcerer’s Stone (Full-Cast Edition)") == "Harry Potter and the Sorcerer’s Stone"
+
+
+def test_tags_written_in_the_wrong_encoding_read_as_meant():
+    assert group.unmangle("Harry Potter and the Philosopher\x92s Stone") == "Harry Potter and the Philosopher’s Stone"
+    assert group.unmangle("Harry Potter and the Philosopher\u00e2\x80\x99s Stone") == "Harry Potter and the Philosopher’s Stone"
+    assert group.unmangle("Café ’") == "Café ’" and group.unmangle("") == ""
+
+
+def test_the_book_a_loose_file_is_part_of():
+    for name, book in [("01. J.K. Rowling - Harry Potter and the Philosopher’s Stone.mp3", "J.K. Rowling - Harry Potter and the Philosopher’s Stone"),
+                       ("10 - Dune.mp3", "Dune"), ("Dune - Part 02.mp3", "Dune"), ("Dune (3 of 17).m4b", "Dune"),
+                       ("Track 05 - Dune.mp3", "Dune"), ("Stormlight 1.mp3", ""), ("1984.mp3", ""), ("Mistborn.m4b", "")]:
+        assert group.book_of(name) == book, name
+    assert group.one_book(["01.mp3", "02.mp3"]) and group.one_book(["x/01. Dune.mp3", "x/02. Dune.mp3"])
+    assert not group.one_book(["Dune.mp3", "Emma.mp3"]) and not group.one_book(["01.mp3"])
+
+
+def test_a_named_folders_untagged_parts_are_one_book(tmp_path):
+    """A folder put in the watch folder (its name says what's in it) with numbered files and no tags: one book;
+    loose untagged files with names of their own stay each a book of its own."""
+    book = tmp_path / "J.K. Rowling - Harry Potter and the Philosopher’s Stone"
+    book.mkdir()
+    for n in ("01. J.K. Rowling - Harry Potter and the Philosopher’s Stone.mp3", "02. J.K. Rowling - Harry Potter and the Philosopher’s Stone.mp3"):
+        (book / n).write_bytes(b"\xff\xfb" + b"0" * 400)
+    found = group.scan(str(book), named_root=True)
+    assert len(found) == 1 and len(found[0].files) == 2
+    assert (found[0].guess.title, found[0].guess.authors) == ("Harry Potter and the Philosopher’s Stone", ["J.K. Rowling"])
+    other = tmp_path / "Some books"
+    other.mkdir()
+    for n in ("Dune.mp3", "Emma.mp3"):
+        (other / n).write_bytes(b"\xff\xfb" + b"0" * 400)
+    assert len(group.scan(str(other), named_root=True)) == 2
+
+
+def test_a_parts_chapter_name_is_its_own_chapters_not_the_books_title():
+    """Parts of a book made before (one chapter each, the book's title in their title tag): the chapter's name."""
+    part = {"path": "/x/02 Chapter One.m4b", "title": "Harry Potter and the Philosopher’s Stone",
+            "chapters": [{"start": 0, "end": 1907, "title": "Chapter One - The Boy Who Lived"}]}
+    assert make.chapter_name(part, 2, "Harry Potter and the Philosopher's Stone") == "Chapter One - The Boy Who Lived"
+    part = {"path": "/x/05.mp3", "title": "Harry Potter and the Philosopher’s Stone", "chapters": []}
+    assert make.chapter_name(part, 5, "Harry Potter and the Philosopher's Stone") == "Part 5"
+    assert make.chapter_name({"path": "/x/03.mp3", "title": "Harry’s Birthday"}, 3, "Harry Potter") == "Harry’s Birthday"

@@ -79,8 +79,10 @@ def sim(a: str, b: str) -> float:
 
 
 def bare_title(t: str) -> str:
-    """A shop's title without what shops add: (Unabridged), ": The Horus Heresy, Book 3", "Star Wars: "."""
+    """A shop's title without what shops add: (Unabridged), ": The Horus Heresy, Book 3", "Star Wars: ", which
+    edition it is ("(Narrated by Stephen Fry)", "(Full-Cast Edition)": the series says that)."""
     t = re.sub(r"\s*[\[(](unabridged|abridged|dramati[sz]ed adaptation)[\])]", "", t or "", flags=re.I)
+    t = re.sub(r"\s*\((narrated|read|performed) by [^)]*\)|\s*\(full[- ]cast( audio)?( edition)?\)", "", t, flags=re.I)
     t = re.sub(r"\s*\((audio drama|novel|novella|short story|anthology|audiobook|audio book)\)\s*$", "", t, flags=re.I)
     t = re.sub(r"[:,]\s*(the )?horus heresy.*$|[:,]\s*(a )?warhammer( 40,000)?.*$|[:,]\s*star wars legends$", "", t, flags=re.I)
     t = re.sub(r"^star wars:\s*", "", t, flags=re.I)
@@ -108,10 +110,14 @@ def split_by(t: str) -> tuple[str, str]:
 # ---------------------------------------------------------------- Audible
 
 GROUPS = "contributors,product_attrs,product_desc,product_extended_attrs,media,series,category_ladders"
-AUDIBLE_LINK = re.compile(r"audible\.[a-z.]+/pd/(?:[^/?#]+/)?([A-Z0-9]{10})\b|^\s*(B0[0-9A-Z]{8})\s*$", re.I)
+AUDIBLE_LINK = re.compile(r"audible\.([a-z.]+)/pd/(?:[^/?#]+/)?([A-Z0-9]{10})\b|^\s*(?:([a-z]{2}):)?(B0[0-9A-Z]{8})\s*$", re.I)
+# Audible's stores: the US one first; the UK one too when no US book is as long as ours, for a British edition the US
+# store has under another title ("Philosopher's Stone (Full-Cast Edition)" is "Sorcerer's Stone" there)
+STORES = {"us": "audible.com", "uk": "audible.co.uk", "ca": "audible.ca", "au": "audible.com.au", "de": "audible.de"}
+STORE_OF = {d: k for k, d in STORES.items()}
 
 
-def audible_search(title: str, author: str = "", keywords: str = "") -> list[dict]:
+def audible_search(title: str, author: str = "", keywords: str = "", store: str = "us") -> list[dict]:
     params = {"num_results": 10, "products_sort_by": "Relevance", "response_groups": GROUPS, "image_sizes": "1215,500"}
     if keywords:
         params["keywords"] = keywords
@@ -119,20 +125,21 @@ def audible_search(title: str, author: str = "", keywords: str = "") -> list[dic
         params["title"] = title
         if author:
             params["author"] = author
-    d = _get("audible", "https://api.audible.com/1.0/catalog/products", params) or {}
-    return [_audible_slim(p) for p in d.get("products", []) if p.get("asin")]
+    d = _get("audible", f"https://api.{STORES[store]}/1.0/catalog/products", params) or {}
+    return [_audible_slim(p, store) for p in d.get("products", []) if p.get("asin")]
 
 
-def audible_get(asin: str) -> dict | None:
-    d = _get("audible", f"https://api.audible.com/1.0/catalog/products/{asin}",
+def audible_get(asin: str, store: str = "us") -> dict | None:
+    d = _get("audible", f"https://api.{STORES[store]}/1.0/catalog/products/{asin}",
              {"response_groups": GROUPS, "image_sizes": "1215,500"}) or {}
-    return _audible_slim(d["product"]) if d.get("product", {}).get("asin") else None
+    return _audible_slim(d["product"], store) if d.get("product", {}).get("asin") else None
 
 
-def _audible_slim(p: dict) -> dict:
+def _audible_slim(p: dict, store: str = "us") -> dict:
     imgs = p.get("product_images") or {}
     return book(
-        "audible", p["asin"], asin=p["asin"], url=f"https://www.audible.com/pd/{p['asin']}",
+        "audible", p["asin"] if store == "us" else f"{store}:{p['asin']}", asin=p["asin"], store=store,
+        url=f"https://www.{STORES[store]}/pd/{p['asin']}",
         title=p.get("title") or "", subtitle=p.get("subtitle") or "",
         authors=[a["name"] for a in p.get("authors") or [] if "translator" not in a["name"].lower()],
         narrators=[n["name"] for n in p.get("narrators") or []],
@@ -145,9 +152,9 @@ def _audible_slim(p: dict) -> dict:
     )
 
 
-def audible_chapters(asin: str) -> dict | None:
+def audible_chapters(asin: str, store: str = "us") -> dict | None:
     """{"runtime": s, "chapters": [{"start": s, "title"}]} for the Audible recording, from Audnexus."""
-    d = _get("audnexus", f"https://api.audnex.us/books/{asin}/chapters")
+    d = _get("audnexus", f"https://api.audnex.us/books/{asin}/chapters", {"region": store} if store != "us" else None)
     if not d or not d.get("chapters"):
         return None
     return {"runtime": d.get("runtimeLengthSec") or 0,
@@ -583,8 +590,14 @@ def get(source: str, id: str) -> dict | None:
     id = (id or "").strip()
     if source == "audible":
         m = AUDIBLE_LINK.search(id)
-        asin = (m.group(1) or m.group(2)) if m else id
-        return audible_get(asin.upper()) if re.fullmatch(r"[A-Z0-9]{10}", asin.upper()) else None
+        if m and m.group(2):                # a link: the store is its site's
+            store, asin = STORE_OF.get("audible." + m.group(1).lower(), "us"), m.group(2)
+        else:                               # an ASIN, "uk:B0F14RFHS6" for one in the UK store
+            m = re.fullmatch(r"(?:([a-z]{2}):)?([A-Z0-9]{10})", id, re.I)
+            if not m:
+                return None
+            store, asin = (m.group(1) or "us").lower(), m.group(2)
+        return audible_get(asin.upper(), store if store in STORES else "us")
     if source == "bonnier":
         return bonnier_get(id)
     if source == "apple":
@@ -601,15 +614,21 @@ def _audible_pick(g: Guess) -> tuple[dict | None, bool]:
     if g.asin:
         p = audible_get(g.asin)
         if p:
-            cands[p["asin"]] = p
+            cands[p["id"]] = p
     for t in [g.title] + g.titles[:1]:
         for a in g.authors[:2] or [""]:
             if t:
                 for p in audible_search(t, a):
-                    cands.setdefault(p["asin"], p)
+                    cands.setdefault(p["id"], p)
     if not cands and g.title:
         for p in audible_search("", keywords=f"{g.title} {g.authors[0] if g.authors else ''}".strip()):
-            cands.setdefault(p["asin"], p)
+            cands.setdefault(p["id"], p)
+    if g.duration and g.title and (not g.language or g.language[:2] == "en") and \
+            not any(p["runtime"] and abs(p["runtime"] - g.duration) <= max(120, 0.015 * g.duration) for p in cands.values()):
+        for t in [g.title] + g.titles[:1]:
+            for a in g.authors[:1] or [""]:
+                for p in audible_search(t, a, store="uk"):
+                    cands.setdefault(p["id"], p)
     ranked = sorted(((_score(p, g), p) for p in cands.values()
                      if not p["language"] or not g.language or p["language"][:2] == g.language[:2] or p["asin"] == g.asin),
                     key=lambda x: -x[0][0])
@@ -661,7 +680,7 @@ def _take(f: Found, g: Guess, pick: dict):
             f.series = re.sub(r":\s*warhammer( 40,000| chronicles)?$", "", s[0][0], flags=re.I).strip()
             f.vol = vol_text(s[0][1])
     if pick["source"] == "audible" and pick["runtime"] and g.duration and abs(pick["runtime"] - g.duration) <= 120:
-        f.chapters = audible_chapters(pick["asin"])
+        f.chapters = audible_chapters(pick["asin"], pick.get("store") or "us")
 
 
 def identify(g: Guess, chosen: dict | None = None) -> Found:

@@ -248,7 +248,7 @@ def test_needs_a_look_picked_and_filed(upload, library, monkeypatch, api):
     review = api.get("/api/admin/books/review").json()
     wt = next(b for b in review if b["title"] == "Wind and Truth")
     assert "Leviathan Wakes" not in [b["title"] for b in review]
-    monkeypatch.setattr(sources, "audible_get", lambda asin: sources.book("audible", asin, asin=asin, title="Wind and Truth",
+    monkeypatch.setattr(sources, "audible_get", lambda asin, store="us": sources.book("audible", asin, asin=asin, title="Wind and Truth",
                                                                           authors=["Brandon Sanderson"]))
     monkeypatch.setattr(sources, "identify", lambda g, chosen=None: found("Wind and Truth", "Brandon Sanderson", series="The Stormlight Archive",
                                                                          vol="5", year="2024", language="english", asin=g.asin,

@@ -49,17 +49,50 @@ def album_base(a: str) -> str:
     return re.sub(r"[\W_]+", " ", a).strip()
 
 
+LEAD = re.compile(r"^\s*(?:(?:track|part|disc|cd|chapter|kapitel|del)[\s._-]*)?\d{1,3}(?:\s*of\s*\d+)?\s*[-._)\]]+\s*|"
+                  r"^\s*\d{1,3}\s+(?=\D)", re.I)
+TRAIL = re.compile(r"[\s._-]*[\[(]?\b(?:part|pt|disc|disk|cd|track|chapter|kapitel|del)[\s._-]*\d{1,3}(?:\s*of\s*\d+)?[\])]?\s*$|"
+                   r"\s*[\[(]\d{1,3}\s*of\s*\d{1,3}[\])]\s*$", re.I)
+
+
+def book_of(file: str) -> str:
+    """The book a loose file is a part of, by its name: "01. J.K. Rowling - Harry Potter and the Philosopher's
+    Stone.mp3", "… - Part 02.mp3" and "… (3 of 17).mp3" are their book's; "" when the name has no number to drop."""
+    stem = os.path.splitext(os.path.basename(file))[0]
+    bare = TRAIL.sub("", LEAD.sub("", stem, count=1)).strip(" -_.")
+    return bare if bare and bare != stem.strip(" -_.") else ""
+
+
+def one_book(paths: list[str]) -> bool:
+    """Whether files are one book's parts by their names: alike but for their numbers ("01.mp3", "02.mp3" too)."""
+    keys = {book_of(p) or re.sub(r"\d+", "", os.path.splitext(os.path.basename(p))[0]).strip(" -_.") for p in paths}
+    return len(paths) > 1 and len(keys) == 1
+
+
+def unmangle(s: str) -> str:
+    """A tag's text as it was meant: UTF-8 or Windows-1252 written into a Latin-1 tag reads as "Philosopherâ\x80\x99s"
+    or "Philosopher\x92s"; both are "Philosopher’s"."""
+    if not s or not re.search(r"[\x80-\x9f]", s):
+        return s or ""
+    for enc in ("utf-8", "cp1252"):
+        try:
+            return s.encode("latin-1").decode(enc)
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            continue
+    return s
+
+
 def _read(path: str) -> Part:
     try:
         i = tags.read(path)
     except Exception:  # noqa: BLE001  an unreadable tag still leaves the sound
         return Part(path=path)
-    narrator = i.extra.get("narrator", "")
-    author = i.albumartist or i.artist
+    narrator = unmangle(i.extra.get("narrator", ""))
+    author = unmangle(i.albumartist or i.artist)
     if author and narrator and author == narrator:
-        author = i.artist if i.artist != narrator else ""
-    return Part(path=path, duration=i.duration or 0, album=i.album, author=author, narrator=narrator,
-                title=i.title, year=str(i.year or ""), track=i.track_no)
+        author = unmangle(i.artist) if unmangle(i.artist) != narrator else ""
+    return Part(path=path, duration=i.duration or 0, album=unmangle(i.album), author=author, narrator=narrator,
+                title=unmangle(i.title), year=str(i.year or ""), track=i.track_no)
 
 
 def scan(root: str, named_root: bool = False) -> list[Found]:
@@ -99,7 +132,7 @@ def scan(root: str, named_root: bool = False) -> list[Found]:
         loose = all(os.path.dirname(p.path) == u for p in parts)
         container = u == root or any(k != u and k.startswith(u + os.sep) for k in units)
         big = [a for a, g in by_album.items() if sum(p.duration for p in g) > 1500]
-        if container and loose and "" in by_album:
+        if container and loose and "" in by_album and not (named_root and u == root and one_book([p.path for p in by_album[""]])):
             by_album.update({p.path: [p] for p in by_album.pop("")})
         if loose and not named and "" not in by_album and len(by_album) > 1 and (container or len(big) == len(by_album)) \
                 and all(len(g) <= 4 for g in by_album.values()):

@@ -742,3 +742,88 @@ def test_a_computer_lets_this_server_watch_more_than_one_folder_from_0_4_24(fold
         with db.session() as s:
             s.query(Peer).filter(Peer.server_id == "zq-laptop").delete()
             s.commit()
+
+
+HP = "J.K. Rowling - Harry Potter and the Philosopher’s Stone"
+
+
+def test_a_books_loose_files_are_taken_as_one_book(folder, monkeypatch):
+    """The audiobook watch folder: a book's files lying loose in it ("01. … .mp3", "02. … .mp3") are one book,
+    taken once all of them stay as they are; a file by itself and a folder are each their own, as before."""
+    root, submitted = folder
+    settings.set_many({"watch_folders": [{"folder": str(root), "only": "audiobooks"}]})
+    for i in (1, 2, 3):
+        (root / f"0{i}. {HP}.mp3").write_bytes(b"x" * i)
+    (root / "Dune.m4b").write_bytes(b"d")
+    now = [1000.0]
+    monkeypatch.setattr(watch.time, "time", lambda: now[0])
+    monkeypatch.setattr(watch, "_busy", lambda key: set())
+    watch._seen.clear()
+    key = f"server:{root}"
+    watch.check()
+    assert watch.state(key)["waiting"] == sorted([HP, "Dune.m4b"]) and not submitted
+    now[0] += 60
+    (root / f"04. {HP}.mp3").write_bytes(b"4")                   # still coming in: the book waits
+    watch.check()
+    now[0] += watch.SETTLE - 60
+    watch.check()
+    assert [k["name"] for _a, k in submitted] == ["Dune.m4b"]
+    now[0] += watch.SETTLE
+    watch.check()
+    args, params = submitted[-1]
+    assert args[0] == "import_books_watched" and params == {"name": HP, "key": key, "parts": [f"0{i}. {HP}.mp3" for i in (1, 2, 3, 4)]}
+    # while it's filed, neither the book nor its files are taken again
+    submitted.clear()
+    watch._seen.clear()
+    monkeypatch.setattr(watch, "_busy", lambda key: {HP, f"01. {HP}.mp3"})
+    now[0] += 10 * watch.SETTLE
+    watch.check()
+    now[0] += 10 * watch.SETTLE
+    watch.check()
+    assert [k["name"] for _a, k in submitted] == ["Dune.m4b"]
+
+
+def _books_filed(seen, failed=False):
+    def file_books(ctx, source, label, named=False):
+        seen.append((source.name, sorted(p.name for p in source.iterdir()), named))
+        if not failed:
+            for p in source.iterdir():
+                p.unlink()
+        return {"books": [] if failed else [{"title": "HP"}], "failed": [{"title": "HP"}] if failed else []}
+    return file_books
+
+
+def test_a_books_loose_files_from_a_computer_filed_as_one_and_deleted_there(folder, monkeypatch):
+    from muzix.audiobook import pipeline
+    root, _ = folder
+    names = [f"0{i}. {HP}.mp3" for i in (1, 2)]
+    for n in names + ["Other.mp3"]:
+        (root / n).write_bytes(b"x")
+    comp = Computer(root)
+    monkeypatch.setattr(watch, "place", lambda key="": comp)
+    seen = []
+    monkeypatch.setattr(pipeline, "file_books", _books_filed(seen))
+    got = pipeline.import_books_watched(Ctx(), HP, comp.key, parts=names)
+    assert seen == [(HP, names, True)] and got["removed"]
+    assert sorted(p.name for p in root.iterdir()) == ["Other.mp3"]
+    # one that can't be made: its files set aside on the computer
+    for n in names:
+        (root / n).write_bytes(b"x")
+    seen.clear()
+    monkeypatch.setattr(pipeline, "file_books", _books_filed(seen, failed=True))
+    pipeline.import_books_watched(Ctx(), HP, comp.key, parts=names)
+    assert sorted(p.name for p in (root / "_Failed").iterdir()) == names
+
+
+def test_a_books_loose_files_on_the_server_gathered_into_a_folder_of_their_own(folder, monkeypatch):
+    from muzix.audiobook import pipeline
+    root, _ = folder
+    settings.set_many({"watch_folders": [{"folder": str(root), "only": "audiobooks"}]})
+    names = [f"0{i}. {HP}.mp3" for i in (1, 2)]
+    for n in names:
+        (root / n).write_bytes(b"x")
+    seen = []
+    monkeypatch.setattr(pipeline, "file_books", _books_filed(seen, failed=True))
+    pipeline.import_books_watched(Ctx(), HP, f"server:{root}", parts=names)
+    assert seen == [(HP, names, True)]
+    assert sorted(p.name for p in (root / "_Failed" / HP).iterdir()) == names and not (root / names[0]).exists()
