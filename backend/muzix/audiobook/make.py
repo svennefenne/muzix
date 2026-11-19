@@ -36,17 +36,31 @@ def natural(s: str):
 
 
 def probe(path: str) -> dict:
-    out = subprocess.run(["ffprobe", "-v", "error", "-print_format", "json", "-show_format", "-show_streams",
-                          "-show_chapters", path], capture_output=True, text=True, timeout=600).stdout
-    d = json.loads(out or "{}")
+    r = subprocess.run(["ffprobe", "-v", "warning", "-print_format", "json", "-show_format", "-show_streams",
+                        "-show_chapters", path], capture_output=True, text=True, timeout=600)
+    d = json.loads(r.stdout or "{}")
     a = next((s for s in d.get("streams", []) if s.get("codec_type") == "audio"), {})
     t = {k.lower(): v for k, v in (d.get("format", {}).get("tags") or {}).items()}
-    return {"path": path, "duration": length(d, a),
+    duration = length(d, a)
+    if "Estimating duration from bitrate" in r.stderr:      # an mp3 without a VBR header: 2200 s said, 2086 s heard
+        duration = decoded(path) or duration
+    return {"path": path, "duration": duration,
             "codec": a.get("codec_name"), "profile": a.get("profile") or "", "rate": int(a.get("sample_rate") or 0),
             "ch": int(a.get("channels") or 0),
             "bitrate": int(d.get("format", {}).get("bit_rate") or 0), "title": t.get("title", ""), "track": t.get("track", ""),
             "chapters": [{"start": float(c["start_time"]), "end": float(c["end_time"]), "title": (c.get("tags") or {}).get("title", "")}
                          for c in d.get("chapters", [])]}
+
+
+def decoded(path: str) -> float:
+    """A file's length as decoding it all takes (an mp3 decodes at some thousand times its speed)."""
+    try:
+        r = subprocess.run(["ffmpeg", "-nostdin", "-v", "info", "-i", path, "-map", "0:a:0", "-f", "null", "-"],
+                           capture_output=True, text=True, timeout=1800)
+    except (OSError, subprocess.SubprocessError):
+        return 0.0
+    t = re.findall(r"time=(\d+):(\d\d):(\d\d(?:\.\d+)?)", r.stderr)
+    return int(t[-1][0]) * 3600 + int(t[-1][1]) * 60 + float(t[-1][2]) if t else 0.0
 
 
 def length(d: dict, a: dict) -> float:

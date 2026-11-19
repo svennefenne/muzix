@@ -104,7 +104,8 @@ async def upload_files(batch: str, files: list[UploadFile], paths: list[str] = F
 async def upload_part(batch: str, data: UploadFile, path: str = Form(...), offset: int = Form(..., ge=0),
                       total: int = Form(..., ge=0), db: Session = Depends(get_db, scope="function")):
     """One piece of a big file. Proxies such as Cloudflare refuse request bodies
-    over 100 MiB, so the browser sends large files in pieces, in order."""
+    over 100 MiB, so the browser sends large files in pieces, in order. A piece
+    sent again (its connection lost half-way) takes the place of what came of it."""
     d = batch_dir(batch)
     if not d.is_dir():
         raise HTTPException(404, "No such upload batch")
@@ -112,7 +113,7 @@ async def upload_part(batch: str, data: UploadFile, path: str = Form(...), offse
     dest = d / rel
     part = dest.with_name(dest.name + ".part")
     have = part.stat().st_size if part.exists() else 0
-    if offset and offset != have:
+    if offset > have:
         raise HTTPException(409, f"Expected the piece at {have}")
     dest.parent.mkdir(parents=True, exist_ok=True)
     with open(part, "r+b" if offset else "wb") as out:

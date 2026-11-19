@@ -9,7 +9,7 @@ import os
 import shutil
 from pathlib import Path
 
-from .. import env, jobs, watch
+from .. import env, formats, jobs, watch
 from ..organize import importer
 from . import group, make, place, sources
 
@@ -28,20 +28,32 @@ def file_books(ctx: jobs.JobContext, source: Path, label: str, named: bool = Fal
     if not found:
         raise RuntimeError("there are no audiobooks in it")
     ctx.log(f"{len(found)} book{'s' if len(found) != 1 else ''}")
+    names = [b.guess.title or os.path.basename(b.home or b.files[0].path) for b in found]
+    ids = identify_all(ctx, found, names)
     out: dict = {"books": [], "failed": [], "root": root}
-    for i, b in enumerate(found):
+    made_here: list[tuple] = []         # (Found, seconds, the files' sizes, title) of the books made so far
+    for i, (b, f) in enumerate(zip(found, ids, strict=True)):
         ctx.check()
-        name = b.guess.title or os.path.basename(b.home or b.files[0].path)
-        ctx.update(0.05 + 0.9 * i / len(found), f"{i + 1} of {len(found)}: {name}")
+        name = names[i]
+        ctx.update(0.25 + 0.7 * i / len(found), f"{i + 1} of {len(found)}: {name}")
+        sizes = sorted(os.path.getsize(p.path) for p in b.files if os.path.exists(p.path))
+        copy = next((m for m in made_here if sizes and m[2] == sizes), None)
+        if copy:                        # the same files again (a collection's copy of a book in another folder)
+            ctx.log(f"{name}: the same files as “{copy[3]}”, made already: left in the upload")
+            out["failed"].append({"title": name, "error": f"a copy of “{copy[3]}”, made from this upload already",
+                                  "files": len(b.files)})
+            continue
         try:
-            f = sources.identify(b.guess)
             language = place.language_code(f.language)
             author = f.authors[0] if f.authors else ""
             genre = "Warhammer" if f.warhammer else place.author_genre(root, author) or place.genre_of(f)
             dup = place.duplicate_of(f, b.guess.duration)
-            folder = place.aside(root, f) if dup else place.target(root, f, genre)
+            twin = next((m for m in made_here if place.alike(f, b.guess.duration, m[0].title, (m[0].authors or [""])[0],
+                                                             m[0].narrators, m[1])), None)
+            folder = place.aside(root, f) if dup or twin else place.target(root, f, genre)
             ctx.log(f"{name}: {', '.join(f.sources) or 'no source knew it'}"
-                    f"{' (not sure)' if not f.sure else ''} → {os.path.relpath(folder, root)}")
+                    f"{' (not sure)' if not f.sure else ''}{f' (another copy of “{twin[3]}” here)' if twin else ''}"
+                    f" → {os.path.relpath(folder, root)}")
             made = make.make([p.path for p in b.files], f, genre, language, folder, home=b.home,
                              muzix={"review": not f.sure, "sources": f.sources, "uploaded": label,
                                     "duplicate_of": dup.id if dup else None})
@@ -50,8 +62,9 @@ def file_books(ctx: jobs.JobContext, source: Path, label: str, named: bool = Fal
                     os.remove(p.path)
                 except OSError:
                     pass
-            if b.home and os.path.isdir(b.home):
+            if b.home and os.path.isdir(b.home) and not _sound_in(b.home):   # never another book's files with it
                 shutil.rmtree(b.home, ignore_errors=True)
+            made_here.append((f, made["seconds"], sizes, f.title))
             out["books"].append({"title": f.title, "author": author, "folder": os.path.relpath(folder, root),
                                  "genre": genre, "language": language, "sure": f.sure, "sources": f.sources,
                                  "duplicate_of": dup.id if dup else None, "seconds": made["seconds"],
@@ -62,6 +75,35 @@ def file_books(ctx: jobs.JobContext, source: Path, label: str, named: bool = Fal
     _prune(source)
     jobs.submit("scan_books", "Scan the audiobooks")
     return out
+
+
+def identify_all(ctx: jobs.JobContext, found: list, names: list[str]) -> list[sources.Found]:
+    """Every book looked up; then, when most of those the sources were sure of are part of one thing (Star Wars), the
+    others looked for as that too: "Crucible" by no one a tag names is Troy Denning's Star Wars book, not another."""
+    ids = []
+    for i, b in enumerate(found):
+        ctx.check()
+        ctx.update(0.05 + 0.1 * i / len(found), f"looking up {i + 1} of {len(found)}: {names[i]}")
+        ids.append(sources.identify(b.guess))
+    theme = sources.theme_of(ids)
+    if not theme:
+        return ids
+    rest = [i for i, f in enumerate(ids) if not f.sure]
+    if rest:
+        ctx.log(f"most of the books are {theme}: {len(rest)} the sources weren't sure of looked for as that too")
+    for n, i in enumerate(rest):
+        ctx.check()
+        ctx.update(0.15 + 0.1 * n / len(rest), f"looking up {names[i]} again, as {theme}")
+        found[i].guess.keywords = theme
+        f = sources.identify(found[i].guess)
+        if f.sure or (f.sources and (not ids[i].sources or (sources.in_theme(f.context, theme)
+                                                            and not sources.in_theme(ids[i].context, theme)))):
+            ids[i] = f
+    return ids
+
+
+def _sound_in(folder: str) -> bool:
+    return any(formats.is_audio(f) for _, _, fs in os.walk(folder) for f in fs)
 
 
 def _prune(folder: Path):

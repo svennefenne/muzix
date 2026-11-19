@@ -78,3 +78,23 @@ def test_the_latest_imports_say_where_the_albums_went():
     assert imp["status"] == "done" and imp["left"] == ["CW/cover.jpg"]
     assert imp["albums"][0]["where"] == "Electronic/Kraftwerk/Kraftwerk - 1981 - Computer World"
     assert imp["albums"][0]["album_id"] == album_id
+
+
+def test_a_piece_sent_again_after_a_lost_connection_takes_its_place():
+    """The browser sends a big file in pieces; a piece whose connection was lost half-way is sent again from the same
+    place (and one from further on than what came is refused)."""
+    import shutil
+    batch = "20261119-090000-abcd"
+    shutil.rmtree(env.UPLOAD_DIR / batch, ignore_errors=True)
+    (env.UPLOAD_DIR / batch).mkdir(parents=True)
+    c = client()
+
+    def piece(offset, data):
+        return c.post(f"/api/upload/batch/{batch}/part", data={"path": "Book/big.mp3", "offset": str(offset), "total": "12"},
+                      files={"data": ("big.mp3", data)})
+    assert piece(0, b"aaaa").json() == {"received": 4}
+    assert piece(4, b"bb").json() == {"received": 6}           # half of the second piece came, then the line went
+    assert piece(4, b"bbbb").json() == {"received": 8}         # sent again, whole
+    assert piece(12, b"cccc").status_code == 409
+    assert piece(8, b"cccc").json()["saved"][0]["size"] == 12
+    assert (env.UPLOAD_DIR / batch / "Book/big.mp3").read_bytes() == b"aaaabbbbcccc"

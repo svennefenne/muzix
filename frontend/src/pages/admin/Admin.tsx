@@ -319,6 +319,8 @@ function batchState(b: Batch): { text: string; tone: "" | "busy" | "bad" | "done
   if (j.status === "queued") return { text: "Import queued…", tone: "busy" };
   if (j.status === "running") return { text: `Importing${j.message ? `: ${j.message}` : "…"}`, tone: "busy" };
   if (j.status === "failed") return { text: `The import failed${j.message ? `: ${j.message}` : ""}. Import tries again.`, tone: "bad" };
+  if (b.kind === "audiobooks")
+    return { text: "Imported. These files were left over: books that couldn't be made (Jobs says why), or copies of one made. Try again, or discard them", tone: "done" };
   return { text: "Imported. These files were left over: the import didn't take them", tone: "done" };
 }
 
@@ -420,8 +422,8 @@ type UploadKind = "music" | "audiobooks";
 /** An upload in progress, shared so a drop on any admin page can start one; `kind`: the upload page's side, what a
  * drop is uploaded as. */
 const useUpload = create<{ progress: { done: number; total: number; files: number } | null; checking: boolean; review: Review | null;
-                          kind: UploadKind }>(
-  () => ({ progress: null, checking: false, review: null, kind: "music" }));
+                          kind: UploadKind; retrying: boolean }>(
+  () => ({ progress: null, checking: false, review: null, kind: "music", retrying: false }));
 
 /** Before anything goes up: files that look like duplicates (sent before, or songs the library
  * seems to have) are shown, and the uploader picks what to send. null: cancelled. */
@@ -479,7 +481,7 @@ async function startUpload(files: Pending[]) {
       queryClient.invalidateQueries({ queryKey: ["book-imports"] });
     } else notify(`Uploaded ${audioish.length} files. Press Import to tag and file them.`);
   } catch (e) {
-    notify((e as Error).message, "error");
+    notify(`The upload stopped: ${(e as Error).message}. What went up is kept in the upload: send the rest again.`, "error");
   } finally {
     setProgress(null);
     queryClient.invalidateQueries({ queryKey: ["batches"] });
@@ -491,15 +493,39 @@ async function startUpload(files: Pending[]) {
 const MAX_REQUEST = 64e6;
 const PART = 48 * 1024 * 1024;
 
-function post(url: string, fd: FormData, onProgress: (loaded: number) => void): Promise<void> {
+class UploadError extends Error {
+  constructor(message: string, readonly retry: boolean) { super(message); }
+}
+
+function postOnce(url: string, fd: FormData, onProgress: (loaded: number) => void): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", url);
     xhr.upload.onprogress = (e) => onProgress(e.loaded);
-    xhr.onload = () => (xhr.status < 300 ? resolve() : reject(new Error(xhr.responseText || xhr.statusText)));
-    xhr.onerror = () => reject(new Error("Upload failed"));
+    // a proxy's 502/504 (Cloudflare's 52x) is the line, not the request: worth sending again
+    xhr.onload = () => (xhr.status < 300 ? resolve()
+      : reject(new UploadError(xhr.responseText || xhr.statusText, xhr.status >= 500)));
+    xhr.onerror = () => reject(new UploadError("the connection to the server was lost", true));
     xhr.send(fd);
   });
+}
+
+// A dropped connection (the internet away for a moment) doesn't stop an upload of hours: the same request is sent
+// again for about 8 minutes before it gives up.
+const RETRY_WAITS = [2, 5, 10, 20, 30, 60, 60, 60, 60, 60, 60];
+
+async function post(url: string, fd: FormData, onProgress: (loaded: number) => void): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await postOnce(url, fd, onProgress);
+    } catch (e) {
+      if (!(e instanceof UploadError) || !e.retry || attempt >= RETRY_WAITS.length) throw e;
+      useUpload.setState({ retrying: true });
+      await new Promise((r) => setTimeout(r, RETRY_WAITS[attempt] * 1000));
+    } finally {
+      useUpload.setState({ retrying: false });
+    }
+  }
 }
 
 function sendChunk(batch: string, chunk: Pending[], onProgress: (loaded: number) => void): Promise<void> {
@@ -574,6 +600,7 @@ function DuplicatesDialog({ review }: { review: Review }) {
 
 function UploadArea() {
   const progress = useUpload((s) => s.progress);
+  const retrying = useUpload((s) => s.retrying);
   const checking = useUpload((s) => s.checking);
   const review = useUpload((s) => s.review);
   const settings = useQuery({ queryKey: ["admin-settings"], queryFn: () => api.get<SettingSpec[]>("/api/admin/settings") });
@@ -642,7 +669,8 @@ function UploadArea() {
           {progress && (
             <div style={{ width: "100%", maxWidth: 420 }}>
               <div className="progressbar"><div style={{ width: `${(progress.done / progress.total) * 100}%` }} /></div>
-              <div className="dim" style={{ fontSize: 12, marginTop: 6 }}>{progress.files} files · {fmtBytes(progress.done)} of {fmtBytes(progress.total)}</div>
+              <div className="dim" style={{ fontSize: 12, marginTop: 6 }}>{progress.files} files · {fmtBytes(progress.done)} of {fmtBytes(progress.total)}
+                {retrying && <span className="error-text"> · the connection was lost: trying again</span>}</div>
             </div>
           )}
         </div>
@@ -677,7 +705,7 @@ function UploadArea() {
                       <div className={state.tone === "bad" ? "error-text" : "dim"} style={{ fontSize: 12.5 }}>{state.text}</div>
                     </div>
                     {running ? <div style={{ width: 160 }}><div className="progressbar"><div style={{ width: `${(b.job!.progress || 0) * 100}%` }} /></div></div>
-                      : !leftOver && <button className="btn accent" onClick={async () => { await api.post(`/api/upload/batch/${b.batch}/import`); batches.refetch(); }}>Import</button>}
+                      : (!leftOver || b.kind === "audiobooks") && <button className={`btn${leftOver ? "" : " accent"}`} onClick={async () => { await api.post(`/api/upload/batch/${b.batch}/import`); batches.refetch(); }}>{leftOver ? "Try again" : "Import"}</button>}
                     <button className="mini" aria-label="Discard" data-tip="Discard: these uploaded files are deleted" onClick={async () => {
                       if (!confirm("Discard these uploaded files?")) return;
                       await api.del(`/api/upload/batch/${b.batch}`);

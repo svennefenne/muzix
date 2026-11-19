@@ -97,14 +97,21 @@ def duplicate_of(f: Found, seconds: float) -> Book | None:
         for b in books:
             if f.asin and getattr(b, "asin", "") == f.asin:
                 return b
-            if norm(b.title) == norm(f.title) or sim(b.title, f.title) > 0.92:
-                same_author = not f.authors or sim(b.author or "", f.authors[0]) > 0.8
-                narr = {norm(n) for n in re.split(r",|&", b.narrator or "") if n.strip()}
-                theirs = {norm(n) for n in f.narrators}
-                same_narrator = not narr or not theirs or bool(narr & theirs)
-                if same_author and same_narrator and (not b.duration or abs(b.duration - seconds) < 0.05 * max(seconds, 1)):
-                    return b
+            if alike(f, seconds, b.title, b.author or "", re.split(r",|&", b.narrator or ""), b.duration or 0):
+                return b
     return None
+
+
+def alike(f: Found, seconds: float, title: str, author: str, narrators: list, length: float) -> bool:
+    """Whether ``f`` is the book with that title and author, read by them and about that long (a narrator or a length
+    left unsaid doesn't count against it)."""
+    if not (norm(title) == norm(f.title) or sim(title, f.title) > 0.92):
+        return False
+    same_author = not f.authors or sim(author, f.authors[0]) > 0.8
+    narr = {norm(n) for n in narrators if n.strip()}
+    theirs = {norm(n) for n in f.narrators}
+    same_narrator = not narr or not theirs or bool(narr & theirs)
+    return same_author and same_narrator and (not length or abs(length - seconds) < 0.05 * max(seconds, 1))
 
 
 def aside(root: str, f: Found) -> str:

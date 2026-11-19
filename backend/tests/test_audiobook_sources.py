@@ -275,3 +275,182 @@ def test_a_parts_chapter_name_is_its_own_chapters_not_the_books_title():
     part = {"path": "/x/05.mp3", "title": "Harry Potter and the Philosopher’s Stone", "chapters": []}
     assert make.chapter_name(part, 5, "Harry Potter and the Philosopher's Stone") == "Part 5"
     assert make.chapter_name({"path": "/x/03.mp3", "title": "Harry’s Birthday"}, 3, "Harry Potter") == "Harry’s Birthday"
+
+
+# ---------------------------------------------------------------- collections: Star Wars, H.P. Lovecraft (2026-11-19)
+
+@pytest.fixture
+def tagged(monkeypatch):
+    """Files made under a folder, with the tags (album, length, artist) group.py reads from them stood in for."""
+    def make_files(root, spec):
+        tags = {}
+        for rel, (album, seconds, *artist) in spec.items():
+            p = root / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(b"\xff\xfb" + b"0" * 400)
+            tags[str(p)] = group.Part(path=str(p), duration=seconds, album=album, author=artist[0] if artist else "")
+        monkeypatch.setattr(group, "_read", lambda path: tags[path])
+    return make_files
+
+
+def test_a_collections_loose_stories_are_books_by_their_names(tmp_path, tagged):
+    """Files lying beside other books' folders are books by their names, not one 46-hour book of everything the
+    collection tagged alike; a part's number doesn't count, a reader's name does. A folder other books lie in is no
+    book's home: making the book lying loose in it must not take the others along."""
+    c = "H.P. Lovecraft Collection"
+    tagged(tmp_path, {
+        f"{c}/1920 - Nyarlathotep (Broken Sea).mp3": ("Broken Sea Audio Productions", 400, "H.P. Lovecraft"),
+        f"{c}/1920 - Nyarlathotep (McGrenery).mp3": ("Broken Sea Audio Productions", 420, "H.P. Lovecraft"),
+        f"{c}/1921 - Ex Oblivione (Broken Sea).mp3": ("Broken Sea Audio Productions", 300),
+        f"{c}/The Hound 1 of 2.mp3": ("Dagon & Other Macabre Tales", 900),
+        f"{c}/The Hound 2 of 2.mp3": ("Dagon & Other Macabre Tales", 800),
+        f"{c}/The Dream-Quest of Unknown Kadath - Part 01 (Read by Maureen O'Brien) (64kbps).mp3": ("Kadath", 1500),
+        f"{c}/The Dream-Quest of Unknown Kadath - Part 02 (Read by Maureen O'Brien) (64kbps).mp3": ("Kadath", 1500),
+        f"{c}/Dark Worlds/1920 - The Statement of Randolph Carter (June).mp3": ("The Dark Worlds of H.P. Lovecraft", 1000),
+        f"{c}/Dark Worlds/Dark Worlds Volume 1/01.mp3": ("Dark Worlds Volume 1", 3000),
+        f"{c}/Dark Worlds/Dark Worlds Volume 1/02.mp3": ("Dark Worlds Volume 1", 3000),
+    })
+    found = {b.guess.title: b for b in group.scan(str(tmp_path))}
+    assert sorted(found) == ["Dark Worlds Volume 1", "Ex Oblivione (Broken Sea)", "Nyarlathotep (Broken Sea)",
+                             "Nyarlathotep (McGrenery)", "The Dream-Quest of Unknown Kadath", "The Hound",
+                             "The Statement of Randolph Carter (June)"]
+    assert len(found["The Hound"].files) == 2 and found["Nyarlathotep (Broken Sea)"].guess.year == "1920"
+    assert found["The Dream-Quest of Unknown Kadath"].guess.narrator == "Maureen O'Brien"
+    assert all(b.home is None for t, b in found.items() if t != "Dark Worlds Volume 1")
+    assert found["Dark Worlds Volume 1"].home == str(tmp_path / c / "Dark Worlds" / "Dark Worlds Volume 1")
+
+
+def test_a_book_in_two_formats_is_two_copies_not_one_book_twice_as_long(tmp_path, tagged):
+    tagged(tmp_path, {"02 - Maul Lockdown/m4b/Maul Lockdown.m4b": ("Maul Lockdown", 44000),
+                      "02 - Maul Lockdown/mp3/01.mp3": ("Maul Lockdown", 22000), "02 - Maul Lockdown/mp3/02.mp3": ("Maul Lockdown", 22000)})
+    found = group.scan(str(tmp_path))
+    assert sorted(len(b.files) for b in found) == [1, 2] and {b.guess.title for b in found} == {"Maul Lockdown"}
+
+
+def test_a_folders_place_in_a_list_isnt_part_of_the_books_name(tmp_path, tagged):
+    assert group.from_folder("15 - Kenobi") == {"title": "Kenobi"}
+    assert group.from_folder("01. Star Wars Heir to the Empire") == {"title": "Star Wars Heir to the Empire"}
+    assert group.from_folder("02 - Dark Tide I - Onslaught") == {"title": "Dark Tide I - Onslaught", "alt": "Onslaught"}
+    assert group.from_folder("1 - 1979 - The Book") == {"year": "1979", "title": "The Book"}
+    # an "Unknown Album (date)" tag says nothing
+    tagged(tmp_path, {"Legends/02 - Deceived/Disc 1/01.mp3": ("Unknown Album (3/25/2011 4:36:17 PM)", 2000),
+                      "Legends/02 - Deceived/Disc 2/01.mp3": ("Unknown Album (3/25/2011 4:36:17 PM)", 2000)})
+    (b,) = group.scan(str(tmp_path))
+    assert (b.guess.title, b.guess.titles, len(b.files)) == ("Deceived", [], 2)
+
+
+def test_the_people_in_an_artist_tag():
+    assert group.names("Aaron Allston, Marc Thompson") == ["Aaron Allston", "Marc Thompson"]
+    assert group.names("Rowling, J.K.") == ["Rowling, J.K."]
+    assert group.names("James Luceno / Anthony Heald") == ["James Luceno", "Anthony Heald"]
+    assert group.names("Christie Golden, Katie Lucas (Foreword)") == ["Christie Golden", "Katie Lucas"]
+
+
+def test_a_length_its_size_cant_be_is_asked_of_ffprobe(tmp_path, monkeypatch):
+    """A broken VBR header said 21 minutes of a 6-hour Legacy of the Force book: 2 Mbit/s for an mp3."""
+    f = tmp_path / "Tempest 1.mp3"
+    with open(f, "wb") as out:
+        out.truncate(72_600_000)
+    monkeypatch.setattr(group, "probed", lambda path: 4530.0)
+    assert group._length(str(f), 260) == 4530.0
+    assert group._length(str(f), 4500) == 4500        # 129 kbit/s: as said
+
+
+def test_an_estimated_mp3_length_is_heard_out(monkeypatch):
+    """ffprobe guesses an mp3 without a VBR header from its bitrate (2200 s); decoding it says 2086 s, as long as the
+    .m4b made of it came out."""
+    class Done:
+        def __init__(self, stdout="", stderr=""):
+            self.stdout, self.stderr, self.returncode = stdout, stderr, 0
+    calls = []
+
+    def run(cmd, **kw):
+        calls.append(cmd[0])
+        if cmd[0] == "ffprobe":
+            return Done('{"format": {"duration": "2200.1"}, "streams": [{"codec_type": "audio", "codec_name": "mp3"}]}',
+                        "[mp3 @ 0x1] Estimating duration from bitrate, this may be inaccurate")
+        return Done(stderr="size=N/A time=00:21:07.61 bitrate=N/A\rsize=N/A time=00:34:46.16 bitrate=N/A speed=2.5e+03x")
+    monkeypatch.setattr(make.subprocess, "run", run)
+    assert make.probe("/x/At the Mountains of Madness.mp3")["duration"] == pytest.approx(2086.16)
+    assert calls == ["ffprobe", "ffmpeg"]
+
+
+def _sure(title, series):
+    return sources.Found(title=title, authors=["x"], narrators=[], sure=True, context=[title, "", series])
+
+
+def test_what_most_of_an_uploads_books_are():
+    found = [_sure("Kenobi", "Star Wars: Legends"), _sure("Heir to the Empire", "Star Wars: The Thrawn Trilogy - Legends"),
+             _sure("X-Wing: Rogue Squadron", "Star Wars: X-Wing - Legends (abridged)"),
+             sources.Found(title="Crucible", authors=[], narrators=[], context=["Crucible", "", "The World of Reforged"])]
+    assert sources.theme_of(found) == "star wars"
+    assert sources.theme_of(found[:2]) == ""          # two aren't enough to go by
+    assert sources.in_theme(["Crucible: Star Wars Legends"], "star wars") and not sources.in_theme(["Crucible"], "star wars")
+
+
+def test_a_book_no_tag_names_the_author_of_is_looked_for_as_what_the_others_are(offline):
+    """"Crucible" alone is somebody else's (2026); with the upload's Star Wars books around it, Troy Denning's."""
+    other = sources.book("audible", "B0GP91PV99", asin="B0GP91PV99", title="Crucible", authors=["Seth Haddon"],
+                         runtime=12 * 3600, series=[("The World of Reforged", "0.5")])
+    denning = sources.book("audible", "B00KGLEH3U", asin="B00KGLEH3U", title="Crucible: Star Wars Legends",
+                           authors=["Troy Denning"], runtime=int(12.1 * 3600), series=[("Star Wars: Legends", "")])
+    offline.setattr(sources, "audible_search", lambda title, author="", keywords="", store="us":
+                    [other, denning] if "star wars" in keywords else [other])
+    g = sources.Guess(title="Crucible", duration=12.1 * 3600)
+    assert sources.identify(g).authors == ["Seth Haddon"]
+    g.keywords = "star wars"
+    f = sources.identify(g)
+    assert (f.title, f.authors, f.sure) == ("Crucible", ["Troy Denning"], True)
+
+
+def test_the_books_not_found_for_sure_are_looked_up_again_as_what_the_others_are(monkeypatch):
+    from muzix.audiobook import pipeline
+    asked = []
+
+    def identify(g):
+        asked.append((g.title, g.keywords))
+        if g.title == "Crucible":
+            return (sources.Found(title="Crucible", authors=["Troy Denning"], narrators=[], sure=True, sources=["audible"],
+                                  context=["Crucible: Star Wars Legends"]) if g.keywords else
+                    sources.Found(title="Crucible", authors=["Seth Haddon"], narrators=[], sources=["audible"],
+                                  context=["Crucible", "", "The World of Reforged"]))
+        return _sure(g.title, "Star Wars: Legends")
+    monkeypatch.setattr(sources, "identify", identify)
+    books = [group.Found(files=[], home=None, unit="/u", guess=sources.Guess(title=t))
+             for t in ("Kenobi", "Tarkin", "Revan", "Crucible")]
+
+    class Ctx:
+        def check(self): pass
+        def update(self, *a): pass
+        def log(self, line): asked.append(line)
+    ids = pipeline.identify_all(Ctx(), books, ["Kenobi", "Tarkin", "Revan", "Crucible"])
+    assert ids[3].authors == ["Troy Denning"] and ("Crucible", "star wars") in asked
+    assert [k for t, k in asked[:4]] == ["", "", "", ""] and len([a for a in asked if a == ("Kenobi", "star wars")]) == 0
+
+
+def test_a_shops_title_without_its_series_and_franchise_around_it():
+    for title, series, bare in [("The New Jedi Order: Dark Tide 1: Onslaught", ["Star Wars: The New Jedi Order: Dark Tide"], "Onslaught"),
+                                ("The Thrawn Trilogy, Book 3: The Last Command", ["Star Wars: The Thrawn Trilogy - Legends"], "The Last Command"),
+                                ("X-Wing: Starfighters of Adumar", ["Star Wars: X-Wing - Legends (abridged)"], "Starfighters of Adumar"),
+                                ("Stealth: Star Wars (Clone Wars Gambit)", [], "Stealth"),
+                                ("Siege: Star Wars Legends (Clone Wars Gambit)", [], "Siege"),
+                                ("Dune: House Atreides", ["Prelude to Dune"], "Dune: House Atreides")]:
+        assert sources.without_series(sources.bare_title(title), series) == bare, title
+    assert group.clean("Isard's Revenge (X-Wing Saga, Book 8)") == "Isard's Revenge"
+    assert group.clean("Nyarlathotep (Broken Sea)") == "Nyarlathotep (Broken Sea)"
+
+
+def test_files_named_alike_but_for_their_numbers_are_one_book_however_tagged(tmp_path, tagged):
+    tagged(tmp_path, {"01 - Vector Prime/1 - Vector Prime.mp3": ("Star Wars-The New Jedi Order-Vector Prime", 2747),
+                      **{f"01 - Vector Prime/{i} - Vector Prime.mp3": ("The New Jedi Order - Vector Prime", 2700) for i in (2, 3, 4)}})
+    (b,) = group.scan(str(tmp_path))
+    assert len(b.files) == 4 and b.guess.title == "Vector Prime"
+
+
+def test_what_the_others_are_doesnt_make_a_book_of_another_length_ours(offline):
+    """Rebel Agent (2 h, a radio drama) isn't Dark Force Rising (14 h) for being Star Wars too."""
+    dfr = sources.book("audible", "B005IHAT1A", asin="B005IHAT1A", title="Dark Force Rising", authors=["Timothy Zahn"],
+                       runtime=14 * 3600, series=[("Star Wars: The Thrawn Trilogy - Legends", "2")])
+    offline.setattr(sources, "audible_search", lambda title, author="", keywords="", store="us": [dfr])
+    f = sources.identify(sources.Guess(title="Dark Forces Rebel", duration=2 * 3600, keywords="star wars"))
+    assert not f.sources

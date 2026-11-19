@@ -339,3 +339,35 @@ def test_pick_the_right_book_asks_any_source(api, monkeypatch):
     assert (hit["source"], hit["id"], hit["language"], hit["runtime"]) == ("bonnier", "155255", "sv", 24060)
     assert api.get("/api/admin/books/lookup", params={"q": "x", "source": "nowhere"}).status_code == 400
     assert api.post("/api/admin/books/1/match", json={"source": "bonnier", "id": "0"}).status_code in (400, 404)
+
+
+def test_making_a_book_never_takes_another_books_files_along(tmp_path, library, monkeypatch):
+    """A story lying loose in a folder that holds a volume's folder too: making the story mustn't remove the folder
+    (and the volume with it: Dark Worlds of H.P. Lovecraft Vol 1-5, "no sound in the files", 2026-11-19)."""
+    u = tmp_path / "up"
+    tone(str(u / "Dark Worlds" / "1920 - The Statement of Randolph Carter.mp3"), album="The Dark Worlds of H.P. Lovecraft")
+    for i in (1, 2):
+        tone(str(u / "Dark Worlds" / "Volume 1" / f"{i:02d}.mp3"), album="Volume 1", track=i)
+    monkeypatch.setattr(sources, "identify", lambda g: found(g.title, "H.P. Lovecraft"))
+    monkeypatch.setattr(jobs, "submit", lambda *a, **k: 0)
+    out = pipeline.file_books(Ctx(), u, "a test")
+    assert not out["failed"] and sorted(b["title"] for b in out["books"]) == ["The Statement of Randolph Carter", "Volume 1"]
+
+
+def test_an_uploads_copies_of_a_book_are_made_once(tmp_path, library, monkeypatch):
+    """A collection that has a book another folder has too (The Timothy Zahn Collection's Outbound Flight): the same
+    files are made once and the copy is left in the upload; the same book in another format goes to _Duplicates."""
+    u = tmp_path / "up"
+    for i in (1, 2):
+        tone(str(u / "Legends" / "08 - Outbound Flight" / f"{i:02d}.mp3"), album="Outbound Flight", track=i)
+    shutil.copytree(u / "Legends" / "08 - Outbound Flight", u / "The Timothy Zahn Collection" / "01 - Outbound Flight")
+    tone(str(u / "Legends" / "02 - Maul Lockdown" / "mp3" / "01.mp3"), seconds=4, album="Maul Lockdown")
+    tone(str(u / "Legends" / "02 - Maul Lockdown" / "m4b" / "Maul Lockdown.m4b"), seconds=4, codec="aac")
+    monkeypatch.setattr(sources, "identify", lambda g: found(g.title, "Somebody", sources=["audible"], sure=True))
+    monkeypatch.setattr(jobs, "submit", lambda *a, **k: 0)
+    out = pipeline.file_books(Ctx(), u, "a test")
+    assert sorted(b["title"] for b in out["books"]) == ["Maul Lockdown", "Maul Lockdown", "Outbound Flight"]
+    assert sum(b["folder"].startswith("_Duplicates/") for b in out["books"]) == 1
+    (copy,) = out["failed"]
+    assert copy["title"] == "Outbound Flight" and copy["error"].startswith("a copy of “Outbound Flight”")
+    assert len([f for _, _, fs in os.walk(u) for f in fs]) == 2         # the copy's two files, left as they were

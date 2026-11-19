@@ -71,3 +71,29 @@ def test_every_session_closes_when_the_request_has_answered():
             _uses(dependant, scopes)
     assert len(scopes) > 100
     assert set(scopes) == {"function"}
+
+
+def test_a_cover_being_resized_holds_no_database_connection(song, tmp_path, monkeypatch):
+    """The sign-in check gives its connection back at once, and the cover's own is closed before the picture work: a
+    page of 40 covers holding two connections each used up the pool for 30 s (Plopp, 2026-11-19)."""
+    from muzix.api import library
+    from muzix.models import Album
+    with db.session() as s:
+        s.execute(delete(Album).where(Album.key == "conn-cover"))
+        a = Album(title="Cover", folder=str(tmp_path), key="conn-cover", art=str(tmp_path / "cover.jpg"))
+        s.add(a)
+        s.flush()
+        album = a.id
+    seen = []
+
+    def source_bytes(ref, path_of=None):
+        seen.append(db.engine.pool.checkedout())        # while the picture is read and resized
+        return None, ""
+    monkeypatch.setattr(library.art, "source_bytes", source_bytes)
+    app = FastAPI()
+    app.include_router(auth.router)
+    app.include_router(library.router)
+    c = TestClient(app)
+    token = c.post("/api/auth/token", json={"username": "conn-owner", "password": "secret1", "device": "Phone"}).json()["token"]
+    r = c.get(f"/api/art/album/{album}", headers={"authorization": f"Bearer {token}"})
+    assert r.status_code == 404 and seen == [0]

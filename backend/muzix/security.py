@@ -98,6 +98,9 @@ def optional_user(request: Request, db: Session = Depends(get_db, scope="functio
         viewing(request, user)
         sess = db.get(AuthSession, token)       # the one session_user found: no second look-up
         asked_by(user.id, (sess.name or device_name(sess.user_agent)) if sess else "")
+    # its connection back to the pool now, not once the request is done: a cover holds its own while it's resized,
+    # and a page of 40 covers holding two each used the pool up for half a minute (Plopp, 2026-11-19)
+    db.commit()
     return user
 
 

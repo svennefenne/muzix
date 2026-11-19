@@ -84,7 +84,7 @@ def bare_title(t: str) -> str:
     t = re.sub(r"\s*[\[(](unabridged|abridged|dramati[sz]ed adaptation)[\])]", "", t or "", flags=re.I)
     t = re.sub(r"\s*\((narrated|read|performed) by [^)]*\)|\s*\(full[- ]cast( audio)?( edition)?\)", "", t, flags=re.I)
     t = re.sub(r"\s*\((audio drama|novel|novella|short story|anthology|audiobook|audio book)\)\s*$", "", t, flags=re.I)
-    t = re.sub(r"[:,]\s*(the )?horus heresy.*$|[:,]\s*(a )?warhammer( 40,000)?.*$|[:,]\s*star wars legends$", "", t, flags=re.I)
+    t = re.sub(r"[:,]\s*(the )?horus heresy.*$|[:,]\s*(a )?warhammer( 40,000)?.*$|[:,]\s*star wars\b.*$", "", t, flags=re.I)
     t = re.sub(r"^star wars:\s*", "", t, flags=re.I)
     return re.sub(r"\s+", " ", t).strip(" -:,")
 
@@ -512,6 +512,7 @@ class Guess:
     asin: str = ""
     duration: float = 0
     language: str = ""
+    keywords: str = ""              # what the upload's other books are (theme_of): "Star Wars", for one no tag names
 
 
 @dataclass
@@ -533,6 +534,7 @@ class Found:
     warhammer: bool = False
     sources: list = field(default_factory=list)
     sure: bool = False
+    context: list = field(default_factory=list)      # the source's title and series names, for theme_of
 
 
 UMBRELLA = re.compile(r"^(warhammer( 40,000)?|star wars|star wars: legends|the cosmere|wizarding world.*)$", re.I)
@@ -549,7 +551,10 @@ def _score(p: dict, g: Guess) -> tuple[float, float]:
     titles = [g.title] + g.titles
     ts = max((sim(bare_title(p["title"]), t) for t in titles if t), default=0)
     names = p["authors"] + p["narrators"]
-    au = 1.0 if any(sim(a, n) > 0.8 for a in g.authors for n in names) else 0.0
+    # what the upload's other books are stands in for an author no tag names, for a book about as long as ours
+    themed = g.keywords and in_theme([p["title"], p["subtitle"], *(s[0] for s in p["series"])], g.keywords) and \
+        (not p["runtime"] or not g.duration or abs(p["runtime"] - g.duration) <= 0.3 * max(p["runtime"], g.duration))
+    au = 1.0 if any(sim(a, n) > 0.8 for a in g.authors for n in names) or themed else 0.0
     dur = 1 - min(1, abs(p["runtime"] - g.duration) / max(g.duration, 1)) if p["runtime"] and g.duration else 0.3
     return ts * 0.55 + au * 0.25 + dur * 0.2, ts
 
@@ -623,6 +628,11 @@ def _audible_pick(g: Guess) -> tuple[dict | None, bool]:
     if not cands and g.title:
         for p in audible_search("", keywords=f"{g.title} {g.authors[0] if g.authors else ''}".strip()):
             cands.setdefault(p["id"], p)
+    if g.keywords:                  # "Crucible" alone is somebody else's; "Crucible Star Wars" is Troy Denning's
+        for t in [g.title] + g.titles[:1]:
+            if t:
+                for p in audible_search("", keywords=f"{t} {g.keywords}"):
+                    cands.setdefault(p["id"], p)
     if g.duration and g.title and (not g.language or g.language[:2] == "en") and \
             not any(p["runtime"] and abs(p["runtime"] - g.duration) <= max(120, 0.015 * g.duration) for p in cands.values()):
         for t in [g.title] + g.titles[:1]:
@@ -634,6 +644,43 @@ def _audible_pick(g: Guess) -> tuple[dict | None, bool]:
                     key=lambda x: -x[0][0])
     pick = ranked[0][1] if ranked and ranked[0][0][0] >= 0.7 and ranked[0][0][1] >= 0.6 else None
     return pick, bool(pick) and ranked[0][0][0] >= 0.8
+
+
+THEME_STOP = {"legends", "unabridged", "abridged", "a novel", "novel", "the", "book", "series", "dramatized",
+              "dramatized adaptation", "an original novel", "audio drama", "canon", "collection"}
+
+
+def _segments(s: str) -> set[str]:
+    """The parts of a shop's title or series name: "Star Wars: X-Wing - Legends (abridged)" is star wars, x wing."""
+    out = set()
+    for seg in re.split(r"\s*[:(),\[\]]\s*|\s+[-–]\s+", s or ""):
+        w = " ".join(_words(seg))
+        if w and w not in THEME_STOP and not re.fullmatch(r"(book|vol|volume|part)?\s*\d+", w):
+            out.add(w)
+    return out
+
+
+def theme_of(found: list) -> str:
+    """What most of the books an upload's sources were sure of are part of ("star wars" for "Star Wars: The Thrawn
+    Trilogy - Legends", "Kenobi: Star Wars Legends" …), for looking for the rest as that too; "" when nothing stands
+    out (three of them at least, and two in five)."""
+    sure = [f for f in found if f.sure and f.context]
+    counts: dict[str, int] = {}
+    for f in sure:
+        for seg in set().union(*(_segments(c) for c in f.context)):
+            counts[seg] = counts.get(seg, 0) + 1
+    best = sorted(counts.items(), key=lambda kv: (-kv[1], -len(kv[0])))
+    return best[0][0] if best and best[0][1] >= 3 and best[0][1] >= 0.4 * len(sure) else ""
+
+
+def in_theme(texts: list, theme: str) -> bool:
+    """Whether a book's title or series names say it is part of ``theme`` (theme_of)."""
+    want = _words(theme)
+    for t in texts:
+        w = _words(t)
+        if want and any(w[i:i + len(want)] == want for i in range(len(w) - len(want) + 1)):
+            return True
+    return False
 
 
 def _words(s: str) -> list[str]:
@@ -654,10 +701,28 @@ def around(longer: str, title: str, names: list[str]) -> bool:
     return False
 
 
+def without_series(title: str, series: list) -> str:
+    """A shop's title without its series before it: "The New Jedi Order: Rebel Dreams" (in "Star Wars: The New Jedi
+    Order"), "The Thrawn Trilogy, Book 3: The Last Command", "Jedi Quest #2: The Trial of the Jedi"; but "Dune: House
+    Atreides" (in "Prelude to Dune") stays."""
+    segs = {" ".join(_words(p)) for s in series for p in re.split(r"\s*:\s*|\s+[-–]\s+", s or "")}
+    known = {w for s in series for w in _words(s)}
+    parts = title.split(":")
+    while len(parts) > 1:
+        words = _words(parts[0])
+        named = [w for w in words if not w.isdigit() and w not in ("book", "vol", "volume", "part")]
+        if words and (" ".join(words) in segs or (named != words and named and all(w in known for w in named))):
+            parts = parts[1:]
+        else:
+            break
+    return ":".join(parts).strip() or title
+
+
 def _take(f: Found, g: Guess, pick: dict):
     """What a source's book says, into what's found."""
     f.sources.append(pick["source"])
-    title = bare_title(pick["title"])
+    f.context = [pick["title"], pick.get("subtitle") or "", *(s[0] for s in pick.get("series") or [])]
+    title = without_series(bare_title(pick["title"]), [s[0] for s in pick.get("series") or []])
     short, who = split_by(g.title)
     if short and norm(short) == norm(title) and any(sim(who, a) > 0.8 for a in pick["authors"]):
         f.title = title                     # "Mordets praktik av Kerstin Ekman" was "Mordets praktik" by her

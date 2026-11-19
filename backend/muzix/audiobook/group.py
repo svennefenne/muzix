@@ -4,12 +4,16 @@
   belong to it.
 - Folders whose audio all carries one album tag are one book together (an anthology split in parts).
 - Loose files side by side that are different books (each its own album, or untagged next to other books) are
-  one book each; m4b files of one album in a folder (a book cut at every chapter) are one book.
-- A book's home is the highest folder holding nothing but it: what else lies there (a pdf, pictures) goes along."""
+  one book each; m4b files of one album in a folder (a book cut at every chapter) are one book. Files lying beside
+  other books' folders are books by their names ("The Hound 1 of 2" and "2 of 2" one, "Dagon" another), whatever
+  album a collection tagged them with.
+- A book's home is the highest folder holding nothing but it: what else lies there (a pdf, pictures) goes along, and
+  it goes once the book is made. A folder other books lie in too is no book's home."""
 
 import collections
 import os
 import re
+import subprocess
 from dataclasses import dataclass, field
 
 from .. import formats
@@ -19,7 +23,10 @@ from .sources import Guess, sim, split_by
 DISC = re.compile(r"(^|\s|[-_.])(cd|disc|disk|part|del)\s*[-_.]?\s*\d+$|\[\d+\]$|^\d+$", re.I)
 JUNK_DIR = {"__MACOSX"}
 GENERIC_ALBUM = re.compile(r"^(the horus heresy|unknown album.*|)$", re.I)
+# a folder named for the files' format (a book as mp3 and as m4b side by side), not for the book
+FORMAT_DIR = re.compile(r"^(mp3|m4b|m4a|aac|flac|ogg|opus|wma|audio|audio ?books?|files|(un)?abridged|\d+\s*kbps)$", re.I)
 ASIN = re.compile(r"\b(B0[0-9A-Z]{8})\b")
+LOSSY = (".mp3", ".m4a", ".m4b", ".aac", ".ogg", ".opus", ".wma", ".mp2")
 
 
 @dataclass
@@ -40,6 +47,8 @@ class Found:
     home: str | None                  # the folder that is only this book, or None for loose files
     unit: str                         # the folder the book was found in
     guess: Guess = field(default_factory=Guess)
+    folder: str | None = None         # the folder whose name says what the book is (its home's, or the one it lies in)
+    by_name: bool = False             # lying loose beside other books: its files' names say what it is
 
 
 def album_base(a: str) -> str:
@@ -69,6 +78,36 @@ def one_book(paths: list[str]) -> bool:
     return len(paths) > 1 and len(keys) == 1
 
 
+# a part's number anywhere in a name: " - Part 01 (Read by …)", "(1 of 2)", " - 1 of 4", "(Part II)"
+PARTNO = re.compile(r"[\s._-]*[\[(]?\b(?:part|pt|disc|disk|cd|track|chapter|kapitel|del)[\s._-]*(?:\d{1,3}|[ivx]{1,4})\b"
+                    r"(?:\s*of\s*\d+)?[\])]?|[\s._-]*[\[(]\d{1,3}\s*of\s*\d{1,3}[\])]|[\s._-]+\d{1,3}\s*of\s*\d{1,3}\b", re.I)
+
+
+def title_in_name(path: str) -> str:
+    """What a file's name says it is, its part's number left out: "The Hound 1 of 2" and "The Hound 2 of 2" are
+    "The Hound"; "Nyarlathotep (Broken Sea)" and "Nyarlathotep (McGrenery)" two readings of it."""
+    stem = os.path.splitext(os.path.basename(path))[0]
+    s = PARTNO.sub("", LEAD.sub("", stem, count=1) or stem)
+    s = re.sub(r"[\s._-]+\d{1,3}$", "", s)
+    return re.sub(r"\s+", " ", s).strip(" -_.") or stem
+
+
+def _numbered(parts: list) -> bool:
+    """Files numbered 1, 2, 3 … that carry one album tag: a book's chapters, whatever they're called."""
+    nums = [re.match(r"^\s*(\d{1,3})(?!\d)", os.path.basename(p.path)) for p in parts]
+    albums = {album_base(p.album) for p in parts}
+    return len(parts) > 1 and all(nums) and len({int(n.group(1)) for n in nums}) == len(parts) and \
+        len(albums) == 1 and not GENERIC_ALBUM.match(next(iter(albums)))
+
+
+def by_name(parts: list) -> list[list]:
+    """Loose files as books, by their names (title_in_name)."""
+    out: dict[str, list] = {}
+    for p in sorted(parts, key=lambda p: p.path):
+        out.setdefault(re.sub(r"[\W_]+", " ", title_in_name(p.path)).strip().casefold(), []).append(p)
+    return list(out.values())
+
+
 def unmangle(s: str) -> str:
     """A tag's text as it was meant: UTF-8 or Windows-1252 written into a Latin-1 tag reads as "Philosopherâ\x80\x99s"
     or "Philosopher\x92s"; both are "Philosopher’s"."""
@@ -82,17 +121,39 @@ def unmangle(s: str) -> str:
     return s
 
 
+def probed(path: str) -> float:
+    """ffprobe's length of a file (0 when it can't tell)."""
+    try:
+        out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path],
+                             capture_output=True, text=True, timeout=120).stdout
+        return float(out.strip() or 0)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return 0.0
+
+
+def _length(path: str, said: float) -> float:
+    """A file's length: its tags', unless they give none or one its size can't be (a broken VBR header said 2 of a
+    Legacy of the Force book's 6 hours: 2 Mbit/s for an mp3), then ffprobe's."""
+    try:
+        size = os.path.getsize(path)
+    except OSError:
+        return said
+    if said and not (path.lower().endswith(LOSSY) and size * 8 / said > 640_000):
+        return said
+    return probed(path) or said
+
+
 def _read(path: str) -> Part:
     try:
         i = tags.read(path)
     except Exception:  # noqa: BLE001  an unreadable tag still leaves the sound
-        return Part(path=path)
+        return Part(path=path, duration=_length(path, 0))
     narrator = unmangle(i.extra.get("narrator", ""))
     author = unmangle(i.albumartist or i.artist)
     if author and narrator and author == narrator:
         author = unmangle(i.artist) if unmangle(i.artist) != narrator else ""
-    return Part(path=path, duration=i.duration or 0, album=unmangle(i.album), author=author, narrator=narrator,
-                title=unmangle(i.title), year=str(i.year or ""), track=i.track_no)
+    return Part(path=path, duration=_length(path, i.duration or 0), album=unmangle(i.album), author=author,
+                narrator=narrator, title=unmangle(i.title), year=str(i.year or ""), track=i.track_no)
 
 
 def scan(root: str, named_root: bool = False) -> list[Found]:
@@ -119,7 +180,8 @@ def scan(root: str, named_root: bool = False) -> list[Found]:
         if parent in units or len(kids) < 2:
             continue
         albums = {album_base(p.album) for k in kids for p in units[k]}
-        if len(albums) == 1 and not GENERIC_ALBUM.match(next(iter(albums))):
+        if len(albums) == 1 and not GENERIC_ALBUM.match(next(iter(albums))) and \
+                not all(FORMAT_DIR.match(os.path.basename(k)) for k in kids):    # "mp3" and "m4b": one book twice
             for k in kids:
                 units[parent] += units.pop(k)
 
@@ -130,14 +192,24 @@ def scan(root: str, named_root: bool = False) -> list[Found]:
             by_album[album_base(p.album)].append(p)
         named = re.match(r"^(vol\s*[\d.]+\s*-\s*)?\d{4}\s*-", os.path.basename(u), re.I)
         loose = all(os.path.dirname(p.path) == u for p in parts)
-        container = u == root or any(k != u and k.startswith(u + os.sep) for k in units)
+        beside = any(k != u and k.startswith(u + os.sep) for k in units)     # other books' folders in it
+        container = u == root or beside
+        if beside and loose:
+            paths = [p.path for p in parts]
+            groups = [parts] if one_book(paths) or _numbered(parts) else by_name(parts)
+            for g in groups:
+                whole = len(groups) == 1 and len(g) > 1     # all its loose files, one book: the folder's name is its
+                books.append(Found(files=g, home=None, unit=u, folder=u if whole and u != root else None,
+                                   by_name=not whole))
+            continue
         big = [a for a, g in by_album.items() if sum(p.duration for p in g) > 1500]
         if container and loose and "" in by_album and not (named_root and u == root and one_book([p.path for p in by_album[""]])):
             by_album.update({p.path: [p] for p in by_album.pop("")})
-        if loose and not named and "" not in by_album and len(by_album) > 1 and (container or len(big) == len(by_album)) \
-                and all(len(g) <= 4 for g in by_album.values()):
+        alike = one_book([p.path for p in parts])      # "1 - Vector Prime" … "4 - Vector Prime", however tagged
+        if loose and not named and not alike and "" not in by_album and len(by_album) > 1 and \
+                (container or len(big) == len(by_album)) and all(len(g) <= 4 for g in by_album.values()):
             books += [Found(files=g, home=None, unit=u) for g in by_album.values()]
-        elif u == root and len(by_album) > 1:
+        elif u == root and len(by_album) > 1 and not alike:
             books += [Found(files=g, home=None, unit=u) for g in by_album.values()]
         else:
             books.append(Found(files=parts, home=None if u == root else u, unit=u))
@@ -150,11 +222,16 @@ def scan(root: str, named_root: bool = False) -> list[Found]:
             under[d].add(i)
             d = os.path.dirname(d)
     for i, b in enumerate(books):
+        if b.home and under[b.home] != {i}:     # other books lie in it too: not this one's to take along or remove
+            b.folder, b.home = b.folder or b.home, None
         if b.home:
+            b.folder = b.folder or b.home
             h = b.home
             while os.path.dirname(h) != root and os.path.dirname(h).startswith(root) and under[os.path.dirname(h)] == {i}:
                 h = os.path.dirname(h)
             b.home = h
+        while b.folder and FORMAT_DIR.match(os.path.basename(b.folder)) and os.path.dirname(b.folder) != root:
+            b.folder = os.path.dirname(b.folder)
         b.guess = guess(b, root, named_root and len(books) == 1)
     return books
 
@@ -180,24 +257,50 @@ def from_folder(name: str) -> dict:
     for pat in (r"^Vol\s*(?P<vol>[\d.]+)\s*-\s*(?P<year>\d{4})\s*-\s*(?P<title>.+)$",
                 r"^(?P<vol>[\d.]+)\s*-\s*(?P<year>\d{4})\s*-\s*(?P<title>.+?)\s*\[(?P<author>[^\]]+)\]$",
                 r"^(?P<year>(19|20)\d\d)\s*-\s*(?P<title>.+)$",
-                r"^Book\s*(?P<vol>\d+)\s*-\s*(?P<title>.+)$",
-                r"^(?P<author>[^-]{3,40}?)\s+-\s+(?P<title>.+)$"):
+                r"^Book\s*(?P<vol>\d+)\s*-\s*(?P<title>.+)$"):
         m = re.match(pat, name, re.I)
         if m:
             g.update({k: v.strip() for k, v in m.groupdict().items() if v})
             return g
+    m = re.match(r"^\d{1,3}\s*[-.)]\s*(?P<rest>\S.*)$", name)
+    if m:                   # "15 - Kenobi", "01. Star Wars Heir to the Empire": its place in a list, not part of its name
+        rest = from_folder(m.group("rest"))
+        if rest.get("author"):      # "02 - Dark Tide I - Onslaught": a series before the title as often as an author
+            rest = {"title": m.group("rest").strip(), "alt": rest["title"],
+                    **{k: v for k, v in rest.items() if k not in ("author", "title")}}
+        return {**g, **rest}
+    m = re.match(r"^(?P<author>[^-]{3,40}?)\s+-\s+(?P<title>.+)$", name)
+    if m:
+        g.update({k: v.strip() for k, v in m.groupdict().items() if v})
+        return g
     g["title"] = name
     return g
 
 
 JUNK_TITLE = re.compile(r"\s*[\[(]?(unabridged|abridged|audio ?book|mp3|\d+\s*kbps)[\])]?\s*", re.I)
+READ_BY = re.compile(r"\s*[\[(](?:read|narrated|performed) by ([^)\]]+)[)\]]", re.I)
+NOT_AUTHOR = re.compile(r"black library|big finish|unknown|heavy ent|full cast|^(artist|various( artists)?|audio ?book.*)$", re.I)
 
 
 def clean(t: str) -> str:
     t = re.sub(r"\{[^}]*\}|^\s*\[[^\]]*\]\s*", "", t or "")
+    t = t.replace("_", " ") if " " not in t else t          # "At_The_Mountains_Of_Madness"
+    t = READ_BY.sub("", t)
     t = JUNK_TITLE.sub(" ", t)
     t = re.sub(r"\s*\(novella\)|\[\d+\]|\s+-\s*copy$", "", t, flags=re.I)
+    t = re.sub(r"\s*\([^)]*\b(book|vol\.?|volume|#)\s*\d+[^)]*\)\s*$", "", t, flags=re.I)  # "(X-Wing Saga, Book 8)"
     return re.sub(r"\s+", " ", t).strip(" -_:,.")
+
+
+def names(s: str) -> list[str]:
+    """The people in an artist tag: "Aaron Allston, Marc Thompson", "James Luceno / Anthony Heald" are two; "Rowling,
+    J.K." one."""
+    s = re.sub(r"\s*\((foreword|introduction|editor|ed\.)\)", "", s or "", flags=re.I)
+    out = []
+    for part in re.split(r"\s*[/;]\s*|\s+&\s+", s):
+        bits = [b.strip() for b in part.split(",") if b.strip()]
+        out += bits if len(bits) > 1 and all(len(b.split()) > 1 for b in bits) else [part.strip()]
+    return [n for n in out if n]
 
 
 def guess(b: Found, root: str, named_root: bool = False) -> Guess:
@@ -208,10 +311,20 @@ def guess(b: Found, root: str, named_root: bool = False) -> Guess:
         return c.most_common(1)[0][0] if c else ""
 
     album, author, narrator = most("album"), most("author"), most("narrator")
-    g = from_folder(os.path.basename(b.home or (root if named_root else ""))) if b.home or named_root else {}
-    titles = [clean(g.get("title", "")), clean(album)]
-    if not b.home and len(b.files) == 1:
-        titles.append(clean(os.path.splitext(os.path.basename(b.files[0].path))[0]))
+    if GENERIC_ALBUM.match(album_base(album)):         # "Unknown Album (3/25/2011 4:36:17 PM)" says nothing
+        album = ""
+    folder = b.folder or (root if named_root else "")
+    g = from_folder(os.path.basename(folder)) if folder else {}
+    titles = [clean(g.get("title", "")), clean(g.get("alt", "")), clean(album)]
+    if not folder and (b.by_name or len(b.files) == 1):
+        own = title_in_name(sorted(p.path for p in b.files)[0])
+        n = from_folder(own)            # "1905 - The Beast in the Cave": a year and a title
+        said = clean(PARTNO.sub("", most("title")))
+        named = [clean(n.get("title", "")), clean(n.get("alt", "")), said]
+        titles = named + titles if b.by_name else titles + [clean(own)]
+        g = {**{k: v for k, v in n.items() if k in ("year", "language")}, **g}
+        m = READ_BY.search(own)
+        narrator = narrator or (m.group(1).strip() if m else "")
     first, last = [], []
     for i, t in enumerate(titles):
         title, who = split_by(t)            # "Mordets praktik av Kerstin Ekman": the title, and who wrote it ...
@@ -224,9 +337,9 @@ def guess(b: Found, root: str, named_root: bool = False) -> Guess:
                 last.append(who)
             break
     titles = [t for t in dict.fromkeys(titles) if t]
-    authors = [g.get("author", ""), *first, author, *last]
-    authors = [a for a in dict.fromkeys(re.sub(r"\[.*?\]|graphic ?audio|;", "", a, flags=re.I).strip() for a in authors)
-               if a and not re.search(r"black library|big finish|unknown|heavy ent|full cast", a, re.I)]
+    authors = [n for a in [g.get("author", ""), *first, author, *last] for n in names(a)]
+    authors = [a for a in dict.fromkeys(re.sub(r"\[.*?\]|graphic ?audio", "", a, flags=re.I).strip() for a in authors)
+               if a and not NOT_AUTHOR.search(a)]
     asin = ""
     for p in b.files:
         m = ASIN.search(os.path.basename(p.path))
@@ -234,9 +347,9 @@ def guess(b: Found, root: str, named_root: bool = False) -> Guess:
             asin = m.group(1)
             break
     series = ""
-    if b.home and g.get("vol"):
-        parent = os.path.basename(os.path.dirname(b.home))
-        if os.path.dirname(b.home) != root and not any(parent.lower() == a.lower() for a in authors):
+    if b.folder and g.get("vol"):
+        parent = os.path.basename(os.path.dirname(b.folder))
+        if os.path.dirname(b.folder) != root and not any(parent.lower() == a.lower() for a in authors):
             series = parent
     return Guess(title=titles[0] if titles else "", titles=titles[1:], authors=authors,
                  narrator=g.get("narrator") or narrator, series=series, vol=g.get("vol", "") if series else "",
