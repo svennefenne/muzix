@@ -206,7 +206,13 @@ def scan(root: str, named_root: bool = False) -> list[Found]:
         if container and loose and "" in by_album and not (named_root and u == root and one_book([p.path for p in by_album[""]])):
             by_album.update({p.path: [p] for p in by_album.pop("")})
         alike = one_book([p.path for p in parts])      # "1 - Vector Prime" … "4 - Vector Prime", however tagged
-        if loose and not named and not alike and "" not in by_album and len(by_album) > 1 and \
+        stories = by_name(parts) if loose and not named and not alike and not _numbered(parts) and \
+            len({a for a in by_album if a}) > 1 else []
+        if len(stories) > 1 and any(len(g) > 4 for g in by_album.values()):
+            # stories side by side, tagged with the collections they came from ("LibriVox", "Public Domain Works of
+            # H. P. Lovecraft"): by their names, as beside other books' folders
+            books += [Found(files=g, home=None, unit=u, by_name=True) for g in stories]
+        elif loose and not named and not alike and "" not in by_album and len(by_album) > 1 and \
                 (container or len(big) == len(by_album)) and all(len(g) <= 4 for g in by_album.values()):
             books += [Found(files=g, home=None, unit=u) for g in by_album.values()]
         elif u == root and len(by_album) > 1 and not alike:

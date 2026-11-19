@@ -454,3 +454,14 @@ def test_what_the_others_are_doesnt_make_a_book_of_another_length_ours(offline):
     offline.setattr(sources, "audible_search", lambda title, author="", keywords="", store="us": [dfr])
     f = sources.identify(sources.Guess(title="Dark Forces Rebel", duration=2 * 3600, keywords="star wars"))
     assert not f.sources
+
+
+def test_stories_side_by_side_tagged_with_their_collections_are_books_of_their_own(tmp_path, tagged):
+    """Librivox Audio: 46 stories tagged "LibriVox" or "Public Domain Works of H. P. Lovecraft" aren't one 13-hour book."""
+    spec = {f"Librivox Audio/19{17 + i} - {t} (Librivox - {r}).mp3": ("LibriVox" if i % 2 else "Public Domain Works of H. P. Lovecraft", 900)
+            for i, (t, r) in enumerate([("Dagon", "Sample"), ("The Tomb", "Wittkower"), ("Polaris", "Nelson"), ("Celephais", "Halket"),
+                                        ("The Street", "Carpenter"), ("The Tree", "Worrell"), ("Hypnos", "BroBry"), ("He", "Bohnhoff"),
+                                        ("The Hound", "Margarite"), ("Azathoth", "Woodworth")])}
+    tagged(tmp_path, spec)
+    found = group.scan(str(tmp_path))
+    assert len(found) == 10 and {b.guess.title for b in found} >= {"Dagon (Librivox - Sample)", "The Hound (Librivox - Margarite)"}
