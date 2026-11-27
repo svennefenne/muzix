@@ -128,6 +128,12 @@ export function PlayerBar() {
                 {s.liveTitle ? cur.title : cur.artistId ? <Link to={`/artist/${cur.artistId}`}>{cur.artist}</Link> : cur.artist}
                 {s.error && <span className="error-text"> · {s.error}</span>}
               </div>
+              {(cur.kind === "track" || cur.kind === "online") && cur.album && (
+                <div className="np-album ellipsis">
+                  {cur.year ? <span className="mono">{cur.year} · </span> : null}
+                  {cur.albumId ? <Link to={`/album/${cur.albumId}`}>{cur.album}</Link> : cur.album}
+                </div>
+              )}
               <CastNote />
             </div>
             {cur.kind === "track" && !cur.foreign && (

@@ -12,6 +12,7 @@ export interface PlayItem {
   title: string;
   artist: string;
   album?: string;
+  year?: number;              // the song's (its album's) year
   art?: string | null;
   duration: number;           // 0 = unknown / live
   src: string;
@@ -37,7 +38,7 @@ export interface PlayItem {
 export function fromTrack(t: Track): PlayItem {
   return {
     key: `track:${t.id}`, kind: "track", id: t.id, title: t.title,
-    artist: t.artist || t.albumartist, album: t.album, art: t.art, duration: t.duration,
+    artist: t.artist || t.albumartist, album: t.album, year: t.year || undefined, art: t.art, duration: t.duration,
     src: t.stream, genre: t.genre, tags: t.tags, system: t.system, trackKind: t.kind,
     albumId: t.album_id, artistId: t.artist_id, format: t.format, castNative: t.cast_native, liked: t.liked, peer: t.peer,
     detail: t.kind === "music" ? [t.bit_depth && `${t.bit_depth}-bit`, t.sample_rate && `${+(t.sample_rate / 1000).toFixed(1)} kHz`,
@@ -48,7 +49,8 @@ export function fromTrack(t: Track): PlayItem {
 /** A tune from an online archive: plays like a library track, but nothing is kept about it. */
 export function fromOnline(t: OnlineTrack): PlayItem {
   return {
-    key: t.key, kind: "online", id: t.key, title: t.title, artist: t.artist, album: t.album, duration: t.duration,
+    key: t.key, kind: "online", id: t.key, title: t.title, artist: t.artist, album: t.album, year: t.year || undefined,
+    duration: t.duration,
     src: t.stream, system: t.system, trackKind: t.kind, format: t.format, castNative: t.cast_native,
   };
 }
