@@ -12,6 +12,7 @@ import { type AppLast, appPlayer, useShell } from "./app";
 import { caster, type CastHooks } from "./cast";
 import { type Command, connect } from "./connect";
 import { mayPlace, place, placedAt } from "./last";
+import { withoutLined } from "./lined";
 import { onMobileData, onNetworkChange, stash } from "./stash";
 
 /** What plays the queue instead of the page's own audio element: a Cast speaker, the Android app's
@@ -174,6 +175,8 @@ class Engine {
       if (s.playing && !prev.playing) this.keepOut = "";        // played again: its place is the player's again
       if (s.volume !== prev.volume || s.muted !== prev.muted) this.applyVolume();
       if (s.speed !== prev.speed) this.el.playbackRate = s.speed;
+      // repeat turned on: the queue as chosen goes round, not the songs autoplay had found to follow it
+      if (prev.repeat === "off" && s.repeat !== "off" && this.remote !== connect) this.dropAutoplay();
       if (s.index !== prev.index || s.queue !== prev.queue || s.repeat !== prev.repeat || s.shuffle !== prev.shuffle) {
         this.upNext();
         this.stashAhead();
@@ -494,11 +497,10 @@ class Engine {
     return ask;
   }
 
-  /** Autoplay turned off: the songs it lined up go. */
+  /** Autoplay turned off, or repeat on: the songs it lined up go (lined.ts). */
   private dropAutoplay(feedId?: number) {
     const s = usePlayer.getState();
-    const lined = (it: PlayItem) => it.auto && (feedId === undefined ? it.kind !== "episode" : it.feedId === feedId);
-    const queue = s.queue.filter((it, i) => i <= s.index || !lined(it));
+    const queue = withoutLined(s.queue, s.index, feedId);
     if (queue.length === s.queue.length) return;
     s.set({ queue });
     if (this.remote) this.remote.syncUpcoming();
