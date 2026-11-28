@@ -128,7 +128,7 @@ function PhoneTransport() {
             onClick={() => s.set({ shuffle: !s.shuffle })}><Shuffle size={22} /></button>
   );
   const repeat = (
-    <button className={`ctl ${s.repeat !== "off" ? "on" : ""}`} aria-label={`Repeat: ${s.repeat}`} data-tip={repeatTip(s.repeat)}
+    <button className={`ctl ${s.repeat !== "off" ? "on" : ""}`} aria-label={`Repeat: ${s.repeat}`} data-tip={repeatTip(s)}
             onClick={() => s.set({ repeat: s.repeat === "off" ? "all" : s.repeat === "all" ? "one" : "off" })}>
       {s.repeat === "one" ? <Repeat1 size={22} /> : <Repeat size={22} />}
     </button>

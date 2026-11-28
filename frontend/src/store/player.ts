@@ -31,6 +31,8 @@ export interface PlayItem {
   feedId?: number;            // an episode's podcast
   partOffset?: number;        // a book part's start within the whole book
   auto?: boolean;             // added by autoplay
+  from?: string;              // started together (an album, a playlist): what repeat goes round (player/order.ts)
+  soon?: boolean;             // "Play next": plays after the song before it, repeat or not, once
   peer?: string | null;       // the server in the Library Network it's from
   foreign?: boolean;          // another device plays it from another library (player/connect.ts): only shown
 }

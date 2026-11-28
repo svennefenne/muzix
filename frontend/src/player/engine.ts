@@ -13,6 +13,7 @@ import { caster, type CastHooks } from "./cast";
 import { type Command, connect } from "./connect";
 import { mayPlace, place, placedAt } from "./last";
 import { withoutLined } from "./lined";
+import { nextOf, order } from "./order";
 import { onMobileData, onNetworkChange, stash } from "./stash";
 
 /** What plays the queue instead of the page's own audio element: a Cast speaker, the Android app's
@@ -175,8 +176,12 @@ class Engine {
       if (s.playing && !prev.playing) this.keepOut = "";        // played again: its place is the player's again
       if (s.volume !== prev.volume || s.muted !== prev.muted) this.applyVolume();
       if (s.speed !== prev.speed) this.el.playbackRate = s.speed;
-      // repeat turned on: the queue as chosen goes round, not the songs autoplay had found to follow it
+      // repeat turned on: what was started goes round, not the songs autoplay had found to follow it
       if (prev.repeat === "off" && s.repeat !== "off" && this.remote !== connect) this.dropAutoplay();
+      // a song asked to play next plays once: on later rounds of repeat it waits with the other added ones
+      if (s.index !== prev.index && s.current()?.soon) {
+        s.set({ queue: s.queue.map((it, i) => (i === s.index ? { ...it, soon: false } : it)) });
+      }
       if (s.index !== prev.index || s.queue !== prev.queue || s.repeat !== prev.repeat || s.shuffle !== prev.shuffle) {
         this.upNext();
         this.stashAhead();
@@ -343,6 +348,9 @@ class Engine {
       connect.claim();
       appPlayer.standby = false;
     }
+    // started together: what repeat goes round (order.ts), whatever is added to the queue after
+    const from = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    items = items.map((it) => ({ ...it, from, soon: false }));
     usePlayer.getState().set({ queue: items, index: start, ordered: null });
     if (this.remote) return this.remote.loadQueue(start, items[start]?.resume ?? 0);
     this.load(true);
@@ -355,7 +363,8 @@ class Engine {
       return useUi.getState().notify("The queue there is another library's music: play this here instead", "error");
     }
     const q = [...s.queue];
-    q.splice(next ? s.index + 1 : q.length, 0, ...items);
+    // added, not started: repeat leaves them for after (order.ts); "Play next" plays next all the same, once
+    q.splice(next ? s.index + 1 : q.length, 0, ...items.map((it) => ({ ...it, from: undefined, soon: next })));
     s.set({ queue: q });
     useUi.getState().notify(next ? `Playing next: ${items[0].title}` : `Added ${items.length > 1 ? items.length + " songs" : items[0].title} to the queue`);
     if (this.remote) this.remote.syncUpcoming();
@@ -412,7 +421,8 @@ class Engine {
     if (!s.queue.length) return;
     if (this.remote) return this.remote.next();
     if (auto && s.repeat === "one") return this.again();
-    let idx = s.shuffle && s.queue.length > 1 ? this.ahead(1)[0] : s.index + 1;
+    let idx = s.shuffle && s.queue.length > 1 ? this.ahead(1)[0] ?? s.queue.length
+      : s.repeat === "all" ? nextOf(s.queue, s.index, "all") ?? 0 : s.index + 1;
     if (idx >= s.queue.length) {
       if (s.repeat === "all") idx = 0;
       else {
@@ -622,22 +632,19 @@ class Engine {
     const s = usePlayer.getState();
     if (s.index < 0) return [];
     if (s.shuffle && s.queue.length > 1) {
+      if (s.repeat === "all") {               // what goes round, in a random order
+        const round = order(s.queue, s.index, "all").slice(1);
+        if (!round.length) return [];
+        if (!round.includes(this.drawn)) this.drawn = round[Math.floor(Math.random() * round.length)];
+        return [this.drawn];
+      }
       if (this.drawn < 0 || this.drawn >= s.queue.length || this.drawn === s.index) {
         do this.drawn = Math.floor(Math.random() * s.queue.length);
         while (this.drawn === s.index);
       }
       return [this.drawn];
     }
-    const out: number[] = [];
-    for (let i = s.index + 1; out.length < n; i++) {
-      if (i >= s.queue.length) {
-        if (s.repeat !== "all") break;
-        i = 0;
-      }
-      if (i === s.index) break;
-      out.push(i);
-    }
-    return out;
+    return order(s.queue, s.index, s.repeat === "all" ? "all" : "off").slice(1, 1 + n);
   }
 
   /** The next song loads into the spare element while this one plays, and takes over the moment

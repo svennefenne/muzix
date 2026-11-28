@@ -8,6 +8,7 @@
 import { api } from "../api";
 import { usePlayer, type PlayItem } from "../store/player";
 import { useUi } from "../store/ui";
+import { nextOf, order } from "./order";
 
 const SDK = "https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1";
 const WINDOW = 30;     // songs handed over at a time; Cast messages have to stay small
@@ -24,7 +25,7 @@ export interface CastHooks {
 
 /** What the speaker (or the Android app) keeps of an item, enough to rebuild the queue if the page reloads. */
 export type Slim = Pick<PlayItem, "key" | "kind" | "id" | "title" | "artist" | "album" | "art" | "duration" | "src"
-  | "albumId" | "artistId" | "bookId" | "partOffset" | "feedId" | "format" | "castNative" | "auto">;
+  | "albumId" | "artistId" | "bookId" | "partOffset" | "feedId" | "format" | "castNative" | "auto" | "from" | "soon">;
 interface Carried { muzix: Slim; offset: number }
 
 const MIME: Record<string, string> = {
@@ -33,8 +34,10 @@ const MIME: Record<string, string> = {
 };
 
 export function slim(it: PlayItem): Slim {
-  const { key, kind, id, title, artist, album, art, duration, src, albumId, artistId, bookId, partOffset, feedId, format, castNative, auto } = it;
-  return { key, kind, id, title, artist, album, art, duration, src, albumId, artistId, bookId, partOffset, feedId, format, castNative, auto };
+  const { key, kind, id, title, artist, album, art, duration, src, albumId, artistId, bookId, partOffset, feedId, format, castNative, auto,
+          from, soon } = it;
+  return { key, kind, id, title, artist, album, art, duration, src, albumId, artistId, bookId, partOffset, feedId, format, castNative, auto,
+           from, soon };
 }
 
 function carried(info?: chrome.cast.media.MediaInfo | null): Carried | null {
@@ -151,7 +154,10 @@ class Caster {
     usePlayer.getState().set({ castSupport: "ready" });
     usePlayer.subscribe((s, prev) => {
       if (!this.active) return;
-      if (s.repeat !== prev.repeat) this.setRepeat();
+      if (s.repeat !== prev.repeat) {
+        this.setRepeat();
+        this.syncUpcoming();
+      }
       if (s.shuffle && !prev.shuffle) {
         shuffleUpcoming();
         this.syncUpcoming();
@@ -250,8 +256,11 @@ class Caster {
   }
 
   /** The items from `start` on, as many as fit in one handover. */
+  /** The items from `start` on in the order they play. With repeat on, once round: the speaker's own repeat goes round
+   * it again, with nothing before it in its queue (syncUpcoming), page or no page. */
   private upcoming(start: number) {
-    return usePlayer.getState().queue.slice(start, start + WINDOW);
+    const s = usePlayer.getState();
+    return order(s.queue, start, s.repeat === "all" ? "all" : "off").slice(0, WINDOW).map((i) => s.queue[i]);
   }
 
   private repeatMode() {
@@ -296,11 +305,13 @@ class Caster {
     if (!m?.items) return;
     const s = usePlayer.getState();
     const at = m.items.findIndex((i) => i.itemId === m.currentItemId);
+    // repeat on: what was played before goes from the speaker's queue too, or its repeat would start over there
+    const before = s.repeat === "all" ? m.items.slice(0, Math.max(0, at)) : [];
     const after = m.items.slice(at + 1);
     const want = this.upcoming(s.index).slice(1);
-    if (after.length === want.length && after.every((qi, i) => carried(qi.media)?.muzix.key === want[i].key)) return;
+    if (!before.length && after.length === want.length && after.every((qi, i) => carried(qi.media)?.muzix.key === want[i].key)) return;
     try {
-      for (const qi of after) await call(m.queueRemoveItem.bind(m), qi.itemId);
+      for (const qi of [...before, ...after]) await call(m.queueRemoveItem.bind(m), qi.itemId);
       const token = await castLink();
       if (want.length) await call(m.queueInsertItems.bind(m), new chrome.cast.media.QueueInsertItemsRequest(want.map((it) => this.queueItem(it, token))));
     } catch {
@@ -336,8 +347,10 @@ class Caster {
     const s = usePlayer.getState();
     const onSpeaker = m?.items?.findIndex((i) => i.itemId === m.currentItemId) ?? -1;
     if (m?.items && onSpeaker >= 0 && onSpeaker < m.items.length - 1) m.queueNext(() => {}, () => {});
-    else if (s.index < s.queue.length - 1) this.loadQueue(s.index + 1);
-    else if (s.repeat === "all") this.loadQueue(0);
+    else {
+      const i = nextOf(s.queue, s.index, s.repeat);
+      if (i !== null) this.loadQueue(i);
+    }
   }
 
   prev(always = false) {

@@ -11,6 +11,7 @@ import { report } from "../components/ErrorBoundary";
 import { usePlayer, type PlayItem } from "../store/player";
 import { useUi } from "../store/ui";
 import { type CastHooks, type CastState, type Slim, castLink, castMime, castUrl, shuffleUpcoming, slim, unshuffle } from "./cast";
+import { handover, nextOf } from "./order";
 
 interface Bridge {
   postMessage(data: string): void;
@@ -91,7 +92,10 @@ class AppPlayer {
     });
     usePlayer.subscribe((s, prev) => {
       if (!this.connected) return;
-      if (s.repeat !== prev.repeat) this.send({ t: "repeat", mode: s.repeat });
+      if (s.repeat !== prev.repeat) {
+        this.send({ t: "repeat", mode: s.repeat });
+        this.syncUpcoming();      // repeat on: one round of what goes round; off: the queue as it lies
+      }
       if (s.speed !== prev.speed) this.speed();
       if (s.shuffle && !prev.shuffle) {
         shuffleUpcoming();
@@ -253,9 +257,11 @@ class AppPlayer {
     }
   }
 
-  /** The items from `start` on, as many as one handover takes. */
+  /** The items from `start` on in the order they play (with repeat on, round after round: order.ts handover), as
+   * many as one handover takes. */
   private upcoming(start: number) {
-    return usePlayer.getState().queue.slice(start, start + WINDOW);
+    const s = usePlayer.getState();
+    return handover(s.queue, start, s.repeat, WINDOW).map((i) => s.queue[i]);
   }
 
   /** Starts the app on the queue at `start`, `at` seconds in. */
@@ -318,7 +324,8 @@ class AppPlayer {
   jump(index: number) {
     const it = usePlayer.getState().queue[index];
     const at = it?.resume ?? 0;
-    if (it && this.handed.has(it.key) && at <= 0.5) {
+    // with repeat on, the app has the rounds from the song that played: from this one it gets them anew
+    if (it && this.handed.has(it.key) && at <= 0.5 && usePlayer.getState().repeat !== "all") {
       this.asked = it.key;
       this.send({ t: "jump", key: it.key });
     } else this.loadQueue(index, at);
@@ -326,8 +333,10 @@ class AppPlayer {
 
   next() {
     const s = usePlayer.getState();
-    if (s.index + 1 < s.queue.length) this.jump(s.index + 1);
-    else if (s.repeat === "all" && s.queue.length) this.loadQueue(0);
+    const i = nextOf(s.queue, s.index, s.repeat);
+    if (i === null) return;
+    if (i === s.index) this.loadQueue(i);       // repeat, and the song is all that goes round
+    else this.jump(i);
   }
 
   prev(always = false) {
@@ -477,7 +486,7 @@ class AppPlayer {
       this.hooks?.onTime(st.position);
     }
     if (st.ended) this.hooks?.onFinish();
-    else if (st.left < TOP_UP && s.index + 1 < s.queue.length && this.upcoming(s.index).length - 1 > st.left) {
+    else if (st.left < TOP_UP && nextOf(s.queue, s.index, s.repeat) !== null && this.upcoming(s.index).length - 1 > st.left) {
       this.syncUpcoming();      // the app nears the end of what it has
     }
   }

@@ -8,16 +8,18 @@ import { MicButton } from "../components/Lyrics";
 import { SleepButton } from "../components/SleepTimer";
 import { Art, Skip15 } from "../components/ui";
 import { engine } from "../player/engine";
+import { loopName, nextOf } from "../player/order";
 import { usePlayer, type PlayItem, type Repeat as RepeatMode } from "../store/player";
 import { useUi } from "../store/ui";
 
 // what the transport's buttons do right now, for their tooltips (here and in the full-screen player)
 export const shuffleTip = (on: boolean) => (on ? "Shuffle is on: click to play in order" : "Shuffle: play in random order");
-export const repeatTip = (r: RepeatMode) => ({
-  off: "Repeat is off: click to repeat the queue",
-  all: "Repeating the queue: click to repeat just this song",
+// repeat goes round what was started (player/order.ts): the album, the playlist
+export const repeatTip = (s: { queue: PlayItem[]; index: number; repeat: RepeatMode }) => ({
+  off: `Repeat is off: click to repeat ${loopName(s.queue, s.index) === "the album" ? "the album" : "what plays"}`,
+  all: `Repeating ${loopName(s.queue, s.index)}: click to repeat just this song`,
   one: "Repeating this song: click to turn repeat off",
-})[r];
+})[s.repeat];
 export const likeTip = (on: boolean) => (on ? "Remove from your liked songs" : "Save to your liked songs");
 
 type Queue = { queue: PlayItem[]; index: number; shuffle: boolean; repeat: RepeatMode };
@@ -27,7 +29,8 @@ export const hasNext = (s: Queue) => s.index < s.queue.length - 1 || s.repeat ==
 
 export function nextTip(s: Queue) {
   if (s.shuffle && s.queue.length > 1) return "Next: a random song from the queue";
-  const next = s.queue[s.index + 1] ?? (s.repeat === "all" ? s.queue[0] : undefined);
+  const i = nextOf(s.queue, s.index, s.repeat);
+  const next = i === null ? undefined : s.queue[i];
   return next ? `Next: ${next.title}${next.artist ? ` · ${next.artist}` : ""}` : "Next";
 }
 
@@ -166,7 +169,7 @@ export function PlayerBar() {
               <SkipForward size={19} fill="currentColor" />
             </button>
           )}
-          <button className={`ctl ${s.repeat !== "off" ? "on" : ""}`} aria-label={`Repeat: ${s.repeat}`} data-tip={repeatTip(s.repeat)}
+          <button className={`ctl ${s.repeat !== "off" ? "on" : ""}`} aria-label={`Repeat: ${s.repeat}`} data-tip={repeatTip(s)}
                   onClick={() => s.set({ repeat: s.repeat === "off" ? "all" : s.repeat === "all" ? "one" : "off" })}>
             {s.repeat === "one" ? <Repeat1 size={17} /> : <Repeat size={17} />}
           </button>
